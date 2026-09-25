@@ -9,8 +9,11 @@ description = "Agentic incident investigation and resolution platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi",
+    "psycopg[binary]>=3.2",
     "pydantic-settings",
+    "sqlalchemy[asyncio]>=2.0,<2.2",
     "uvicorn[standard]",
 ]
 

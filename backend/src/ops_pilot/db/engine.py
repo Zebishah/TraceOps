@@ -1,0 +1,10 @@
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+from ops_pilot.core.config import get_settings
+
+settings = get_settings()
+
+engine: AsyncEngine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+)
