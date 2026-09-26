@@ -2,23 +2,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ops_pilot.core.exceptions import (
+    EmailAlreadyRegisteredError,
+    OrganizationSlugAlreadyExistsError,
+    RegistrationConflictError,
+)
 from ops_pilot.core.security import hash_password, verify_password
 from ops_pilot.models.membership import Membership, MembershipRole
 from ops_pilot.models.organization import Organization
 from ops_pilot.models.user import User
 from ops_pilot.schemas.auth import RegisterRequest
-
-
-class EmailAlreadyRegisteredError(Exception):
-    pass
-
-
-class OrganizationSlugAlreadyExistsError(Exception):
-    pass
-
-
-class RegistrationConflictError(Exception):
-    pass
 
 
 async def get_user_by_email(

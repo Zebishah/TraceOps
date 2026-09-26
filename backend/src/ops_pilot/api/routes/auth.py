@@ -13,9 +13,6 @@ from ops_pilot.schemas.auth import (
     UserResponse,
 )
 from ops_pilot.services.auth import (
-    EmailAlreadyRegisteredError,
-    OrganizationSlugAlreadyExistsError,
-    RegistrationConflictError,
     authenticate_user,
     register_user,
 )
@@ -28,38 +25,15 @@ router = APIRouter(prefix="/auth")
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-@router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
 async def register(
     payload: RegisterRequest,
     session: DbSession,
 ) -> UserResponse:
-    try:
-        user = await register_user(
-            session,
-            payload,
-        )
 
-    except EmailAlreadyRegisteredError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        ) from exc
-
-    except OrganizationSlugAlreadyExistsError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Organization slug already exists",
-        ) from exc
-
-    except RegistrationConflictError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Registration conflicts with existing data",
-        ) from exc
+    user = await register_user(
+        session,
+        payload,
+    )
 
     return UserResponse(
         id=user.id,

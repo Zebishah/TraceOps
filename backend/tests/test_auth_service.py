@@ -3,14 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ops_pilot.core.exceptions import (
+    EmailAlreadyRegisteredError,
+    OrganizationSlugAlreadyExistsError,
+)
 from ops_pilot.models.organization import Organization
 from ops_pilot.models.user import User
 from ops_pilot.schemas.auth import RegisterRequest
-from ops_pilot.services.auth import (
-    EmailAlreadyRegisteredError,
-    OrganizationSlugAlreadyExistsError,
-    register_user,
-)
+from ops_pilot.services.auth import register_user
 
 
 def make_result(value: object | None) -> MagicMock:
