@@ -10,18 +10,28 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
+    "boto3>=1.43.103",
     "email-validator>=2.3.0",
     "fastapi",
+    "groq>=1.7.0",
+    "httpx>=0.28.1",
+    "langchain-text-splitters>=1.1.2",
     "psycopg[binary]>=3.2",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings",
     "pyjwt>=2.15.0",
+    "pypdf>=6.19.0",
+    "python-multipart>=0.0.32",
+    "qdrant-client>=1.19.1",
+    "sentence-transformers>=6.1.0",
     "sqlalchemy[asyncio]>=2.0,<2.2",
+    "torch>=2.14.0",
     "uvicorn[standard]",
 ]
 
 [dependency-groups]
 dev = [
+    "boto3-stubs[s3]>=1.43.103",
     "httpx",
     "mypy",
     "pytest",
@@ -54,3 +64,11 @@ testpaths = ["tests"]
 python_version = "3.12"
 strict = true
 packages = ["ops_pilot"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

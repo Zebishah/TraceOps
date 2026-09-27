@@ -1,0 +1,132 @@
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, File, UploadFile, status
+
+from ops_pilot.api.dependencies import (
+    CurrentMembership,
+    CurrentUser,
+    DbSession,
+)
+from ops_pilot.schemas.chunks import DocumentChunk
+from ops_pilot.schemas.documents import (
+    DocumentIndexResponse,
+    DocumentResponse,
+)
+from ops_pilot.services.document_chunking import (
+    prepare_document_chunks,
+)
+from ops_pilot.services.document_indexing import (
+    index_document,
+)
+from ops_pilot.services.document_processing import (
+    process_document,
+)
+from ops_pilot.services.documents import create_document
+
+router = APIRouter(prefix="/organizations/{organization_id}/documents")
+
+
+@router.post(
+    "",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_document(
+    organization_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+    file: Annotated[UploadFile, File()],
+) -> DocumentResponse:
+    document = await create_document(
+        session=session,
+        organization_id=organization_id,
+        user_id=current_user.id,
+        file=file,
+    )
+
+    return DocumentResponse(
+        id=document.id,
+        organization_id=document.organization_id,
+        uploaded_by_user_id=document.uploaded_by_user_id,
+        original_filename=document.original_filename,
+        mime_type=document.mime_type,
+        size_bytes=document.size_bytes,
+        checksum_sha256=document.checksum_sha256,
+        status=document.status,
+        created_at=document.created_at,
+        failure_reason=document.failure_reason,
+    )
+
+
+@router.post(
+    "/{document_id}/process",
+    response_model=DocumentResponse,
+)
+async def process_uploaded_document(
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> DocumentResponse:
+    document = await process_document(
+        session=session,
+        organization_id=organization_id,
+        document_id=document_id,
+    )
+
+    return DocumentResponse(
+        id=document.id,
+        organization_id=document.organization_id,
+        uploaded_by_user_id=document.uploaded_by_user_id,
+        original_filename=document.original_filename,
+        mime_type=document.mime_type,
+        size_bytes=document.size_bytes,
+        checksum_sha256=document.checksum_sha256,
+        status=document.status,
+        failure_reason=document.failure_reason,
+        created_at=document.created_at,
+    )
+
+
+@router.get(
+    "/{document_id}/chunks",
+    response_model=list[DocumentChunk],
+)
+async def preview_document_chunks(
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> list[DocumentChunk]:
+    return await prepare_document_chunks(
+        session=session,
+        organization_id=organization_id,
+        document_id=document_id,
+    )
+
+
+@router.post(
+    "/{document_id}/index",
+    response_model=DocumentIndexResponse,
+)
+async def index_uploaded_document(
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> DocumentIndexResponse:
+    indexed_chunks = await index_document(
+        session=session,
+        organization_id=organization_id,
+        document_id=document_id,
+    )
+
+    return DocumentIndexResponse(
+        document_id=document_id,
+        indexed_chunks=indexed_chunks,
+    )
