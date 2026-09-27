@@ -14,23 +14,6 @@ class ExtractedDocument(BaseModel):
     pages: list[ExtractedPage]
 
 
-async def extract_pdf_text(data: bytes) -> str:
-    def extract() -> str:
-        reader = PdfReader(BytesIO(data))
-
-        pages: list[str] = []
-
-        for page in reader.pages:
-            text = page.extract_text()
-
-            if text:
-                pages.append(text)
-
-        return "\n\n".join(pages)
-
-    return await to_thread.run_sync(extract)
-
-
 def extract_pdf(data: bytes) -> ExtractedDocument:
     reader = PdfReader(BytesIO(data))
 
@@ -81,7 +64,10 @@ async def extract_document_text(
     mime_type: str,
 ) -> ExtractedDocument:
     if mime_type == "application/pdf":
-        return extract_pdf(data)
+        return await to_thread.run_sync(
+            extract_pdf,
+            data,
+        )
 
     if mime_type in {
         "text/plain",
