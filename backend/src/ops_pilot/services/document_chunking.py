@@ -9,6 +9,7 @@ from ops_pilot.ingestion.chunking import (
     create_document_chunks,
 )
 from ops_pilot.ingestion.extractors import ExtractedDocument
+from ops_pilot.models.document import DocumentStatus
 from ops_pilot.schemas.chunks import DocumentChunk
 from ops_pilot.services.document_processing import (
     get_document,
@@ -28,7 +29,7 @@ async def prepare_document_chunks(
         document_id=document_id,
     )
 
-    if document.extracted_text_key is None:
+    if document.status != DocumentStatus.READY or document.extracted_text_key is None:
         raise DocumentProcessingError
 
     # Copy DB values before ending the transaction.

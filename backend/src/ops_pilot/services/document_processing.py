@@ -49,6 +49,7 @@ async def process_document(
 
     document.status = DocumentStatus.PROCESSING
     document.failure_reason = None
+    document.extracted_text_key = None
 
     await session.commit()
 
@@ -57,7 +58,7 @@ async def process_document(
             key=document.storage_key,
         )
 
-        extracted = extract_document_text(
+        extracted = await extract_document_text(
             data=original_file,
             mime_type=document.mime_type,
         )

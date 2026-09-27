@@ -75,7 +75,7 @@ def extract_text_file(data: bytes) -> ExtractedDocument:
     )
 
 
-def extract_document_text(
+async def extract_document_text(
     *,
     data: bytes,
     mime_type: str,
