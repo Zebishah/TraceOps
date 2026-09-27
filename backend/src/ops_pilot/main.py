@@ -1,8 +1,21 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from ops_pilot.ai.generation import close_groq_client
 from ops_pilot.api.exception_handlers import register_exception_handlers
 from ops_pilot.api.router import api_router
 from ops_pilot.core.config import get_settings
+from ops_pilot.vectorstore.qdrant import close_qdrant_client
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    yield
+
+    await close_groq_client()
+    await close_qdrant_client()
 
 
 def create_app() -> FastAPI:
@@ -11,8 +24,11 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
+        lifespan=lifespan,
     )
+
     register_exception_handlers(application)
+
     application.include_router(
         api_router,
         prefix="/api/v1",

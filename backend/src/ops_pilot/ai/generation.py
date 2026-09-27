@@ -1,6 +1,28 @@
+from functools import lru_cache
+
 from groq import AsyncGroq
 
 from ops_pilot.core.config import get_settings
+
+
+@lru_cache
+def get_groq_client() -> AsyncGroq:
+    settings = get_settings()
+
+    return AsyncGroq(
+        api_key=settings.groq_api_key,
+    )
+
+
+async def close_groq_client() -> None:
+    if get_groq_client.cache_info().currsize == 0:
+        return
+
+    client = get_groq_client()
+
+    await client.close()
+
+    get_groq_client.cache_clear()
 
 
 async def generate_grounded_answer(
@@ -10,9 +32,7 @@ async def generate_grounded_answer(
 ) -> str:
     settings = get_settings()
 
-    client = AsyncGroq(
-        api_key=settings.groq_api_key,
-    )
+    client = get_groq_client()
 
     system_prompt = """
 You are the grounded answer generator for OpsPilot.

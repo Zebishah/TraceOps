@@ -1,8 +1,11 @@
+from functools import lru_cache
+
 from qdrant_client import AsyncQdrantClient, models
 
 from ops_pilot.core.config import get_settings
 
 
+@lru_cache
 def get_qdrant_client() -> AsyncQdrantClient:
     settings = get_settings()
 
@@ -10,6 +13,17 @@ def get_qdrant_client() -> AsyncQdrantClient:
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
     )
+
+
+async def close_qdrant_client() -> None:
+    if get_qdrant_client.cache_info().currsize == 0:
+        return
+
+    client = get_qdrant_client()
+
+    await client.close()
+
+    get_qdrant_client.cache_clear()
 
 
 async def ensure_document_collection() -> None:
