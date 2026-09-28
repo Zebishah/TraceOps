@@ -1,0 +1,212 @@
+import uuid
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+from fastapi.testclient import TestClient
+
+from ops_pilot.api.dependencies import (
+    get_current_membership,
+    get_current_user,
+)
+from ops_pilot.api.routes import incidents as incident_routes
+from ops_pilot.core.exceptions import IncidentNotFoundError
+from ops_pilot.db.session import get_db_session
+from ops_pilot.main import app
+from ops_pilot.models.incident import IncidentStatus
+
+client = TestClient(app)
+
+ORGANIZATION_ID = uuid.uuid4()
+USER_ID = uuid.uuid4()
+INCIDENT_ID = uuid.uuid4()
+
+
+def make_incident(
+    *,
+    incident_id: uuid.UUID = INCIDENT_ID,
+    organization_id: uuid.UUID = ORGANIZATION_ID,
+):
+    now = datetime.now(UTC)
+
+    return SimpleNamespace(
+        id=incident_id,
+        organization_id=organization_id,
+        created_by_user_id=USER_ID,
+        title="Customer charged twice",
+        description="Customer reports two charges for one order.",
+        status=IncidentStatus.NEW,
+        category=None,
+        priority=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def fake_db_session() -> AsyncMock:
+    return AsyncMock()
+
+
+async def fake_current_user():
+    return SimpleNamespace(
+        id=USER_ID,
+    )
+
+
+async def fake_membership():
+    return SimpleNamespace(
+        organization_id=ORGANIZATION_ID,
+        user_id=USER_ID,
+    )
+
+
+def set_authenticated_dependencies() -> None:
+    app.dependency_overrides[get_db_session] = fake_db_session
+    app.dependency_overrides[get_current_user] = fake_current_user
+    app.dependency_overrides[get_current_membership] = fake_membership
+
+
+def test_create_incident() -> None:
+    async def fake_create_incident(
+        *,
+        session,
+        organization_id,
+        user_id,
+        payload,
+    ):
+        assert organization_id == ORGANIZATION_ID
+        assert user_id == USER_ID
+        assert payload.title == "Customer charged twice"
+
+        return make_incident()
+
+    incident_routes.create_incident = fake_create_incident
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.post(
+            f"/api/v1/organizations/{ORGANIZATION_ID}/incidents",
+            json={
+                "title": "Customer charged twice",
+                "description": "Customer reports two charges for one order.",
+            },
+        )
+
+        assert response.status_code == 201
+
+        body = response.json()
+
+        assert body["id"] == str(INCIDENT_ID)
+        assert body["organization_id"] == str(ORGANIZATION_ID)
+        assert body["created_by_user_id"] == str(USER_ID)
+        assert body["status"] == "new"
+        assert body["category"] is None
+        assert body["priority"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_incidents() -> None:
+    async def fake_list_incidents(
+        *,
+        session,
+        organization_id,
+    ):
+        assert organization_id == ORGANIZATION_ID
+
+        return [
+            make_incident(),
+        ]
+
+    incident_routes.list_incidents = fake_list_incidents
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.get(f"/api/v1/organizations/{ORGANIZATION_ID}/incidents")
+
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert response.json()[0]["id"] == str(INCIDENT_ID)
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_incident() -> None:
+    async def fake_get_incident(
+        *,
+        session,
+        organization_id,
+        incident_id,
+    ):
+        assert organization_id == ORGANIZATION_ID
+        assert incident_id == INCIDENT_ID
+
+        return make_incident()
+
+    incident_routes.get_incident = fake_get_incident
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.get(f"/api/v1/organizations/{ORGANIZATION_ID}/incidents/{INCIDENT_ID}")
+
+        assert response.status_code == 200
+        assert response.json()["id"] == str(INCIDENT_ID)
+        assert response.json()["title"] == "Customer charged twice"
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_incident_returns_404() -> None:
+    async def fake_get_incident(
+        *,
+        session,
+        organization_id,
+        incident_id,
+    ):
+        raise IncidentNotFoundError
+
+    incident_routes.get_incident = fake_get_incident
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.get(f"/api/v1/organizations/{ORGANIZATION_ID}/incidents/{INCIDENT_ID}")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "Incident not found",
+        }
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_incidents_require_organization_membership() -> None:
+    fake_session = AsyncMock()
+
+    result = Mock()
+    result.scalar_one_or_none.return_value = None
+    fake_session.execute.return_value = result
+
+    async def override_db_session():
+        return fake_session
+
+    app.dependency_overrides[get_db_session] = override_db_session
+    app.dependency_overrides[get_current_user] = fake_current_user
+
+    try:
+        response = client.get(f"/api/v1/organizations/{ORGANIZATION_ID}/incidents")
+
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": "You do not have access to this organization",
+        }
+
+    finally:
+        app.dependency_overrides.clear()

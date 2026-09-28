@@ -1,0 +1,80 @@
+import uuid
+
+from fastapi import APIRouter, status
+
+from ops_pilot.api.dependencies import (
+    CurrentMembership,
+    CurrentUser,
+    DbSession,
+)
+from ops_pilot.schemas.incidents import (
+    IncidentCreateRequest,
+    IncidentResponse,
+)
+from ops_pilot.services.incidents import (
+    create_incident,
+    get_incident,
+    list_incidents,
+)
+
+router = APIRouter(
+    prefix="/organizations/{organization_id}/incidents",
+)
+
+
+@router.post(
+    "",
+    response_model=IncidentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_incident_endpoint(
+    organization_id: uuid.UUID,
+    payload: IncidentCreateRequest,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentResponse:
+    incident = await create_incident(
+        session=session,
+        organization_id=organization_id,
+        user_id=current_user.id,
+        payload=payload,
+    )
+
+    return IncidentResponse.model_validate(incident)
+
+
+@router.get(
+    "",
+    response_model=list[IncidentResponse],
+)
+async def list_incidents_endpoint(
+    organization_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> list[IncidentResponse]:
+    incidents = await list_incidents(
+        session=session,
+        organization_id=organization_id,
+    )
+
+    return [IncidentResponse.model_validate(incident) for incident in incidents]
+
+
+@router.get(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+)
+async def get_incident_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentResponse:
+    incident = await get_incident(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    return IncidentResponse.model_validate(incident)
