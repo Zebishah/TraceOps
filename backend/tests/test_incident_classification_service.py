@@ -3,6 +3,8 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 import ops_pilot.services.incident_classification as service_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
 from ops_pilot.schemas.incident_classification import (
@@ -80,3 +82,65 @@ def test_classify_stored_incident_updates_incident(
 
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(incident)
+    session.rollback.assert_awaited_once()
+
+
+def test_classification_failure_does_not_commit(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    incident = SimpleNamespace(
+        id=incident_id,
+        title="Customer charged twice",
+        description="Customer was charged twice for one order.",
+        category=None,
+        priority=None,
+        status=IncidentStatus.NEW,
+    )
+
+    async def fake_get_incident(
+        *,
+        session,
+        organization_id,
+        incident_id,
+    ):
+        return incident
+
+    async def fake_classify_incident(
+        *,
+        title,
+        description,
+    ):
+        raise RuntimeError("AI provider failed")
+
+    monkeypatch.setattr(
+        service_module,
+        "get_incident",
+        fake_get_incident,
+    )
+
+    monkeypatch.setattr(
+        service_module,
+        "classify_incident",
+        fake_classify_incident,
+    )
+
+    session = AsyncMock()
+
+    with pytest.raises(
+        RuntimeError,
+        match="AI provider failed",
+    ):
+        asyncio.run(
+            service_module.classify_stored_incident(
+                session=session,
+                organization_id=organization_id,
+                incident_id=incident_id,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    session.refresh.assert_not_awaited()

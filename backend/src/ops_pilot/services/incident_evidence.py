@@ -41,6 +41,9 @@ async def retrieve_incident_evidence(
         incident,
     )
 
+    # No PostgreSQL connection is needed during embedding/search/reranking.
+    await session.rollback()
+
     evidence = await retrieve_document_chunks(
         organization_id=organization_id,
         query=query,

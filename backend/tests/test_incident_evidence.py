@@ -68,10 +68,13 @@ def test_retrieve_incident_evidence_uses_existing_retrieval(
         "retrieve_document_chunks",
         fake_retrieve_document_chunks,
     )
+    session_mock = AsyncMock(spec=AsyncSession)
+
     session = cast(
         AsyncSession,
-        AsyncMock(),
+        session_mock,
     )
+
     query, results = asyncio.run(
         evidence_module.retrieve_incident_evidence(
             session=session,
@@ -83,3 +86,5 @@ def test_retrieve_incident_evidence_uses_existing_retrieval(
     assert "Customer charged twice" in query
     assert "Incident category: payment" in query
     assert results == [expected_result]
+
+    session_mock.rollback.assert_awaited_once()

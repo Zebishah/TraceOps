@@ -20,9 +20,22 @@ async def classify_stored_incident(
         incident_id=incident_id,
     )
 
+    title = incident.title
+    description = incident.description
+
+    # We do not need PostgreSQL while waiting for the AI provider.
+    await session.rollback()
+
     classification = await classify_incident(
-        title=incident.title,
-        description=incident.description,
+        title=title,
+        description=description,
+    )
+
+    # Fetch a fresh ORM object before writing.
+    incident = await get_incident(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
     )
 
     incident.category = classification.category.value
