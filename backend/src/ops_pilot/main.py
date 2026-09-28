@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ops_pilot.ai.embeddings import close_mistral_embedding_client
-from ops_pilot.ai.generation import close_groq_client
 from ops_pilot.ai.reranker import close_voyage_reranker_client
 from ops_pilot.api.exception_handlers import register_exception_handlers
 from ops_pilot.api.router import api_router
@@ -16,7 +15,6 @@ from ops_pilot.vectorstore.qdrant import close_qdrant_client
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
-    await close_groq_client()
     await close_mistral_embedding_client()
     await close_voyage_reranker_client()
     await close_qdrant_client()
@@ -31,7 +29,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    register_exception_handlers(application)
+    register_exception_handlers(
+        application,
+    )
 
     application.include_router(
         api_router,

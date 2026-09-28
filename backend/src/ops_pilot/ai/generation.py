@@ -1,40 +1,13 @@
-from functools import lru_cache
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
-from groq import AsyncGroq
+from ops_pilot.ai.llm import get_chat_model
 
-from ops_pilot.core.config import get_settings
-
-
-@lru_cache
-def get_groq_client() -> AsyncGroq:
-    settings = get_settings()
-
-    return AsyncGroq(
-        api_key=settings.groq_api_key,
-    )
-
-
-async def close_groq_client() -> None:
-    if get_groq_client.cache_info().currsize == 0:
-        return
-
-    client = get_groq_client()
-
-    await client.close()
-
-    get_groq_client.cache_clear()
-
-
-async def generate_grounded_answer(
-    *,
-    question: str,
-    context: str,
-) -> str:
-    settings = get_settings()
-
-    client = get_groq_client()
-
-    system_prompt = """
+GROUNDED_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """
 You are the grounded answer generator for OpsPilot.
 
 Answer only from the evidence provided to you.
@@ -50,9 +23,11 @@ Rules:
 - Cite claims using the source labels provided in the evidence,
   such as [SOURCE 1].
 - Keep the answer clear and concise.
-"""
-
-    user_prompt = f"""
+""",
+        ),
+        (
+            "human",
+            """
 QUESTION:
 {question}
 
@@ -60,28 +35,33 @@ EVIDENCE:
 {context}
 
 Answer the question using only the evidence above.
-"""
+""",
+        ),
+    ]
+)
 
-    completion = await client.chat.completions.create(
-        model=settings.generation_model,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        temperature=0.1,
-        max_completion_tokens=700,
-        reasoning_effort="none",
+
+async def generate_grounded_answer(
+    *,
+    question: str,
+    context: str,
+) -> str:
+    model = get_chat_model()
+
+    chain = GROUNDED_ANSWER_PROMPT | model | StrOutputParser()
+
+    answer = await chain.ainvoke(
+        {
+            "question": question,
+            "context": context,
+        }
     )
 
-    answer = completion.choices[0].message.content
+    answer = answer.strip()
 
-    if not answer or not answer.strip():
-        raise RuntimeError("Groq returned an empty answer")
+    if not answer:
+        raise RuntimeError(
+            "LLM returned an empty answer",
+        )
 
-    return answer.strip()
+    return answer
