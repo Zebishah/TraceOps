@@ -66,7 +66,7 @@ def set_authenticated_dependencies() -> None:
     app.dependency_overrides[get_current_membership] = fake_membership
 
 
-def test_create_incident() -> None:
+def test_create_incident(monkeypatch) -> None:
     async def fake_create_incident(
         *,
         session,
@@ -80,7 +80,11 @@ def test_create_incident() -> None:
 
         return make_incident()
 
-    incident_routes.create_incident = fake_create_incident
+    monkeypatch.setattr(
+        incident_routes,
+        "create_incident",
+        fake_create_incident,
+    )
 
     set_authenticated_dependencies()
 
@@ -108,7 +112,7 @@ def test_create_incident() -> None:
         app.dependency_overrides.clear()
 
 
-def test_list_incidents() -> None:
+def test_list_incidents(monkeypatch) -> None:
     async def fake_list_incidents(
         *,
         session,
@@ -120,7 +124,11 @@ def test_list_incidents() -> None:
             make_incident(),
         ]
 
-    incident_routes.list_incidents = fake_list_incidents
+    monkeypatch.setattr(
+        incident_routes,
+        "list_incidents",
+        fake_list_incidents,
+    )
 
     set_authenticated_dependencies()
 
@@ -135,7 +143,7 @@ def test_list_incidents() -> None:
         app.dependency_overrides.clear()
 
 
-def test_get_incident() -> None:
+def test_get_incident(monkeypatch) -> None:
     async def fake_get_incident(
         *,
         session,
@@ -147,7 +155,11 @@ def test_get_incident() -> None:
 
         return make_incident()
 
-    incident_routes.get_incident = fake_get_incident
+    monkeypatch.setattr(
+        incident_routes,
+        "get_incident",
+        fake_get_incident,
+    )
 
     set_authenticated_dependencies()
 
@@ -162,7 +174,7 @@ def test_get_incident() -> None:
         app.dependency_overrides.clear()
 
 
-def test_get_incident_returns_404() -> None:
+def test_get_incident_returns_404(monkeypatch) -> None:
     async def fake_get_incident(
         *,
         session,
@@ -171,7 +183,11 @@ def test_get_incident_returns_404() -> None:
     ):
         raise IncidentNotFoundError
 
-    incident_routes.get_incident = fake_get_incident
+    monkeypatch.setattr(
+        incident_routes,
+        "get_incident",
+        fake_get_incident,
+    )
 
     set_authenticated_dependencies()
 
