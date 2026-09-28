@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.retrieval import RetrievalResult
 
 
 class IncidentCreateRequest(BaseModel):
@@ -51,3 +52,9 @@ class IncidentClassificationResponse(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
+
+class IncidentEvidenceResponse(BaseModel):
+    incident_id: uuid.UUID
+    query: str
+    evidence: list[RetrievalResult]

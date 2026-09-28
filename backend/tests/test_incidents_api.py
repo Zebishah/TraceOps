@@ -18,6 +18,7 @@ from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
 )
+from ops_pilot.schemas.retrieval import RetrievalResult
 
 client = TestClient(app)
 
@@ -278,6 +279,65 @@ def test_classify_incident(monkeypatch) -> None:
         assert body["category"] == "payment"
         assert body["priority"] == "high"
         assert body["confidence"] == 0.98
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieve_incident_evidence(
+    monkeypatch,
+) -> None:
+    evidence = RetrievalResult(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        chunk_index=1,
+        page_number=2,
+        text="Duplicate payment cases require refund review.",
+        source_filename="payments-policy.pdf",
+        vector_score=0.81,
+        reranker_score=0.95,
+    )
+
+    async def fake_retrieve_incident_evidence(
+        *,
+        session,
+        organization_id,
+        incident_id,
+        limit=5,
+    ):
+        assert organization_id == ORGANIZATION_ID
+        assert incident_id == INCIDENT_ID
+
+        return (
+            "Customer charged twice\n"
+            "Customer was charged twice for one order.\n"
+            "Incident category: payment",
+            [evidence],
+        )
+
+    monkeypatch.setattr(
+        incident_routes,
+        "retrieve_incident_evidence",
+        fake_retrieve_incident_evidence,
+    )
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.post(
+            f"/api/v1/organizations/{ORGANIZATION_ID}/incidents/{INCIDENT_ID}/retrieve-evidence"
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["incident_id"] == str(INCIDENT_ID)
+        assert len(body["evidence"]) == 1
+
+        assert body["evidence"][0]["source_filename"] == "payments-policy.pdf"
+
+        assert body["evidence"][0]["reranker_score"] == 0.95
 
     finally:
         app.dependency_overrides.clear()

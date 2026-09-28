@@ -10,10 +10,14 @@ from ops_pilot.api.dependencies import (
 from ops_pilot.schemas.incidents import (
     IncidentClassificationResponse,
     IncidentCreateRequest,
+    IncidentEvidenceResponse,
     IncidentResponse,
 )
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
+)
+from ops_pilot.services.incident_evidence import (
+    retrieve_incident_evidence,
 )
 from ops_pilot.services.incidents import (
     create_incident,
@@ -106,4 +110,27 @@ async def classify_incident_endpoint(
         category=classification.category,
         priority=classification.priority,
         confidence=classification.confidence,
+    )
+
+
+@router.post(
+    "/{incident_id}/retrieve-evidence",
+    response_model=IncidentEvidenceResponse,
+)
+async def retrieve_incident_evidence_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentEvidenceResponse:
+    query, evidence = await retrieve_incident_evidence(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    return IncidentEvidenceResponse(
+        incident_id=incident_id,
+        query=query,
+        evidence=evidence,
     )
