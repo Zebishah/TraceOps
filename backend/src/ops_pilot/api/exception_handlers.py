@@ -7,6 +7,7 @@ from ops_pilot.core.exceptions import (
     DocumentTooLargeError,
     DocumentUploadError,
     EmailAlreadyRegisteredError,
+    IncidentNotFoundError,
     OrganizationSlugAlreadyExistsError,
     RegistrationConflictError,
     UnsupportedDocumentTypeError,
@@ -109,6 +110,18 @@ async def document_processing_handler(
     )
 
 
+async def incident_not_found_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "detail": "Incident not found",
+        },
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         EmailAlreadyRegisteredError,
@@ -128,6 +141,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         UnsupportedDocumentTypeError,
         unsupported_document_type_handler,
+    )
+
+    app.add_exception_handler(
+        IncidentNotFoundError,
+        incident_not_found_handler,
     )
 
     app.add_exception_handler(

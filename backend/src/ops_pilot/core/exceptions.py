@@ -28,3 +28,7 @@ class DocumentNotFoundError(Exception):
 
 class DocumentProcessingError(Exception):
     pass
+
+
+class IncidentNotFoundError(Exception):
+    pass
