@@ -23,9 +23,7 @@ dependencies = [
     "pypdf>=6.19.0",
     "python-multipart>=0.0.32",
     "qdrant-client>=1.19.1",
-    "sentence-transformers>=6.1.0",
     "sqlalchemy[asyncio]>=2.0,<2.2",
-    "torch>=2.14.0",
     "uvicorn[standard]",
 ]
 
@@ -65,10 +63,4 @@ python_version = "3.12"
 strict = true
 packages = ["ops_pilot"]
 
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
 explicit = true

@@ -1,35 +1,34 @@
-import asyncio
 from functools import lru_cache
+from typing import Any, cast
 
-from sentence_transformers import SentenceTransformer
+import httpx
 
 from ops_pilot.core.config import get_settings
 
 
 @lru_cache
-def get_embedding_model() -> SentenceTransformer:
+def get_mistral_embedding_client() -> httpx.AsyncClient:
     settings = get_settings()
 
-    return SentenceTransformer(
-        settings.embedding_model,
-        token=settings.hf_token,
+    return httpx.AsyncClient(
+        base_url="https://api.mistral.ai",
+        headers={
+            "Authorization": f"Bearer {settings.mistral_api_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=30.0,
     )
 
 
-def _embed_texts_sync(
-    texts: list[str],
-) -> list[list[float]]:
-    settings = get_settings()
-    model = get_embedding_model()
+async def close_mistral_embedding_client() -> None:
+    if get_mistral_embedding_client.cache_info().currsize == 0:
+        return
 
-    embeddings = model.encode(
-        texts,
-        normalize_embeddings=True,
-        truncate_dim=settings.embedding_dimension,
-        show_progress_bar=False,
-    )
+    client = get_mistral_embedding_client()
 
-    return [[float(value) for value in vector] for vector in embeddings]
+    await client.aclose()
+
+    get_mistral_embedding_client.cache_clear()
 
 
 async def embed_texts(
@@ -38,33 +37,50 @@ async def embed_texts(
     if not texts:
         return []
 
-    return await asyncio.to_thread(
-        _embed_texts_sync,
-        texts,
-    )
-
-
-def _embed_query_sync(
-    query: str,
-) -> list[float]:
     settings = get_settings()
-    model = get_embedding_model()
+    client = get_mistral_embedding_client()
 
-    embedding = model.encode(
-        query,
-        prompt_name="query",
-        normalize_embeddings=True,
-        truncate_dim=settings.embedding_dimension,
-        show_progress_bar=False,
+    response = await client.post(
+        "/v1/embeddings",
+        json={
+            "model": settings.embedding_model,
+            "input": texts,
+        },
     )
 
-    return [float(value) for value in embedding]
+    response.raise_for_status()
+
+    payload = cast(dict[str, Any], response.json())
+
+    data = payload.get("data")
+
+    if not isinstance(data, list):
+        raise RuntimeError("Mistral returned an invalid embeddings response")
+
+    ordered = sorted(
+        data,
+        key=lambda item: int(item["index"]),
+    )
+
+    embeddings: list[list[float]] = []
+
+    for item in ordered:
+        vector = [float(value) for value in item["embedding"]]
+
+        if len(vector) != settings.embedding_dimension:
+            raise RuntimeError("Mistral embedding dimension does not match configuration")
+
+        embeddings.append(vector)
+
+    if len(embeddings) != len(texts):
+        raise RuntimeError("Mistral embedding count does not match input count")
+
+    return embeddings
 
 
 async def embed_query(
     query: str,
 ) -> list[float]:
-    return await asyncio.to_thread(
-        _embed_query_sync,
-        query,
-    )
+    embeddings = await embed_texts([query])
+
+    return embeddings[0]

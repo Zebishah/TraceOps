@@ -1,43 +1,34 @@
-import asyncio
 from functools import lru_cache
-from typing import cast
+from typing import Any, cast
 
-from sentence_transformers import CrossEncoder
+import httpx
 
 from ops_pilot.core.config import get_settings
 
 
 @lru_cache
-def get_reranker() -> CrossEncoder:
+def get_voyage_reranker_client() -> httpx.AsyncClient:
     settings = get_settings()
 
-    return cast(
-        CrossEncoder,
-        CrossEncoder(
-            settings.reranker_model,
-            token=settings.hf_token,
-        ),
+    return httpx.AsyncClient(
+        base_url="https://api.voyageai.com",
+        headers={
+            "Authorization": f"Bearer {settings.voyage_api_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=30.0,
     )
 
 
-def _rerank_sync(
-    *,
-    query: str,
-    passages: list[str],
-) -> list[float]:
-    if not passages:
-        return []
+async def close_voyage_reranker_client() -> None:
+    if get_voyage_reranker_client.cache_info().currsize == 0:
+        return
 
-    model = get_reranker()
+    client = get_voyage_reranker_client()
 
-    pairs = [(query, passage) for passage in passages]
+    await client.aclose()
 
-    scores = model.predict(
-        pairs,
-        show_progress_bar=False,
-    )
-
-    return [float(score) for score in scores]
+    get_voyage_reranker_client.cache_clear()
 
 
 async def rerank_passages(
@@ -45,8 +36,43 @@ async def rerank_passages(
     query: str,
     passages: list[str],
 ) -> list[float]:
-    return await asyncio.to_thread(
-        _rerank_sync,
-        query=query,
-        passages=passages,
+    if not passages:
+        return []
+
+    settings = get_settings()
+    client = get_voyage_reranker_client()
+
+    response = await client.post(
+        "/v1/rerank",
+        json={
+            "model": settings.reranker_model,
+            "query": query,
+            "documents": passages,
+            "return_documents": False,
+        },
     )
+
+    response.raise_for_status()
+
+    payload = cast(dict[str, Any], response.json())
+
+    data = payload.get("data")
+
+    if not isinstance(data, list):
+        raise RuntimeError("Voyage returned an invalid reranker response")
+
+    scores = [0.0] * len(passages)
+
+    for item in data:
+        index = int(item["index"])
+        score = float(item["relevance_score"])
+
+        if index < 0 or index >= len(passages):
+            raise RuntimeError("Voyage returned an invalid document index")
+
+        scores[index] = score
+
+    if len(data) != len(passages):
+        raise RuntimeError("Voyage reranker score count does not match passage count")
+
+    return scores

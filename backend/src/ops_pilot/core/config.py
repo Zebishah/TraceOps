@@ -21,18 +21,17 @@ class Settings(BaseSettings):
 
     qdrant_url: str
     qdrant_api_key: str
-    qdrant_collection_name: str = "ops_pilot_document_chunks_v1"
+    qdrant_collection_name: str = "ops_pilot_document_chunks_v2"
 
-    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    mistral_api_key: str
+    embedding_model: str = "mistral-embed"
     embedding_dimension: int = 1024
 
-    hf_token: str | None = None
-
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
+    voyage_api_key: str
+    reranker_model: str = "rerank-3-lite"
     retrieval_candidate_limit: int = 12
 
     groq_api_key: str
-
     generation_model: str = "qwen/qwen3.8-27b"
 
     model_config = SettingsConfigDict(
