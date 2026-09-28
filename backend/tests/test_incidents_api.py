@@ -13,7 +13,11 @@ from ops_pilot.api.routes import incidents as incident_routes
 from ops_pilot.core.exceptions import IncidentNotFoundError
 from ops_pilot.db.session import get_db_session
 from ops_pilot.main import app
-from ops_pilot.models.incident import IncidentStatus
+from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.schemas.incident_classification import (
+    IncidentCategory,
+    IncidentClassification,
+)
 
 client = TestClient(app)
 
@@ -223,6 +227,57 @@ def test_incidents_require_organization_membership() -> None:
         assert response.json() == {
             "detail": "You do not have access to this organization",
         }
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_classify_incident(monkeypatch) -> None:
+    incident = make_incident()
+
+    incident.status = IncidentStatus.INVESTIGATING
+    incident.category = "payment"
+    incident.priority = IncidentPriority.HIGH
+
+    classification = IncidentClassification(
+        category=IncidentCategory.PAYMENT,
+        priority=IncidentPriority.HIGH,
+        confidence=0.98,
+    )
+
+    async def fake_classify_stored_incident(
+        *,
+        session,
+        organization_id,
+        incident_id,
+    ):
+        assert organization_id == ORGANIZATION_ID
+        assert incident_id == INCIDENT_ID
+
+        return incident, classification
+
+    monkeypatch.setattr(
+        incident_routes,
+        "classify_stored_incident",
+        fake_classify_stored_incident,
+    )
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.post(
+            f"/api/v1/organizations/{ORGANIZATION_ID}/incidents/{INCIDENT_ID}/classify"
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["incident_id"] == str(INCIDENT_ID)
+        assert body["status"] == "investigating"
+        assert body["category"] == "payment"
+        assert body["priority"] == "high"
+        assert body["confidence"] == 0.98
 
     finally:
         app.dependency_overrides.clear()

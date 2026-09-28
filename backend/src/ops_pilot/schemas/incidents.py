@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.schemas.incident_classification import IncidentCategory
 
 
 class IncidentCreateRequest(BaseModel):
@@ -39,3 +40,14 @@ class IncidentResponse(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+
+
+class IncidentClassificationResponse(BaseModel):
+    incident_id: uuid.UUID
+    status: IncidentStatus
+    category: IncidentCategory
+    priority: IncidentPriority
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+    )

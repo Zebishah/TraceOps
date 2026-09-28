@@ -26,8 +26,10 @@ Categories:
 - other: incident does not clearly fit another category
 
 Priority:
-- critical: severe active security incident, widespread outage, major data loss, or extreme business impact
-- high: serious customer impact, financial issue, blocked important workflow, or repeated major failure
+- critical: severe active security incident, widespread outage, major data loss,
+or extreme business impact
+- high: serious customer impact, financial issue, blocked important workflow,
+or repeated major failure
 - medium: limited impact with no immediate severe risk
 - low: minor issue with little operational impact
 

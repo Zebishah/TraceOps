@@ -8,8 +8,12 @@ from ops_pilot.api.dependencies import (
     DbSession,
 )
 from ops_pilot.schemas.incidents import (
+    IncidentClassificationResponse,
     IncidentCreateRequest,
     IncidentResponse,
+)
+from ops_pilot.services.incident_classification import (
+    classify_stored_incident,
 )
 from ops_pilot.services.incidents import (
     create_incident,
@@ -78,3 +82,28 @@ async def get_incident_endpoint(
     )
 
     return IncidentResponse.model_validate(incident)
+
+
+@router.post(
+    "/{incident_id}/classify",
+    response_model=IncidentClassificationResponse,
+)
+async def classify_incident_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentClassificationResponse:
+    incident, classification = await classify_stored_incident(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    return IncidentClassificationResponse(
+        incident_id=incident.id,
+        status=incident.status,
+        category=classification.category,
+        priority=classification.priority,
+        confidence=classification.confidence,
+    )
