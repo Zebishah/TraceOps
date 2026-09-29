@@ -58,3 +58,25 @@ class IncidentEvidenceResponse(BaseModel):
     incident_id: uuid.UUID
     query: str
     evidence: list[RetrievalResult]
+
+
+class IncidentInvestigationResponse(BaseModel):
+    organization_id: uuid.UUID
+    incident_id: uuid.UUID
+
+    title: str
+    description: str
+
+    status: IncidentStatus
+    category: IncidentCategory
+    priority: IncidentPriority
+    classification_confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+    )
+
+    retrieval_query: str
+    evidence: list[RetrievalResult]
+
+    analysis: str
+    recommended_action: str

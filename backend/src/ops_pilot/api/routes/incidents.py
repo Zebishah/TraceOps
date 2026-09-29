@@ -11,6 +11,7 @@ from ops_pilot.schemas.incidents import (
     IncidentClassificationResponse,
     IncidentCreateRequest,
     IncidentEvidenceResponse,
+    IncidentInvestigationResponse,
     IncidentResponse,
 )
 from ops_pilot.services.incident_classification import (
@@ -19,6 +20,7 @@ from ops_pilot.services.incident_classification import (
 from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
+from ops_pilot.services.incident_investigation import investigate_incident
 from ops_pilot.services.incidents import (
     create_incident,
     get_incident,
@@ -133,4 +135,21 @@ async def retrieve_incident_evidence_endpoint(
         incident_id=incident_id,
         query=query,
         evidence=evidence,
+    )
+
+
+@router.post(
+    "/{incident_id}/investigate",
+    response_model=IncidentInvestigationResponse,
+)
+async def investigate_incident_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentInvestigationResponse:
+    return await investigate_incident(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
     )
