@@ -1,6 +1,7 @@
 from langgraph.runtime import Runtime
 
 from ops_pilot.ai.incident_analyzer import analyze_incident
+from ops_pilot.ai.incident_recommender import recommend_incident_action
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
@@ -73,4 +74,33 @@ async def analyze_incident_node(
 
     return {
         "analysis": analysis,
+    }
+
+
+async def recommend_action_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    if (
+        "title" not in state
+        or "description" not in state
+        or "category" not in state
+        or "priority" not in state
+        or "evidence" not in state
+        or "analysis" not in state
+    ):
+        raise RuntimeError(
+            "Recommendation node received incomplete incident state",
+        )
+
+    recommendation = await recommend_incident_action(
+        title=state["title"],
+        description=state["description"],
+        category=state["category"],
+        priority=state["priority"],
+        analysis=state["analysis"],
+        evidence=state["evidence"],
+    )
+
+    return {
+        "recommended_action": recommendation,
     }
