@@ -76,6 +76,61 @@ def test_classify_incident_node_updates_state(
     assert result["status"] == IncidentStatus.INVESTIGATING
 
 
+def test_analyze_incident_node_updates_state(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    evidence = [
+        RetrievalResult(
+            chunk_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+            chunk_index=1,
+            page_number=4,
+            text="Duplicate transactions require verification.",
+            source_filename="payments.pdf",
+            vector_score=0.90,
+            reranker_score=0.95,
+        )
+    ]
+
+    async def fake_analyze_incident(
+        *,
+        title,
+        description,
+        category,
+        priority,
+        evidence,
+    ):
+        return "The evidence supports a duplicate payment [SOURCE 1]."
+
+    monkeypatch.setattr(
+        nodes_module,
+        "analyze_incident",
+        fake_analyze_incident,
+    )
+
+    result = asyncio.run(
+        nodes_module.analyze_incident_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "title": "Customer charged twice",
+                "description": ("Customer reports two charges for one order."),
+                "status": IncidentStatus.INVESTIGATING,
+                "category": IncidentCategory.PAYMENT,
+                "priority": IncidentPriority.HIGH,
+                "classification_confidence": 0.98,
+                "retrieval_query": "Customer charged twice",
+                "evidence": evidence,
+            }
+        )
+    )
+
+    assert result["analysis"] == ("The evidence supports a duplicate payment [SOURCE 1].")
+
+
 def test_retrieve_evidence_node_updates_state(
     monkeypatch,
 ) -> None:

@@ -1,5 +1,6 @@
 from langgraph.runtime import Runtime
 
+from ops_pilot.ai.incident_analyzer import analyze_incident
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
@@ -45,4 +46,31 @@ async def retrieve_evidence_node(
     return {
         "retrieval_query": query,
         "evidence": evidence,
+    }
+
+
+async def analyze_incident_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    if (
+        "title" not in state
+        or "description" not in state
+        or "category" not in state
+        or "priority" not in state
+        or "evidence" not in state
+    ):
+        raise RuntimeError(
+            "Analysis node received incomplete incident state",
+        )
+
+    analysis = await analyze_incident(
+        title=state["title"],
+        description=state["description"],
+        category=state["category"],
+        priority=state["priority"],
+        evidence=state["evidence"],
+    )
+
+    return {
+        "analysis": analysis,
     }
