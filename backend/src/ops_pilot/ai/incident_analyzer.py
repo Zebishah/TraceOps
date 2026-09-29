@@ -23,9 +23,14 @@ Rules:
 - Do not invent facts.
 - Base evidence-backed claims only on the supplied evidence.
 - Cite evidence-backed claims using labels such as [SOURCE 1].
+- The only valid citation format is [SOURCE n].
 - Clearly state uncertainty when the evidence is insufficient.
-- Do not recommend or execute actions yet.
-- Focus only on understanding what likely happened and what the evidence supports.
+- Perform analysis only.
+- Do not recommend actions, next steps, remediation, verification steps,
+  escalation, closure, or execution.
+- Do not include a recommendation section.
+- Do not tell the operator what they should do.
+- End only with the evidence-supported conclusion and remaining uncertainty.
 - Keep the analysis clear and concise.
 """,
         ),
@@ -47,7 +52,8 @@ PRIORITY:
 EVIDENCE:
 {evidence}
 
-Produce a grounded investigation analysis.
+Produce only a grounded investigation analysis.
+Do not include recommendations or next steps.
 """,
         ),
     ]

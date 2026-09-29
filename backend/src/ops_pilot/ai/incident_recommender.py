@@ -24,7 +24,16 @@ Rules:
 - Do not invent facts.
 - Base recommendations on the supplied evidence.
 - Cite supporting evidence using labels such as [SOURCE 1].
+- The only valid citation format is [SOURCE n].
+- Do not cite the investigation analysis, incident description,
+  section names, or invented source labels.
 - Clearly state uncertainty when evidence is insufficient.
+- Prefer verification or information gathering when the evidence is insufficient.
+- Never recommend closing, resolving, refunding, deleting, disabling,
+  modifying, or otherwise taking an irreversible action unless the supplied
+  evidence clearly supports it.
+- If a required fact has not been verified, recommend verifying that fact first.
+- Recommend the safest immediate next step, not the entire future procedure.
 - Do not claim that any action has already been executed.
 - Do not execute tools or external actions.
 - Recommend only the next appropriate operational action.
