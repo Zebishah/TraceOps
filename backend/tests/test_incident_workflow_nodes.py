@@ -1,7 +1,11 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
+
+from langgraph.runtime import Runtime
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.workflows.incident.nodes as nodes_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
@@ -10,6 +14,7 @@ from ops_pilot.schemas.incident_classification import (
     IncidentClassification,
 )
 from ops_pilot.schemas.retrieval import RetrievalResult
+from ops_pilot.workflows.incident.state import IncidentGraphContext
 
 
 def test_classify_incident_node_updates_state(
@@ -44,14 +49,16 @@ def test_classify_incident_node_updates_state(
         fake_classify_stored_incident,
     )
 
-    session = AsyncMock()
+    session = cast(
+        AsyncSession,
+        AsyncMock(spec=AsyncSession),
+    )
 
-    runtime = SimpleNamespace(
-        context=SimpleNamespace(
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
             session=session,
         )
     )
-
     result = asyncio.run(
         nodes_module.classify_incident_node(
             {
@@ -103,10 +110,13 @@ def test_retrieve_evidence_node_updates_state(
         fake_retrieve_incident_evidence,
     )
 
-    session = AsyncMock()
+    session = cast(
+        AsyncSession,
+        AsyncMock(spec=AsyncSession),
+    )
 
-    runtime = SimpleNamespace(
-        context=SimpleNamespace(
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
             session=session,
         )
     )
