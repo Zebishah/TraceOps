@@ -18,6 +18,7 @@ from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
 )
+from ops_pilot.schemas.incidents import IncidentInvestigationResponse
 from ops_pilot.schemas.retrieval import RetrievalResult
 
 client = TestClient(app)
@@ -338,6 +339,78 @@ def test_retrieve_incident_evidence(
         assert body["evidence"][0]["source_filename"] == "payments-policy.pdf"
 
         assert body["evidence"][0]["reranker_score"] == 0.95
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_investigate_incident(
+    monkeypatch,
+) -> None:
+    evidence = RetrievalResult(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        chunk_index=1,
+        page_number=2,
+        text="Duplicate payments require verification.",
+        source_filename="payment-policy.pdf",
+        vector_score=0.91,
+        reranker_score=0.97,
+    )
+
+    async def fake_investigate_incident(
+        *,
+        session,
+        organization_id,
+        incident_id,
+    ):
+        assert organization_id == ORGANIZATION_ID
+        assert incident_id == INCIDENT_ID
+
+        return IncidentInvestigationResponse(
+            organization_id=ORGANIZATION_ID,
+            incident_id=INCIDENT_ID,
+            title="Customer charged twice",
+            description="Two charges appeared for one order.",
+            status=IncidentStatus.INVESTIGATING,
+            category=IncidentCategory.PAYMENT,
+            priority=IncidentPriority.HIGH,
+            classification_confidence=0.98,
+            retrieval_query=("Customer charged twice\nIncident category: payment"),
+            evidence=[evidence],
+            analysis=("The evidence supports a duplicate payment [SOURCE 1]."),
+            recommended_action=("Verify both transaction IDs before refunding [SOURCE 1]."),
+        )
+
+    monkeypatch.setattr(
+        incident_routes,
+        "investigate_incident",
+        fake_investigate_incident,
+    )
+
+    set_authenticated_dependencies()
+
+    try:
+        response = client.post(
+            f"/api/v1/organizations/{ORGANIZATION_ID}/incidents/{INCIDENT_ID}/investigate"
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["incident_id"] == str(INCIDENT_ID)
+        assert body["category"] == "payment"
+        assert body["priority"] == "high"
+        assert body["classification_confidence"] == 0.98
+
+        assert len(body["evidence"]) == 1
+
+        assert body["evidence"][0]["source_filename"] == "payment-policy.pdf"
+
+        assert "duplicate payment" in body["analysis"]
+
+        assert "Verify both transaction IDs" in body["recommended_action"]
 
     finally:
         app.dependency_overrides.clear()
