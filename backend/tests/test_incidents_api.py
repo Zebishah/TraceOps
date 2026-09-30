@@ -43,6 +43,7 @@ def make_incident(
         description="Customer reports two charges for one order.",
         status=IncidentStatus.NEW,
         category=None,
+        subject_customer_id=None,
         priority=None,
         created_at=now,
         updated_at=now,

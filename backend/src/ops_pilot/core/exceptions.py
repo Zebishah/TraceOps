@@ -32,3 +32,7 @@ class DocumentProcessingError(Exception):
 
 class IncidentNotFoundError(Exception):
     pass
+
+
+class CustomerNotFoundError(Exception):
+    pass

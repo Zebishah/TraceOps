@@ -63,7 +63,15 @@ class Incident(Base):
         nullable=False,
         index=True,
     )
-
+    subject_customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "customers.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(
         String(200),
         nullable=False,

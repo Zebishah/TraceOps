@@ -1,3 +1,4 @@
+from ops_pilot.models.customer import Customer
 from ops_pilot.models.document import Document, DocumentStatus
 from ops_pilot.models.incident import (
     Incident,
@@ -18,4 +19,5 @@ __all__ = [
     "Incident",
     "IncidentPriority",
     "IncidentStatus",
+    "Customer",
 ]

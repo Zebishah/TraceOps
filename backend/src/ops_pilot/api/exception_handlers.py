@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from ops_pilot.core.exceptions import (
+    CustomerNotFoundError,
     DocumentNotFoundError,
     DocumentProcessingError,
     DocumentTooLargeError,
@@ -122,6 +123,18 @@ async def incident_not_found_handler(
     )
 
 
+async def customer_not_found_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "detail": "Customer not found",
+        },
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         EmailAlreadyRegisteredError,
@@ -165,4 +178,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         DocumentProcessingError,
         document_processing_handler,
+    )
+    app.add_exception_handler(
+        CustomerNotFoundError,
+        customer_not_found_handler,
     )

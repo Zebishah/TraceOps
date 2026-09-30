@@ -12,7 +12,7 @@ class IncidentCreateRequest(BaseModel):
     model_config = ConfigDict(
         str_strip_whitespace=True,
     )
-
+    subject_customer_id: uuid.UUID | None = None
     title: str = Field(
         min_length=1,
         max_length=200,
@@ -31,7 +31,7 @@ class IncidentResponse(BaseModel):
     id: uuid.UUID
     organization_id: uuid.UUID
     created_by_user_id: uuid.UUID
-
+    subject_customer_id: uuid.UUID | None
     title: str
     description: str
 
