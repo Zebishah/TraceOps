@@ -71,7 +71,14 @@ class PaymentTransactionData(BaseModel):
     processed_at: datetime | None
 
 
+class ToolCallRequest(BaseModel):
+    call_id: str
+    tool_name: OperationalToolName
+    arguments: dict[str, object]
+
+
 class ToolExecutionResult(BaseModel):
+    call_id: str | None = None
     tool_name: OperationalToolName
     success: bool
     content: str
