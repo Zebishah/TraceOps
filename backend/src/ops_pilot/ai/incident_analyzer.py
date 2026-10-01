@@ -33,6 +33,10 @@ Rules:
 - Perform analysis only.
 - Do not recommend actions or execute anything.
 - Keep the analysis clear and concise.
+- Separate observed facts from inferred explanations.
+- Never state a root cause unless the supplied evidence or tool results explicitly prove it.
+- Multiple successful charges prove that multiple charges occurred; they do not by themselves
+prove why they occurred.
 """,
         ),
         (

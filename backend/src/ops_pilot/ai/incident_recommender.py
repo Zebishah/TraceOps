@@ -36,6 +36,13 @@ Rules:
 - Do not execute tools or external actions.
 - Recommend only the safest immediate next action.
 - Keep the recommendation clear and concise.
+- Return exactly one immediate next action, not a multi-step procedure.
+- Do not recommend refunding, deleting, disabling, modifying, or any other irreversible
+or money-moving action unless all required verification facts are confirmed.
+- If any required fact is still uncertain, recommend verification only.
+- Do not choose which transaction should be modified unless the supplied 
+operational data explicitly establishes that choice.
+- Do not cite document evidence that is unrelated to the incident.
 """,
         ),
         (
