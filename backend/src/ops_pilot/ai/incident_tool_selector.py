@@ -68,25 +68,6 @@ Decide whether another read-only operational tool is required.
 )
 
 
-# def format_tool_results(
-#     results: list[ToolExecutionResult],
-# ) -> str:
-#     if not results:
-#         return "No operational tools have been executed yet."
-
-#     parts: list[str] = []
-
-#     for index, result in enumerate(results, start=1):
-#         parts.append(
-#             f"[TOOL {index}]\n"
-#             f"Tool: {result.tool_name.value}\n"
-#             f"Success: {result.success}\n"
-#             f"Result:\n{result.content}"
-#         )
-
-#     return "\n\n".join(parts)
-
-
 async def select_incident_tool(
     *,
     title: str,

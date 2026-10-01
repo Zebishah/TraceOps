@@ -82,9 +82,9 @@ def test_incident_investigation_graph_runs_in_order(
         category,
         priority,
         evidence,
+        tool_results,
     ):
         call_order.append("analyze")
-
         return "The evidence supports a duplicate payment [SOURCE 1]."
 
     async def fake_select_incident_tool(
@@ -97,8 +97,7 @@ def test_incident_investigation_graph_runs_in_order(
         tool_results,
     ):
         call_order.append("select_tool")
-
-    return None
+        return None
 
     async def fake_recommend_incident_action(
         *,
@@ -108,9 +107,9 @@ def test_incident_investigation_graph_runs_in_order(
         priority,
         analysis,
         evidence,
+        tool_results,
     ):
         call_order.append("recommend")
-
         return "Verify the transactions before issuing a refund [SOURCE 1]."
 
     monkeypatch.setattr(
