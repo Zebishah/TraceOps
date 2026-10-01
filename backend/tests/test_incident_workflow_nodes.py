@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
@@ -9,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.workflows.incident.nodes as nodes_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.schemas.action_execution import (
+    RefundExecutionResult,
+)
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
@@ -328,3 +332,84 @@ def test_route_after_action_proposal_ends_without_action() -> None:
     )
 
     assert result == "end"
+
+
+def test_execute_approved_action_node_executes_refund(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+    approval_request_id = uuid.uuid4()
+    reviewer_id = uuid.uuid4()
+
+    expected_result = RefundExecutionResult(
+        source_transaction_id="TXN-123",
+        refund_transaction_id="refund-123",
+        amount=Decimal("12000.00"),
+        currency="PKR",
+        already_executed=False,
+    )
+
+    async def fake_execute_approved_refund(
+        *,
+        session,
+        organization_id,
+        incident_id,
+        approval_request_id,
+        customer_id,
+    ):
+        assert organization_id == (expected_organization_id)
+
+        assert incident_id == (expected_incident_id)
+
+        assert approval_request_id == (expected_approval_request_id)
+
+        assert customer_id == (expected_customer_id)
+
+        return expected_result
+
+    expected_organization_id = organization_id
+    expected_incident_id = incident_id
+    expected_approval_request_id = approval_request_id
+    expected_customer_id = customer_id
+
+    monkeypatch.setattr(
+        nodes_module,
+        "execute_approved_refund",
+        fake_execute_approved_refund,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(spec=AsyncSession),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.execute_approved_action_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": ("test-thread"),
+                "subject_customer_id": customer_id,
+                "approval_request_id": (approval_request_id),
+                "approval_decision": (
+                    ApprovalResumeDecision(
+                        approval_request_id=(approval_request_id),
+                        approved=True,
+                        decided_by_user_id=(reviewer_id),
+                        comment="Approved refund.",
+                    )
+                ),
+            },
+            runtime,
+        )
+    )
+
+    assert result["refund_execution"] == expected_result
