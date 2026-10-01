@@ -1,3 +1,8 @@
+from ops_pilot.models.approval import (
+    ApprovalActionType,
+    ApprovalRequest,
+    ApprovalStatus,
+)
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.document import Document, DocumentStatus
 from ops_pilot.models.incident import (
@@ -29,6 +34,9 @@ __all__ = [
     "OperationalOrder",
     "OrderStatus",
     "PaymentTransaction",
+    "ApprovalActionType",
+    "ApprovalRequest",
+    "ApprovalStatus",
     "PaymentTransactionStatus",
     "PaymentTransactionType",
 ]
