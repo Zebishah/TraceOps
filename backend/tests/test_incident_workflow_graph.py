@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.workflows.incident.nodes as nodes_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.schemas.incident_actions import (
+    IncidentActionProposal,
+)
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
@@ -105,6 +108,28 @@ def test_incident_investigation_graph_runs_in_order(
 
         return None
 
+    async def fake_propose_incident_action(
+        *,
+        title,
+        description,
+        category,
+        priority,
+        evidence,
+        tool_results,
+        analysis,
+        recommendation,
+    ):
+        call_order.append("propose_action")
+
+        return IncidentActionProposal(
+            requires_approval=False,
+            action_type=None,
+            external_transaction_id=None,
+            amount=None,
+            currency=None,
+            reason=("More verification is required."),
+        )
+
     async def fake_recommend_incident_action(
         *,
         title,
@@ -136,7 +161,11 @@ def test_incident_investigation_graph_runs_in_order(
         "retrieve_incident_evidence",
         fake_retrieve_incident_evidence,
     )
-
+    monkeypatch.setattr(
+        nodes_module,
+        "propose_incident_action",
+        fake_propose_incident_action,
+    )
     monkeypatch.setattr(
         nodes_module,
         "analyze_incident",
@@ -173,6 +202,7 @@ def test_incident_investigation_graph_runs_in_order(
         "select_tool",
         "analyze",
         "recommend",
+        "propose_action",
     ]
 
     assert result["organization_id"] == organization_id

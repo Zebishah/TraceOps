@@ -5,9 +5,13 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.models.approval import ApprovalActionType
 from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
+)
+from ops_pilot.schemas.incident_actions import (
+    IncidentActionProposal,
 )
 from ops_pilot.schemas.incident_classification import IncidentCategory
 from ops_pilot.schemas.retrieval import RetrievalResult
@@ -44,6 +48,8 @@ def get_checkpoint_serializer() -> JsonPlusSerializer:
             OperationalToolName,
             ToolCallRequest,
             ToolExecutionResult,
+            ApprovalActionType,
+            IncidentActionProposal,
         ],
     )
 

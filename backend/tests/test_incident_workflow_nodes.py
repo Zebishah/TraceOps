@@ -22,6 +22,7 @@ def test_classify_incident_node_updates_state(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+    workflow_thread_id = "test-workflow-thread"
 
     incident = SimpleNamespace(
         title="Customer charged twice",
@@ -59,11 +60,13 @@ def test_classify_incident_node_updates_state(
             session=session,
         )
     )
+
     result = asyncio.run(
         nodes_module.classify_incident_node(
             {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
             },
             runtime,
         )
@@ -81,6 +84,7 @@ def test_analyze_incident_node_updates_state(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+    workflow_thread_id = "test-workflow-thread"
 
     evidence = [
         RetrievalResult(
@@ -117,6 +121,7 @@ def test_analyze_incident_node_updates_state(
             {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
                 "title": "Customer charged twice",
                 "description": ("Customer reports two charges for one order."),
                 "status": IncidentStatus.INVESTIGATING,
@@ -137,6 +142,7 @@ def test_recommend_action_node_updates_state(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+    workflow_thread_id = "test-workflow-thread"
 
     evidence = [
         RetrievalResult(
@@ -174,8 +180,9 @@ def test_recommend_action_node_updates_state(
             {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
                 "title": "Customer charged twice",
-                "description": "Two charges appeared for one order.",
+                "description": ("Two charges appeared for one order."),
                 "status": IncidentStatus.INVESTIGATING,
                 "category": IncidentCategory.PAYMENT,
                 "priority": IncidentPriority.HIGH,
@@ -197,13 +204,14 @@ def test_retrieve_evidence_node_updates_state(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+    workflow_thread_id = "test-workflow-thread"
 
     expected_result = RetrievalResult(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         chunk_index=2,
         page_number=3,
-        text="Duplicate payments must be refunded after verification.",
+        text=("Duplicate payments must be refunded after verification."),
         source_filename="payment-policy.pdf",
         vector_score=0.91,
         reranker_score=0.96,
@@ -242,11 +250,38 @@ def test_retrieve_evidence_node_updates_state(
             {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
             },
             runtime,
         )
     )
 
-    assert result["retrieval_query"] == "Customer charged twice\nIncident category: payment"
+    assert result["retrieval_query"] == ("Customer charged twice\nIncident category: payment")
 
     assert result["evidence"] == [expected_result]
+
+
+def test_route_after_action_proposal_requires_approval() -> None:
+    result = nodes_module.route_after_action_proposal(
+        {
+            "organization_id": uuid.uuid4(),
+            "incident_id": uuid.uuid4(),
+            "workflow_thread_id": "test-thread",
+            "approval_required": True,
+        }
+    )
+
+    assert result == "create_approval"
+
+
+def test_route_after_action_proposal_ends_without_action() -> None:
+    result = nodes_module.route_after_action_proposal(
+        {
+            "organization_id": uuid.uuid4(),
+            "incident_id": uuid.uuid4(),
+            "workflow_thread_id": "test-thread",
+            "approval_required": False,
+        }
+    )
+
+    assert result == "end"

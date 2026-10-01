@@ -67,7 +67,9 @@ class IncidentInvestigationResponse(BaseModel):
     workflow_thread_id: str
     title: str
     description: str
+    approval_required: bool = False
 
+    approval_request_id: uuid.UUID | None = None
     status: IncidentStatus
     category: IncidentCategory
     priority: IncidentPriority

@@ -1,15 +1,29 @@
 from langgraph.runtime import Runtime
+from langgraph.types import interrupt
 
+from ops_pilot.ai.incident_action_proposer import (
+    propose_incident_action,
+)
 from ops_pilot.ai.incident_analyzer import analyze_incident
-from ops_pilot.ai.incident_recommender import recommend_incident_action
-from ops_pilot.ai.incident_tool_selector import select_incident_tool
+from ops_pilot.ai.incident_recommender import (
+    recommend_incident_action,
+)
+from ops_pilot.ai.incident_tool_selector import (
+    select_incident_tool,
+)
+from ops_pilot.models.incident import IncidentStatus
+from ops_pilot.services.approvals import (
+    create_or_get_pending_approval,
+)
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
 from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
-from ops_pilot.tools.executor import execute_operational_tool_call
+from ops_pilot.tools.executor import (
+    execute_operational_tool_call,
+)
 from ops_pilot.workflows.incident.state import (
     IncidentGraphContext,
     IncidentInvestigationState,
@@ -34,7 +48,7 @@ async def classify_incident_node(
         "status": incident.status,
         "category": classification.category,
         "priority": classification.priority,
-        "classification_confidence": classification.confidence,
+        "classification_confidence": (classification.confidence),
         "subject_customer_id": getattr(
             incident,
             "subject_customer_id",
@@ -79,7 +93,10 @@ async def analyze_incident_node(
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
-        tool_results=state.get("tool_results", []),
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
     )
 
     return {
@@ -109,7 +126,10 @@ async def recommend_action_node(
         priority=state["priority"],
         analysis=state["analysis"],
         evidence=state["evidence"],
-        tool_results=state.get("tool_results", []),
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
     )
 
     return {
@@ -117,18 +137,131 @@ async def recommend_action_node(
     }
 
 
+async def propose_action_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    if (
+        "title" not in state
+        or "description" not in state
+        or "category" not in state
+        or "priority" not in state
+        or "evidence" not in state
+        or "analysis" not in state
+        or "recommended_action" not in state
+    ):
+        raise RuntimeError(
+            "Action proposal node received incomplete incident state",
+        )
+
+    proposal = await propose_incident_action(
+        title=state["title"],
+        description=state["description"],
+        category=state["category"],
+        priority=state["priority"],
+        evidence=state["evidence"],
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
+        analysis=state["analysis"],
+        recommendation=state["recommended_action"],
+    )
+
+    return {
+        "proposed_action": proposal,
+        "approval_required": (proposal.requires_approval),
+    }
+
+
+def route_after_action_proposal(
+    state: IncidentInvestigationState,
+) -> str:
+    if state.get("approval_required"):
+        return "create_approval"
+
+    return "end"
+
+
+async def create_approval_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    proposal = state.get(
+        "proposed_action",
+    )
+
+    if proposal is None:
+        raise RuntimeError(
+            "Approval creation requires a proposed action",
+        )
+
+    approval = await create_or_get_pending_approval(
+        session=runtime.context.session,
+        organization_id=state["organization_id"],
+        incident_id=state["incident_id"],
+        workflow_thread_id=state["workflow_thread_id"],
+        proposal=proposal,
+    )
+
+    return {
+        "approval_request_id": approval.id,
+        "approval_required": True,
+        "status": (IncidentStatus.AWAITING_APPROVAL),
+    }
+
+
+def approval_gate_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    approval_request_id = state.get(
+        "approval_request_id",
+    )
+
+    proposal = state.get(
+        "proposed_action",
+    )
+
+    if approval_request_id is None or proposal is None:
+        raise RuntimeError(
+            "Approval gate received incomplete approval state",
+        )
+
+    decision = interrupt(
+        {
+            "type": "approval_required",
+            "approval_request_id": str(
+                approval_request_id,
+            ),
+            "action_type": (
+                proposal.action_type.value if proposal.action_type is not None else None
+            ),
+            "external_transaction_id": (proposal.external_transaction_id),
+            "amount": (str(proposal.amount) if proposal.amount is not None else None),
+            "currency": proposal.currency,
+            "reason": proposal.reason,
+        }
+    )
+
+    return {
+        "approval_decision": decision,
+    }
+
+
 async def select_operational_tool_node(
     state: IncidentInvestigationState,
 ) -> dict[str, object]:
-    customer_id = state.get("subject_customer_id")
+    customer_id = state.get(
+        "subject_customer_id",
+    )
 
     if customer_id is None:
         return {
             "pending_tool_call": None,
             "needs_more_information": True,
             "clarification_question": (
-                "Please provide or select the relevant order, transaction, "
-                "product, amount, or approximate transaction date."
+                "Please provide or select the relevant "
+                "order, transaction, product, amount, "
+                "or approximate transaction date."
             ),
         }
 
@@ -139,9 +272,14 @@ async def select_operational_tool_node(
         or "priority" not in state
         or "evidence" not in state
     ):
-        raise RuntimeError("Tool selector received incomplete incident state")
+        raise RuntimeError(
+            "Tool selector received incomplete incident state",
+        )
 
-    tool_round = state.get("tool_round", 0)
+    tool_round = state.get(
+        "tool_round",
+        0,
+    )
 
     if tool_round >= MAX_TOOL_ROUNDS:
         return {
@@ -154,7 +292,10 @@ async def select_operational_tool_node(
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
-        tool_results=state.get("tool_results", []),
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
     )
 
     return {
@@ -168,14 +309,23 @@ async def execute_operational_tool_node(
     state: IncidentInvestigationState,
     runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
-    customer_id = state.get("subject_customer_id")
-    tool_call = state.get("pending_tool_call")
+    customer_id = state.get(
+        "subject_customer_id",
+    )
+
+    tool_call = state.get(
+        "pending_tool_call",
+    )
 
     if customer_id is None:
-        raise RuntimeError("Tool execution requires customer context")
+        raise RuntimeError(
+            "Tool execution requires customer context",
+        )
 
     if tool_call is None:
-        raise RuntimeError("Tool execution requires a pending tool call")
+        raise RuntimeError(
+            "Tool execution requires a pending tool call",
+        )
 
     result = await execute_operational_tool_call(
         session=runtime.context.session,
@@ -186,10 +336,19 @@ async def execute_operational_tool_node(
 
     return {
         "tool_results": [
-            *state.get("tool_results", []),
+            *state.get(
+                "tool_results",
+                [],
+            ),
             result,
         ],
-        "tool_round": state.get("tool_round", 0) + 1,
+        "tool_round": (
+            state.get(
+                "tool_round",
+                0,
+            )
+            + 1
+        ),
         "pending_tool_call": None,
     }
 

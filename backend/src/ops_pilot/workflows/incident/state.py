@@ -4,8 +4,16 @@ from typing import NotRequired, TypedDict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ops_pilot.models.incident import IncidentPriority, IncidentStatus
-from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.models.incident import (
+    IncidentPriority,
+    IncidentStatus,
+)
+from ops_pilot.schemas.incident_actions import (
+    IncidentActionProposal,
+)
+from ops_pilot.schemas.incident_classification import (
+    IncidentCategory,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import (
     ToolCallRequest,
@@ -39,6 +47,14 @@ class IncidentInvestigationState(TypedDict):
 
     analysis: NotRequired[str]
     recommended_action: NotRequired[str]
+
+    proposed_action: NotRequired[IncidentActionProposal | None]
+
+    approval_required: NotRequired[bool]
+
+    approval_request_id: NotRequired[uuid.UUID | None]
+
+    approval_decision: NotRequired[dict[str, object]]
 
 
 @dataclass
