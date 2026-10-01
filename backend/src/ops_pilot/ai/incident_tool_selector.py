@@ -3,7 +3,10 @@ import uuid
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
-from ops_pilot.ai.incident_analyzer import format_incident_evidence
+from ops_pilot.ai.incident_context import (
+    format_incident_evidence,
+    format_tool_results,
+)
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
@@ -65,23 +68,23 @@ Decide whether another read-only operational tool is required.
 )
 
 
-def format_tool_results(
-    results: list[ToolExecutionResult],
-) -> str:
-    if not results:
-        return "No operational tools have been executed yet."
+# def format_tool_results(
+#     results: list[ToolExecutionResult],
+# ) -> str:
+#     if not results:
+#         return "No operational tools have been executed yet."
 
-    parts: list[str] = []
+#     parts: list[str] = []
 
-    for index, result in enumerate(results, start=1):
-        parts.append(
-            f"[TOOL {index}]\n"
-            f"Tool: {result.tool_name.value}\n"
-            f"Success: {result.success}\n"
-            f"Result:\n{result.content}"
-        )
+#     for index, result in enumerate(results, start=1):
+#         parts.append(
+#             f"[TOOL {index}]\n"
+#             f"Tool: {result.tool_name.value}\n"
+#             f"Success: {result.success}\n"
+#             f"Result:\n{result.content}"
+#         )
 
-    return "\n\n".join(parts)
+#     return "\n\n".join(parts)
 
 
 async def select_incident_tool(

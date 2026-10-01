@@ -79,6 +79,7 @@ async def analyze_incident_node(
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
+        tool_results=state.get("tool_results", []),
     )
 
     return {
@@ -108,6 +109,7 @@ async def recommend_action_node(
         priority=state["priority"],
         analysis=state["analysis"],
         evidence=state["evidence"],
+        tool_results=state.get("tool_results", []),
     )
 
     return {
@@ -195,6 +197,9 @@ async def execute_operational_tool_node(
 def route_after_tool_selection(
     state: IncidentInvestigationState,
 ) -> str:
+    if state.get("needs_more_information"):
+        return "needs_more_information"
+
     if state.get("pending_tool_call") is not None:
         return "execute_operational_tool"
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
 from ops_pilot.schemas.incident_classification import IncidentCategory
 from ops_pilot.schemas.retrieval import RetrievalResult
+from ops_pilot.tools.schemas import ToolExecutionResult
 
 
 class IncidentCreateRequest(BaseModel):
@@ -78,5 +79,12 @@ class IncidentInvestigationResponse(BaseModel):
     retrieval_query: str
     evidence: list[RetrievalResult]
 
-    analysis: str
-    recommended_action: str
+    tool_results: list[ToolExecutionResult] = Field(
+        default_factory=list,
+    )
+
+    needs_more_information: bool = False
+    clarification_question: str | None = None
+
+    analysis: str | None = None
+    recommended_action: str | None = None

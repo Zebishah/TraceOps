@@ -102,6 +102,7 @@ def test_analyze_incident_node_updates_state(
         category,
         priority,
         evidence,
+        tool_results,
     ):
         return "The evidence supports a duplicate payment [SOURCE 1]."
 
@@ -158,6 +159,7 @@ def test_recommend_action_node_updates_state(
         priority,
         analysis,
         evidence,
+        tool_results,
     ):
         return "Verify the transactions before issuing a refund [SOURCE 1]."
 

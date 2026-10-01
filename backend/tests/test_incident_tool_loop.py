@@ -6,6 +6,19 @@ from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
 
 
+def test_tool_route_stops_when_more_information_is_needed() -> None:
+    result = nodes_module.route_after_tool_selection(
+        {
+            "organization_id": uuid.uuid4(),
+            "incident_id": uuid.uuid4(),
+            "needs_more_information": True,
+            "pending_tool_call": None,
+        }
+    )
+
+    assert result == "needs_more_information"
+
+
 def test_tool_selector_requests_customer_information_when_missing() -> None:
     result = asyncio.run(
         nodes_module.select_operational_tool_node(

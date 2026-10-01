@@ -66,6 +66,7 @@ builder.add_conditional_edges(
     "select_operational_tool",
     route_after_tool_selection,
     {
+        "needs_more_information": END,
         "execute_operational_tool": "execute_operational_tool",
         "analyze_incident": "analyze_incident",
     },

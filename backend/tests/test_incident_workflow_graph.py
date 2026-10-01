@@ -24,13 +24,14 @@ def test_incident_investigation_graph_runs_in_order(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
-
+    customer_id = uuid.uuid4()
     call_order: list[str] = []
 
     incident = SimpleNamespace(
         title="Customer charged twice",
         description="Two charges appeared for one order.",
         status=IncidentStatus.INVESTIGATING,
+        subject_customer_id=customer_id,
     )
 
     classification = IncidentClassification(
@@ -86,6 +87,19 @@ def test_incident_investigation_graph_runs_in_order(
 
         return "The evidence supports a duplicate payment [SOURCE 1]."
 
+    async def fake_select_incident_tool(
+        *,
+        title,
+        description,
+        category,
+        priority,
+        evidence,
+        tool_results,
+    ):
+        call_order.append("select_tool")
+
+    return None
+
     async def fake_recommend_incident_action(
         *,
         title,
@@ -104,7 +118,11 @@ def test_incident_investigation_graph_runs_in_order(
         "classify_stored_incident",
         fake_classify_stored_incident,
     )
-
+    monkeypatch.setattr(
+        nodes_module,
+        "select_incident_tool",
+        fake_select_incident_tool,
+    )
     monkeypatch.setattr(
         nodes_module,
         "retrieve_incident_evidence",
@@ -143,6 +161,7 @@ def test_incident_investigation_graph_runs_in_order(
     assert call_order == [
         "classify",
         "retrieve",
+        "select_tool",
         "analyze",
         "recommend",
     ]
