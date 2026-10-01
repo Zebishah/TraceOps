@@ -8,6 +8,9 @@ from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
 )
+from ops_pilot.schemas.approvals import (
+    ApprovalResumeDecision,
+)
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
@@ -54,7 +57,7 @@ class IncidentInvestigationState(TypedDict):
 
     approval_request_id: NotRequired[uuid.UUID | None]
 
-    approval_decision: NotRequired[dict[str, object]]
+    approval_decision: NotRequired[ApprovalResumeDecision | None]
 
 
 @dataclass

@@ -1,8 +1,13 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ops_pilot.core.exceptions import (
+    ApprovalDecisionConflictError,
+    ApprovalNotFoundError,
+)
 from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
@@ -10,6 +15,9 @@ from ops_pilot.models.approval import (
 from ops_pilot.models.incident import (
     Incident,
     IncidentStatus,
+)
+from ops_pilot.schemas.approvals import (
+    ApprovalDecisionRequest,
 )
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
@@ -80,6 +88,97 @@ async def create_or_get_pending_approval(
     incident.status = IncidentStatus.AWAITING_APPROVAL
 
     session.add(approval)
+
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+
+    await session.refresh(approval)
+
+    return approval
+
+
+async def get_approval_request(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    approval_request_id: uuid.UUID,
+) -> ApprovalRequest:
+    result = await session.execute(
+        select(ApprovalRequest).where(
+            ApprovalRequest.id == approval_request_id,
+            ApprovalRequest.organization_id == organization_id,
+            ApprovalRequest.incident_id == incident_id,
+        )
+    )
+
+    approval = result.scalar_one_or_none()
+
+    if approval is None:
+        raise ApprovalNotFoundError
+
+    return approval
+
+
+async def record_approval_decision(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    approval_request_id: uuid.UUID,
+    decided_by_user_id: uuid.UUID,
+    payload: ApprovalDecisionRequest,
+) -> ApprovalRequest:
+    result = await session.execute(
+        select(ApprovalRequest)
+        .where(
+            ApprovalRequest.id == approval_request_id,
+            ApprovalRequest.organization_id == organization_id,
+            ApprovalRequest.incident_id == incident_id,
+        )
+        .with_for_update()
+    )
+
+    approval = result.scalar_one_or_none()
+
+    if approval is None:
+        raise ApprovalNotFoundError
+
+    desired_status = ApprovalStatus.APPROVED if payload.approved else ApprovalStatus.REJECTED
+
+    # Idempotent retry:
+    # if the same decision was already recorded,
+    # return it instead of changing it again.
+    if approval.status == desired_status:
+        return approval
+
+    if approval.status != ApprovalStatus.PENDING:
+        raise ApprovalDecisionConflictError
+
+    incident_result = await session.execute(
+        select(Incident).where(
+            Incident.id == incident_id,
+            Incident.organization_id == organization_id,
+        )
+    )
+
+    incident = incident_result.scalar_one_or_none()
+
+    if incident is None:
+        raise RuntimeError(
+            "Incident not found while recording approval",
+        )
+
+    approval.status = desired_status
+    approval.decided_by_user_id = decided_by_user_id
+    approval.decision_comment = payload.comment
+    approval.decided_at = datetime.now(UTC)
+
+    if not payload.approved:
+        incident.status = IncidentStatus.INVESTIGATING
 
     try:
         await session.commit()

@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from ops_pilot.core.exceptions import (
+    ApprovalDecisionConflictError,
+    ApprovalNotFoundError,
     CustomerNotFoundError,
     DocumentNotFoundError,
     DocumentProcessingError,
@@ -135,6 +137,30 @@ async def customer_not_found_handler(
     )
 
 
+async def approval_not_found_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "detail": "Approval request not found",
+        },
+    )
+
+
+async def approval_decision_conflict_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "detail": ("Approval request has already been decided"),
+        },
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         EmailAlreadyRegisteredError,
@@ -145,7 +171,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         OrganizationSlugAlreadyExistsError,
         organization_slug_exists_handler,
     )
+    app.add_exception_handler(
+        ApprovalNotFoundError,
+        approval_not_found_handler,
+    )
 
+    app.add_exception_handler(
+        ApprovalDecisionConflictError,
+        approval_decision_conflict_handler,
+    )
     app.add_exception_handler(
         RegistrationConflictError,
         registration_conflict_handler,
@@ -160,7 +194,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         IncidentNotFoundError,
         incident_not_found_handler,
     )
+    app.add_exception_handler(
+        ApprovalNotFoundError,
+        approval_not_found_handler,
+    )
 
+    app.add_exception_handler(
+        ApprovalDecisionConflictError,
+        approval_decision_conflict_handler,
+    )
     app.add_exception_handler(
         DocumentTooLargeError,
         document_too_large_handler,

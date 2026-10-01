@@ -10,6 +10,9 @@ from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
 )
+from ops_pilot.schemas.approvals import (
+    ApprovalResumeDecision,
+)
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
@@ -50,6 +53,7 @@ def get_checkpoint_serializer() -> JsonPlusSerializer:
             ToolExecutionResult,
             ApprovalActionType,
             IncidentActionProposal,
+            ApprovalResumeDecision,
         ],
     )
 

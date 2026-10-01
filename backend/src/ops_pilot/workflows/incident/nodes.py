@@ -12,6 +12,9 @@ from ops_pilot.ai.incident_tool_selector import (
     select_incident_tool,
 )
 from ops_pilot.models.incident import IncidentStatus
+from ops_pilot.schemas.approvals import (
+    ApprovalResumeDecision,
+)
 from ops_pilot.services.approvals import (
     create_or_get_pending_approval,
 )
@@ -239,11 +242,56 @@ def approval_gate_node(
             "amount": (str(proposal.amount) if proposal.amount is not None else None),
             "currency": proposal.currency,
             "reason": proposal.reason,
-        }
+        },
+        response_schema=ApprovalResumeDecision,
     )
+
+    if decision.approval_request_id != approval_request_id:
+        raise RuntimeError(
+            "Approval resume decision does not match the paused approval request",
+        )
 
     return {
         "approval_decision": decision,
+    }
+
+
+def route_after_approval_decision(
+    state: IncidentInvestigationState,
+) -> str:
+    decision = state.get(
+        "approval_decision",
+    )
+
+    if decision is None:
+        raise RuntimeError(
+            "Approval routing requires a human decision",
+        )
+
+    if decision.approved:
+        return "approved"
+
+    return "rejected"
+
+
+def approval_approved_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    return {
+        "approval_required": False,
+        # The action is approved but has NOT
+        # been executed yet.
+        # Phase 8E will execute it.
+        "status": (IncidentStatus.AWAITING_APPROVAL),
+    }
+
+
+def approval_rejected_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    return {
+        "approval_required": False,
+        "status": IncidentStatus.INVESTIGATING,
     }
 
 

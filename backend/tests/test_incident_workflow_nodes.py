@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.workflows.incident.nodes as nodes_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.schemas.approvals import (
+    ApprovalResumeDecision,
+)
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
@@ -272,6 +275,46 @@ def test_route_after_action_proposal_requires_approval() -> None:
     )
 
     assert result == "create_approval"
+
+
+def test_route_after_approval_decision_approved() -> None:
+    result = nodes_module.route_after_approval_decision(
+        {
+            "organization_id": uuid.uuid4(),
+            "incident_id": uuid.uuid4(),
+            "workflow_thread_id": "test-thread",
+            "approval_decision": (
+                ApprovalResumeDecision(
+                    approval_request_id=(uuid.uuid4()),
+                    approved=True,
+                    decided_by_user_id=(uuid.uuid4()),
+                    comment=None,
+                )
+            ),
+        }
+    )
+
+    assert result == "approved"
+
+
+def test_route_after_approval_decision_rejected() -> None:
+    result = nodes_module.route_after_approval_decision(
+        {
+            "organization_id": uuid.uuid4(),
+            "incident_id": uuid.uuid4(),
+            "workflow_thread_id": "test-thread",
+            "approval_decision": (
+                ApprovalResumeDecision(
+                    approval_request_id=(uuid.uuid4()),
+                    approved=False,
+                    decided_by_user_id=(uuid.uuid4()),
+                    comment="Do not refund.",
+                )
+            ),
+        }
+    )
+
+    assert result == "rejected"
 
 
 def test_route_after_action_proposal_ends_without_action() -> None:

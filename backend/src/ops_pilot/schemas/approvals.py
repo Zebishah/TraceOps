@@ -11,6 +11,18 @@ from ops_pilot.models.approval import (
 
 class ApprovalDecisionRequest(BaseModel):
     approved: bool
+
+    comment: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+
+
+class ApprovalResumeDecision(BaseModel):
+    approval_request_id: uuid.UUID
+    approved: bool
+    decided_by_user_id: uuid.UUID
+
     comment: str | None = Field(
         default=None,
         max_length=1000,

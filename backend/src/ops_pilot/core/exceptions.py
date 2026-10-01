@@ -36,3 +36,11 @@ class IncidentNotFoundError(Exception):
 
 class CustomerNotFoundError(Exception):
     pass
+
+
+class ApprovalNotFoundError(Exception):
+    pass
+
+
+class ApprovalDecisionConflictError(Exception):
+    pass

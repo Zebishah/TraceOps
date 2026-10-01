@@ -4,7 +4,9 @@ from langgraph.types import Checkpointer
 
 from ops_pilot.workflows.incident.nodes import (
     analyze_incident_node,
+    approval_approved_node,
     approval_gate_node,
+    approval_rejected_node,
     classify_incident_node,
     create_approval_node,
     execute_operational_tool_node,
@@ -12,6 +14,7 @@ from ops_pilot.workflows.incident.nodes import (
     recommend_action_node,
     retrieve_evidence_node,
     route_after_action_proposal,
+    route_after_approval_decision,
     route_after_tool_selection,
     select_operational_tool_node,
 )
@@ -82,7 +85,15 @@ builder.add_node(
     "approval_gate",
     approval_gate_node,
 )
+builder.add_node(
+    "approval_approved",
+    approval_approved_node,
+)
 
+builder.add_node(
+    "approval_rejected",
+    approval_rejected_node,
+)
 
 # -------------------------
 # Investigation flow
@@ -151,7 +162,24 @@ builder.add_edge(
     "create_approval",
     "approval_gate",
 )
+builder.add_conditional_edges(
+    "approval_gate",
+    route_after_approval_decision,
+    {
+        "approved": "approval_approved",
+        "rejected": "approval_rejected",
+    },
+)
 
+builder.add_edge(
+    "approval_approved",
+    END,
+)
+
+builder.add_edge(
+    "approval_rejected",
+    END,
+)
 
 # -------------------------
 # Compilation
