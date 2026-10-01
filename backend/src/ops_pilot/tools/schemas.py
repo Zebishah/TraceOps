@@ -80,5 +80,8 @@ class ToolCallRequest(BaseModel):
 class ToolExecutionResult(BaseModel):
     call_id: str | None = None
     tool_name: OperationalToolName
+    arguments: dict[str, object] = Field(
+        default_factory=dict,
+    )
     success: bool
     content: str

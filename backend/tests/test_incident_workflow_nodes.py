@@ -413,3 +413,71 @@ def test_execute_approved_action_node_executes_refund(
     )
 
     assert result["refund_execution"] == expected_result
+
+
+def test_verify_approved_action_node_marks_resolved(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    approval_request_id = uuid.uuid4()
+
+    execution = RefundExecutionResult(
+        source_transaction_id="TXN-123",
+        refund_transaction_id="refund-123",
+        amount=Decimal("12000.00"),
+        currency="PKR",
+        already_executed=False,
+    )
+
+    async def fake_verify_refund_execution(
+        *,
+        session,
+        organization_id,
+        incident_id,
+        approval_request_id,
+        execution,
+    ):
+        assert organization_id == (expected_organization_id)
+        assert incident_id == (expected_incident_id)
+        assert approval_request_id == (expected_approval_request_id)
+        assert execution == expected_execution
+
+    expected_organization_id = organization_id
+    expected_incident_id = incident_id
+    expected_approval_request_id = approval_request_id
+    expected_execution = execution
+
+    monkeypatch.setattr(
+        nodes_module,
+        "verify_refund_execution",
+        fake_verify_refund_execution,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(spec=AsyncSession),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.verify_approved_action_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": ("test-thread"),
+                "approval_request_id": (approval_request_id),
+                "refund_execution": execution,
+            },
+            runtime,
+        )
+    )
+
+    assert result["refund_verified"] is True
+
+    assert result["status"] == IncidentStatus.RESOLVED

@@ -18,6 +18,7 @@ from ops_pilot.workflows.incident.nodes import (
     route_after_approval_decision,
     route_after_tool_selection,
     select_operational_tool_node,
+    verify_approved_action_node,
 )
 from ops_pilot.workflows.incident.state import (
     IncidentGraphContext,
@@ -98,6 +99,10 @@ builder.add_node(
 builder.add_node(
     "execute_approved_action",
     execute_approved_action_node,
+)
+builder.add_node(
+    "verify_approved_action",
+    verify_approved_action_node,
 )
 # -------------------------
 # Investigation flow
@@ -182,6 +187,11 @@ builder.add_edge(
 
 builder.add_edge(
     "execute_approved_action",
+    "verify_approved_action",
+)
+
+builder.add_edge(
+    "verify_approved_action",
     END,
 )
 

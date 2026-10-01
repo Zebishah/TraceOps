@@ -24,8 +24,16 @@ from ops_pilot.services.incident_classification import (
 from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
+from ops_pilot.services.incident_evidence_sufficiency import has_required_operational_evidence
+from ops_pilot.services.incident_tool_planning import (
+    required_operational_tool,
+    tool_call_already_executed,
+)
 from ops_pilot.services.refund_execution import (
     execute_approved_refund,
+)
+from ops_pilot.services.refund_verification import (
+    verify_refund_execution,
 )
 from ops_pilot.tools.executor import (
     execute_operational_tool_call,
@@ -35,7 +43,7 @@ from ops_pilot.workflows.incident.state import (
     IncidentInvestigationState,
 )
 
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 5
 
 
 async def classify_incident_node(
@@ -159,16 +167,31 @@ async def propose_action_node(
             "Action proposal node received incomplete incident state",
         )
 
+    tool_results = state.get(
+        "tool_results",
+        [],
+    )
+
+    # Backend safety gate:
+    # payment actions cannot be proposed
+    # until required operational data
+    # has actually been collected.
+    if not has_required_operational_evidence(
+        category=state["category"],
+        tool_results=tool_results,
+    ):
+        return {
+            "proposed_action": None,
+            "approval_required": False,
+        }
+
     proposal = await propose_incident_action(
         title=state["title"],
         description=state["description"],
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
-        tool_results=state.get(
-            "tool_results",
-            [],
-        ),
+        tool_results=tool_results,
         analysis=state["analysis"],
         recommendation=state["recommended_action"],
     )
@@ -348,9 +371,11 @@ async def select_operational_tool_node(
             "pending_tool_call": None,
             "needs_more_information": True,
             "clarification_question": (
-                "Please provide or select the relevant "
-                "order, transaction, product, amount, "
-                "or approximate transaction date."
+                "Please provide or select "
+                "the relevant order, "
+                "transaction, product, "
+                "amount, or approximate "
+                "transaction date."
             ),
         }
 
@@ -365,28 +390,60 @@ async def select_operational_tool_node(
             "Tool selector received incomplete incident state",
         )
 
+    tool_results = state.get(
+        "tool_results",
+        [],
+    )
+
     tool_round = state.get(
         "tool_round",
         0,
     )
 
+    required_tool_call = required_operational_tool(
+        category=state["category"],
+        tool_results=tool_results,
+    )
+
+    if required_tool_call is not None:
+        return {
+            "pending_tool_call": required_tool_call,
+            "needs_more_information": False,
+            "clarification_question": None,
+        }
+
     if tool_round >= MAX_TOOL_ROUNDS:
         return {
             "pending_tool_call": None,
+            "needs_more_information": False,
+            "clarification_question": None,
         }
 
+    # Required inspection is complete.
+    # Qwen may now request an optional
+    # additional read-only tool.
     tool_call = await select_incident_tool(
         title=state["title"],
         description=state["description"],
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
-        tool_results=state.get(
-            "tool_results",
-            [],
-        ),
+        tool_results=tool_results,
     )
 
+    # Never execute exactly the same
+    # successful call twice.
+    if tool_call is not None and tool_call_already_executed(
+        tool_call=tool_call,
+        tool_results=tool_results,
+    ):
+        return {
+            "pending_tool_call": None,
+            "needs_more_information": False,
+            "clarification_question": None,
+        }
+
+    # THIS RETURN WAS MISSING IN YOUR CODE.
     return {
         "pending_tool_call": tool_call,
         "needs_more_information": False,
@@ -452,3 +509,35 @@ def route_after_tool_selection(
         return "execute_operational_tool"
 
     return "analyze_incident"
+
+
+async def verify_approved_action_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    approval_request_id = state.get("approval_request_id")
+
+    execution = state.get("refund_execution")
+
+    if approval_request_id is None:
+        raise RuntimeError(
+            "Refund verification requires approval request",
+        )
+
+    if execution is None:
+        raise RuntimeError(
+            "Refund verification requires execution result",
+        )
+
+    await verify_refund_execution(
+        session=runtime.context.session,
+        organization_id=state["organization_id"],
+        incident_id=state["incident_id"],
+        approval_request_id=(approval_request_id),
+        execution=execution,
+    )
+
+    return {
+        "refund_verified": True,
+        "status": IncidentStatus.RESOLVED,
+    }

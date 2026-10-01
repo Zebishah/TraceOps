@@ -44,12 +44,16 @@ Rules:
   set requires_approval=false.
 - If additional verification is still needed,
   set requires_approval=false.
+- Always return a non-empty reason explaining the decision.
 - When requires_approval=false:
   action_type, external_transaction_id, amount, and currency
   must all be null.
+  reason must explain why no dangerous action can be proposed.
 - When requires_approval=true:
-  action_type must be refund_transaction and the exact
-  transaction ID, amount, and currency must be present.
+  action_type must be refund_transaction.
+  The exact transaction ID, amount, and currency must be present.
+  reason must explain why this exact transaction is safe to
+  propose for human-approved refund based on the supplied evidence.
 - Produce only a proposal. Never execute an action.
 """,
         ),

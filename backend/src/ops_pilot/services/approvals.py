@@ -38,6 +38,7 @@ async def create_or_get_pending_approval(
         or proposal.external_transaction_id is None
         or proposal.amount is None
         or proposal.currency is None
+        or not proposal.reason
     ):
         raise ValueError(
             "Approval requires a complete action proposal",
@@ -152,9 +153,20 @@ async def record_approval_decision(
     # Idempotent retry:
     # if the same decision was already recorded,
     # return it instead of changing it again.
+    # Idempotent retry:
+
+    # the same human decision may be submitted again.
+
     if approval.status == desired_status:
         return approval
 
+    # EXECUTED means the request was previously approved
+    # and its action has already completed.
+    if approval.status == ApprovalStatus.EXECUTED and payload.approved:
+        return approval
+
+    # Any attempt to change an already-final decision
+    # is a conflict.
     if approval.status != ApprovalStatus.PENDING:
         raise ApprovalDecisionConflictError
 

@@ -68,10 +68,11 @@ async def execute_operational_tool_call(
         return ToolExecutionResult(
             call_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
+            arguments=dict(tool_call.arguments),
             success=False,
             content=json.dumps(
                 {
-                    "error": "invalid_tool_arguments",
+                    "error": ("invalid_tool_arguments"),
                 }
             ),
         )
@@ -79,5 +80,6 @@ async def execute_operational_tool_call(
     return result.model_copy(
         update={
             "call_id": tool_call.call_id,
+            "arguments": dict(tool_call.arguments),
         }
     )

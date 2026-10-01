@@ -44,6 +44,7 @@ class IncidentInvestigationState(TypedDict):
     evidence: NotRequired[list[RetrievalResult]]
     subject_customer_id: NotRequired[uuid.UUID | None]
     refund_execution: NotRequired[RefundExecutionResult | None]
+    refund_verified: NotRequired[bool]
     tool_round: NotRequired[int]
     pending_tool_call: NotRequired[ToolCallRequest | None]
     tool_results: NotRequired[list[ToolExecutionResult]]
