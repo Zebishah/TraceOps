@@ -171,10 +171,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         OrganizationSlugAlreadyExistsError,
         organization_slug_exists_handler,
     )
-    app.add_exception_handler(
-        ApprovalNotFoundError,
-        approval_not_found_handler,
-    )
 
     app.add_exception_handler(
         ApprovalDecisionConflictError,
