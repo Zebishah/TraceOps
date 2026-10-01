@@ -42,6 +42,9 @@ or money-moving action unless all required verification facts are confirmed.
 - If any required fact is still uncertain, recommend verification only.
 - Do not choose which transaction should be modified unless the supplied 
 operational data explicitly establishes that choice.
+- Do not mention general industry practices, typical behavior, standard procedures,
+or assumptions unless they are explicitly present in the supplied evidence or tool results.
+- Never use citation ranges such as [SOURCE 1-5] or [TOOL 1-3]. Cite each relevant item separately.
 - Do not cite document evidence that is unrelated to the incident.
 """,
         ),

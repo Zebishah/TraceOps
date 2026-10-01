@@ -41,6 +41,7 @@ def test_get_chat_model_uses_configured_model(
         api_key=SecretStr("test-key"),
         temperature=0,
         max_retries=2,
+        max_tokens=500,
         timeout=30.0,
     )
 

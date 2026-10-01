@@ -15,5 +15,6 @@ def get_chat_model() -> ChatGroq:
         api_key=SecretStr(settings.groq_api_key),
         temperature=0,
         max_retries=2,
+        max_tokens=500,
         timeout=30.0,
     )
