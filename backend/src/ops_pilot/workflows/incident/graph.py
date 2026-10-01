@@ -1,4 +1,6 @@
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Checkpointer
 
 from ops_pilot.workflows.incident.nodes import (
     analyze_incident_node,
@@ -14,6 +16,12 @@ from ops_pilot.workflows.incident.state import (
     IncidentInvestigationState,
 )
 
+type IncidentCompiledGraph = CompiledStateGraph[
+    IncidentInvestigationState,
+    IncidentGraphContext,
+    IncidentInvestigationState,
+    IncidentInvestigationState,
+]
 builder = StateGraph(
     IncidentInvestigationState,
     context_schema=IncidentGraphContext,
@@ -87,4 +95,19 @@ builder.add_edge(
     END,
 )
 
-incident_investigation_graph = builder.compile()
+
+def build_incident_investigation_graph(
+    *,
+    checkpointer: Checkpointer = None,
+) -> CompiledStateGraph[
+    IncidentInvestigationState,
+    IncidentGraphContext,
+    IncidentInvestigationState,
+    IncidentInvestigationState,
+]:
+    return builder.compile(
+        checkpointer=checkpointer,
+    )
+
+
+incident_investigation_graph = build_incident_investigation_graph()

@@ -16,6 +16,7 @@ from ops_pilot.tools.schemas import (
 class IncidentInvestigationState(TypedDict):
     organization_id: uuid.UUID
     incident_id: uuid.UUID
+    workflow_thread_id: str
 
     title: NotRequired[str]
     description: NotRequired[str]
@@ -35,6 +36,7 @@ class IncidentInvestigationState(TypedDict):
 
     needs_more_information: NotRequired[bool]
     clarification_question: NotRequired[str | None]
+
     analysis: NotRequired[str]
     recommended_action: NotRequired[str]
 

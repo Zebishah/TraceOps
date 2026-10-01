@@ -64,7 +64,7 @@ class IncidentEvidenceResponse(BaseModel):
 class IncidentInvestigationResponse(BaseModel):
     organization_id: uuid.UUID
     incident_id: uuid.UUID
-
+    workflow_thread_id: str
     title: str
     description: str
 

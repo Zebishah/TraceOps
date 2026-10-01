@@ -25,6 +25,9 @@ def test_incident_investigation_graph_runs_in_order(
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
     customer_id = uuid.uuid4()
+
+    workflow_thread_id = "test-workflow-thread"
+
     call_order: list[str] = []
 
     incident = SimpleNamespace(
@@ -60,6 +63,7 @@ def test_incident_investigation_graph_runs_in_order(
         incident_id,
     ):
         call_order.append("classify")
+
         return incident, classification
 
     async def fake_retrieve_incident_evidence(
@@ -71,7 +75,7 @@ def test_incident_investigation_graph_runs_in_order(
         call_order.append("retrieve")
 
         return (
-            "Customer charged twice\nIncident category: payment",
+            ("Customer charged twice\nIncident category: payment"),
             evidence,
         )
 
@@ -85,6 +89,7 @@ def test_incident_investigation_graph_runs_in_order(
         tool_results,
     ):
         call_order.append("analyze")
+
         return "The evidence supports a duplicate payment [SOURCE 1]."
 
     async def fake_select_incident_tool(
@@ -97,6 +102,7 @@ def test_incident_investigation_graph_runs_in_order(
         tool_results,
     ):
         call_order.append("select_tool")
+
         return None
 
     async def fake_recommend_incident_action(
@@ -110,6 +116,7 @@ def test_incident_investigation_graph_runs_in_order(
         tool_results,
     ):
         call_order.append("recommend")
+
         return "Verify the transactions before issuing a refund [SOURCE 1]."
 
     monkeypatch.setattr(
@@ -117,11 +124,13 @@ def test_incident_investigation_graph_runs_in_order(
         "classify_stored_incident",
         fake_classify_stored_incident,
     )
+
     monkeypatch.setattr(
         nodes_module,
         "select_incident_tool",
         fake_select_incident_tool,
     )
+
     monkeypatch.setattr(
         nodes_module,
         "retrieve_incident_evidence",
@@ -150,6 +159,7 @@ def test_incident_investigation_graph_runs_in_order(
             {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
             },
             context=IncidentGraphContext(
                 session=session,
@@ -168,8 +178,12 @@ def test_incident_investigation_graph_runs_in_order(
     assert result["organization_id"] == organization_id
     assert result["incident_id"] == incident_id
 
+    assert result["workflow_thread_id"] == workflow_thread_id
+
     assert result["title"] == "Customer charged twice"
+
     assert result["category"] == IncidentCategory.PAYMENT
+
     assert result["priority"] == IncidentPriority.HIGH
 
     assert result["evidence"] == evidence

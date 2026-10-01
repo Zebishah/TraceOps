@@ -1,5 +1,7 @@
 import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import cast
 from unittest.mock import AsyncMock
 
@@ -11,11 +13,13 @@ from ops_pilot.schemas.incident_classification import IncidentCategory
 from ops_pilot.schemas.retrieval import RetrievalResult
 
 
-def test_investigate_incident_runs_graph(
+def test_investigate_incident_runs_checkpointed_graph(
     monkeypatch,
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+
+    workflow_thread_id = "test-workflow-thread"
 
     evidence = RetrievalResult(
         chunk_id=uuid.uuid4(),
@@ -33,16 +37,30 @@ def test_investigate_incident_runs_graph(
         AsyncMock(spec=AsyncSession),
     )
 
+    fake_checkpointer = object()
+
+    @asynccontextmanager
+    async def fake_open_incident_checkpointer() -> AsyncIterator[object]:
+        yield fake_checkpointer
+
     class FakeGraph:
         async def ainvoke(
             self,
             state,
             *,
+            config,
             context,
         ):
             assert state == {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
+            }
+
+            assert config == {
+                "configurable": {
+                    "thread_id": workflow_thread_id,
+                }
             }
 
             assert context.session is session
@@ -50,6 +68,7 @@ def test_investigate_incident_runs_graph(
             return {
                 "organization_id": organization_id,
                 "incident_id": incident_id,
+                "workflow_thread_id": workflow_thread_id,
                 "title": "Customer charged twice",
                 "description": ("Two charges appeared for one order."),
                 "status": IncidentStatus.INVESTIGATING,
@@ -62,10 +81,24 @@ def test_investigate_incident_runs_graph(
                 "recommended_action": ("Verify transaction IDs [SOURCE 1]."),
             }
 
+    def fake_build_incident_investigation_graph(
+        *,
+        checkpointer,
+    ):
+        assert checkpointer is fake_checkpointer
+
+        return FakeGraph()
+
     monkeypatch.setattr(
         investigation_module,
-        "incident_investigation_graph",
-        FakeGraph(),
+        "open_incident_checkpointer",
+        fake_open_incident_checkpointer,
+    )
+
+    monkeypatch.setattr(
+        investigation_module,
+        "build_incident_investigation_graph",
+        fake_build_incident_investigation_graph,
     )
 
     result = asyncio.run(
@@ -73,11 +106,17 @@ def test_investigate_incident_runs_graph(
             session=session,
             organization_id=organization_id,
             incident_id=incident_id,
+            workflow_thread_id=workflow_thread_id,
         )
     )
 
     assert result.incident_id == incident_id
+
+    assert result.workflow_thread_id == workflow_thread_id
+
     assert result.category == IncidentCategory.PAYMENT
     assert result.priority == IncidentPriority.HIGH
+
     assert result.classification_confidence == 0.98
+
     assert len(result.evidence) == 1

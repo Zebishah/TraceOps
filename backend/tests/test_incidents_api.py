@@ -371,8 +371,9 @@ def test_investigate_incident(
         return IncidentInvestigationResponse(
             organization_id=ORGANIZATION_ID,
             incident_id=INCIDENT_ID,
+            workflow_thread_id="test-workflow-thread",
             title="Customer charged twice",
-            description="Two charges appeared for one order.",
+            description=("Two charges appeared for one order."),
             status=IncidentStatus.INVESTIGATING,
             category=IncidentCategory.PAYMENT,
             priority=IncidentPriority.HIGH,
@@ -401,8 +402,12 @@ def test_investigate_incident(
         body = response.json()
 
         assert body["incident_id"] == str(INCIDENT_ID)
+
+        assert body["workflow_thread_id"] == "test-workflow-thread"
+
         assert body["category"] == "payment"
         assert body["priority"] == "high"
+
         assert body["classification_confidence"] == 0.98
 
         assert len(body["evidence"]) == 1
