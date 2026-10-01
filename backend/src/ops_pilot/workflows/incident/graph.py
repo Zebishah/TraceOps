@@ -9,6 +9,7 @@ from ops_pilot.workflows.incident.nodes import (
     approval_rejected_node,
     classify_incident_node,
     create_approval_node,
+    execute_approved_action_node,
     execute_operational_tool_node,
     propose_action_node,
     recommend_action_node,
@@ -94,7 +95,10 @@ builder.add_node(
     "approval_rejected",
     approval_rejected_node,
 )
-
+builder.add_node(
+    "execute_approved_action",
+    execute_approved_action_node,
+)
 # -------------------------
 # Investigation flow
 # -------------------------
@@ -120,7 +124,7 @@ builder.add_conditional_edges(
     route_after_tool_selection,
     {
         "needs_more_information": END,
-        "execute_operational_tool": ("execute_operational_tool"),
+        "execute_operational_tool": "execute_operational_tool",
         "analyze_incident": "analyze_incident",
     },
 )
@@ -173,6 +177,11 @@ builder.add_conditional_edges(
 
 builder.add_edge(
     "approval_approved",
+    "execute_approved_action",
+)
+
+builder.add_edge(
+    "execute_approved_action",
     END,
 )
 

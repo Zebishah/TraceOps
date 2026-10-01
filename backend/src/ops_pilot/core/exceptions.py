@@ -44,3 +44,7 @@ class ApprovalNotFoundError(Exception):
 
 class ApprovalDecisionConflictError(Exception):
     pass
+
+
+class ApprovalExecutionError(Exception):
+    pass

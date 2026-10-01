@@ -24,6 +24,9 @@ from ops_pilot.services.incident_classification import (
 from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
+from ops_pilot.services.refund_execution import (
+    execute_approved_refund,
+)
 from ops_pilot.tools.executor import (
     execute_operational_tool_call,
 )
@@ -51,7 +54,7 @@ async def classify_incident_node(
         "status": incident.status,
         "category": classification.category,
         "priority": classification.priority,
-        "classification_confidence": (classification.confidence),
+        "classification_confidence": classification.confidence,
         "subject_customer_id": getattr(
             incident,
             "subject_customer_id",
@@ -209,7 +212,7 @@ async def create_approval_node(
     return {
         "approval_request_id": approval.id,
         "approval_required": True,
-        "status": (IncidentStatus.AWAITING_APPROVAL),
+        "status": IncidentStatus.AWAITING_APPROVAL,
     }
 
 
@@ -282,7 +285,7 @@ def approval_approved_node(
         # The action is approved but has NOT
         # been executed yet.
         # Phase 8E will execute it.
-        "status": (IncidentStatus.AWAITING_APPROVAL),
+        "status": IncidentStatus.AWAITING_APPROVAL,
     }
 
 
@@ -292,6 +295,44 @@ def approval_rejected_node(
     return {
         "approval_required": False,
         "status": IncidentStatus.INVESTIGATING,
+    }
+
+
+async def execute_approved_action_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    approval_request_id = state.get("approval_request_id")
+
+    decision = state.get("approval_decision")
+
+    customer_id = state.get("subject_customer_id")
+
+    if approval_request_id is None:
+        raise RuntimeError(
+            "Approved action execution requires an approval request",
+        )
+
+    if decision is None or not decision.approved:
+        raise RuntimeError(
+            "Approved action execution requires an approved human decision",
+        )
+
+    if customer_id is None:
+        raise RuntimeError(
+            "Refund execution requires customer context",
+        )
+
+    result = await execute_approved_refund(
+        session=runtime.context.session,
+        organization_id=state["organization_id"],
+        incident_id=state["incident_id"],
+        approval_request_id=(approval_request_id),
+        customer_id=customer_id,
+    )
+
+    return {
+        "refund_execution": result,
     }
 
 

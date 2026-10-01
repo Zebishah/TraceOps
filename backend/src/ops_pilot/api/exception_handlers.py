@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from ops_pilot.core.exceptions import (
     ApprovalDecisionConflictError,
+    ApprovalExecutionError,
     ApprovalNotFoundError,
     CustomerNotFoundError,
     DocumentNotFoundError,
@@ -49,6 +50,18 @@ async def registration_conflict_handler(
         status_code=status.HTTP_409_CONFLICT,
         content={
             "detail": "Registration conflicts with existing data",
+        },
+    )
+
+
+async def approval_execution_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "detail": "Approved action could not be executed",
         },
     )
 
@@ -180,7 +193,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         RegistrationConflictError,
         registration_conflict_handler,
     )
-
+    app.add_exception_handler(
+        ApprovalExecutionError,
+        approval_execution_handler,
+    )
     app.add_exception_handler(
         UnsupportedDocumentTypeError,
         unsupported_document_type_handler,

@@ -48,6 +48,10 @@ class PaymentTransaction(Base):
             "transaction_type IN ('charge', 'refund')",
             name="ck_payment_transactions_type",
         ),
+        UniqueConstraint(
+            "source_transaction_id",
+            name="uq_payment_transactions_source_transaction",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -75,7 +79,15 @@ class PaymentTransaction(Base):
         nullable=False,
         index=True,
     )
-
+    source_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "operational_payment_transactions.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
     external_transaction_id: Mapped[str] = mapped_column(
         String(160),
         nullable=False,

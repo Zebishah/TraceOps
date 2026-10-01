@@ -8,6 +8,9 @@ from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
 )
+from ops_pilot.schemas.action_execution import (
+    RefundExecutionResult,
+)
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
@@ -40,7 +43,7 @@ class IncidentInvestigationState(TypedDict):
     retrieval_query: NotRequired[str]
     evidence: NotRequired[list[RetrievalResult]]
     subject_customer_id: NotRequired[uuid.UUID | None]
-
+    refund_execution: NotRequired[RefundExecutionResult | None]
     tool_round: NotRequired[int]
     pending_tool_call: NotRequired[ToolCallRequest | None]
     tool_results: NotRequired[list[ToolExecutionResult]]
