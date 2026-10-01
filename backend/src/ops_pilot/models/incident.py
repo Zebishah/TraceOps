@@ -68,6 +68,7 @@ class Incident(Base):
         ForeignKey(
             "customers.id",
             ondelete="SET NULL",
+            name="fk_incidents_subject_customer_id_customers",
         ),
         nullable=True,
         index=True,

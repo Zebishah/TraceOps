@@ -56,7 +56,12 @@ def upgrade() -> None:
         op.f("ix_incidents_subject_customer_id"), "incidents", ["subject_customer_id"], unique=False
     )
     op.create_foreign_key(
-        None, "incidents", "customers", ["subject_customer_id"], ["id"], ondelete="SET NULL"
+        "fk_incidents_subject_customer_id_customers",
+        "incidents",
+        "customers",
+        ["subject_customer_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     # ### end Alembic commands ###
 
@@ -67,7 +72,11 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, "incidents", type_="foreignkey")
+    op.drop_constraint(
+        "fk_incidents_subject_customer_id_customers",
+        "incidents",
+        type_="foreignkey",
+    )
     op.drop_index(op.f("ix_incidents_subject_customer_id"), table_name="incidents")
     op.drop_column("incidents", "subject_customer_id")
     op.drop_index(op.f("ix_customers_organization_id"), table_name="customers")
