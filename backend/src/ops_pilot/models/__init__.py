@@ -6,6 +6,7 @@ from ops_pilot.models.incident import (
     IncidentStatus,
 )
 from ops_pilot.models.membership import Membership, MembershipRole
+from ops_pilot.models.order import OperationalOrder, OrderStatus
 from ops_pilot.models.organization import Organization
 from ops_pilot.models.user import User
 
@@ -20,4 +21,6 @@ __all__ = [
     "IncidentPriority",
     "IncidentStatus",
     "Customer",
+    "OperationalOrder",
+    "OrderStatus",
 ]
