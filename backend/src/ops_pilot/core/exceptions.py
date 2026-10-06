@@ -48,3 +48,11 @@ class ApprovalDecisionConflictError(Exception):
 
 class ApprovalExecutionError(Exception):
     pass
+
+
+class IncidentMemoryNotReadyError(Exception):
+    pass
+
+
+class IncidentMemoryInvalidIncidentError(Exception):
+    pass

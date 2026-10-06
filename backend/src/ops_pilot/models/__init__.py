@@ -10,6 +10,7 @@ from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
 )
+from ops_pilot.models.incident_memory import IncidentMemory
 from ops_pilot.models.membership import Membership, MembershipRole
 from ops_pilot.models.order import OperationalOrder, OrderStatus
 from ops_pilot.models.organization import Organization
@@ -39,4 +40,5 @@ __all__ = [
     "ApprovalStatus",
     "PaymentTransactionStatus",
     "PaymentTransactionType",
+    "IncidentMemory",
 ]
