@@ -56,3 +56,47 @@ async def ensure_document_collection() -> None:
         field_name="document_id",
         field_schema=models.PayloadSchemaType.KEYWORD,
     )
+
+
+async def ensure_memory_collection() -> None:
+    settings = get_settings()
+    client = get_qdrant_client()
+
+    exists = await client.collection_exists(
+        collection_name=settings.qdrant_memory_collection_name,
+    )
+
+    if exists:
+        return
+
+    await client.create_collection(
+        collection_name=settings.qdrant_memory_collection_name,
+        vectors_config=models.VectorParams(
+            size=settings.embedding_dimension,
+            distance=models.Distance.COSINE,
+        ),
+    )
+
+    await client.create_payload_index(
+        collection_name=settings.qdrant_memory_collection_name,
+        field_name="organization_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+
+    await client.create_payload_index(
+        collection_name=settings.qdrant_memory_collection_name,
+        field_name="incident_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+
+    await client.create_payload_index(
+        collection_name=settings.qdrant_memory_collection_name,
+        field_name="subject_customer_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+
+    await client.create_payload_index(
+        collection_name=settings.qdrant_memory_collection_name,
+        field_name="category",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )

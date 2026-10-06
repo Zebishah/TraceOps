@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     qdrant_url: str
     qdrant_api_key: str
     qdrant_collection_name: str = "ops_pilot_document_chunks_v2"
+    qdrant_memory_collection_name: str = "ops_pilot_incident_memories_v1"
 
     mistral_api_key: str
     embedding_model: str = "mistral-embed"
