@@ -20,6 +20,9 @@ from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import (
     OperationalToolName,
@@ -51,6 +54,7 @@ def get_checkpoint_serializer() -> JsonPlusSerializer:
             IncidentPriority,
             IncidentCategory,
             RetrievalResult,
+            IncidentMemoryRetrievalResult,
             OperationalToolName,
             ToolCallRequest,
             ToolExecutionResult,

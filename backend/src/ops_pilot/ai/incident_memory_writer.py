@@ -79,6 +79,30 @@ VERIFIED ACTION EXECUTION:
 )
 
 
+def normalize_category(
+    category: IncidentCategory | str,
+) -> str:
+    if isinstance(
+        category,
+        IncidentCategory,
+    ):
+        return category.value
+
+    return str(category)
+
+
+def normalize_priority(
+    priority: IncidentPriority | str,
+) -> str:
+    if isinstance(
+        priority,
+        IncidentPriority,
+    ):
+        return priority.value
+
+    return str(priority)
+
+
 def format_refund_execution(
     execution: RefundExecutionResult | None,
 ) -> str:
@@ -86,11 +110,14 @@ def format_refund_execution(
         return "No verified write action was executed."
 
     return (
-        f"Source transaction: {execution.source_transaction_id}\n"
-        f"Refund transaction: {execution.refund_transaction_id}\n"
+        f"Source transaction: "
+        f"{execution.source_transaction_id}\n"
+        f"Refund transaction: "
+        f"{execution.refund_transaction_id}\n"
         f"Amount: {execution.amount}\n"
         f"Currency: {execution.currency}\n"
-        f"Already executed: {execution.already_executed}"
+        f"Already executed: "
+        f"{execution.already_executed}"
     )
 
 
@@ -98,8 +125,8 @@ async def generate_incident_memory(
     *,
     title: str,
     description: str,
-    category: IncidentCategory,
-    priority: IncidentPriority,
+    category: IncidentCategory | str,
+    priority: IncidentPriority | str,
     analysis: str,
     recommendation: str,
     tool_results: list[ToolExecutionResult],
@@ -115,12 +142,20 @@ async def generate_incident_memory(
 
     chain = INCIDENT_MEMORY_PROMPT | structured_model
 
+    category_value = normalize_category(
+        category,
+    )
+
+    priority_value = normalize_priority(
+        priority,
+    )
+
     result = await chain.ainvoke(
         {
             "title": title,
             "description": description,
-            "category": category.value,
-            "priority": priority.value,
+            "category": category_value,
+            "priority": priority_value,
             "analysis": analysis,
             "recommendation": recommendation,
             "tool_results": format_tool_results(

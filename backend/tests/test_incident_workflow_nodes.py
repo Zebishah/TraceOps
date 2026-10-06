@@ -25,7 +25,9 @@ from ops_pilot.schemas.incident_memories import (
     IncidentMemoryRetrievalResult,
 )
 from ops_pilot.schemas.retrieval import RetrievalResult
-from ops_pilot.workflows.incident.state import IncidentGraphContext
+from ops_pilot.workflows.incident.state import (
+    IncidentGraphContext,
+)
 
 
 def test_classify_incident_node_updates_state(
@@ -495,28 +497,51 @@ def test_retrieve_memories_node_updates_state(
 ) -> None:
     organization_id = uuid.uuid4()
     incident_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+    previous_incident_id = uuid.uuid4()
 
     expected = [
         IncidentMemoryRetrievalResult(
-            memory_id=uuid.uuid4(),
-            incident_id=uuid.uuid4(),
+            memory_id=memory_id,
+            incident_id=previous_incident_id,
             subject_customer_id=None,
             category="payment",
-            summary="Previous duplicate payment.",
-            resolution="Duplicate charge refunded.",
-            vector_score=0.94,
+            summary=("A previous customer was charged twice."),
+            resolution=("The duplicate charge was refunded."),
+            vector_score=0.92,
         )
     ]
 
     async def fake_retrieve_similar_incident_memories(
         **kwargs: object,
     ) -> list[IncidentMemoryRetrievalResult]:
+        assert kwargs["organization_id"] == organization_id
+
+        assert kwargs["current_incident_id"] == incident_id
+
+        assert kwargs["category"] == "payment"
+
+        assert "session" in kwargs
+
         return expected
 
     monkeypatch.setattr(
         nodes_module,
         "retrieve_similar_incident_memories",
         fake_retrieve_similar_incident_memories,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(
+            spec=AsyncSession,
+        ),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
     )
 
     result = asyncio.run(
@@ -526,9 +551,10 @@ def test_retrieve_memories_node_updates_state(
                 "incident_id": incident_id,
                 "workflow_thread_id": "test-thread",
                 "title": "Customer charged twice",
-                "description": "Two charges for one order.",
-                "category": IncidentCategory.PAYMENT,
-            }
+                "description": ("Two charges for one order."),
+                "category": (IncidentCategory.PAYMENT),
+            },
+            runtime,
         )
     )
 

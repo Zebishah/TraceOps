@@ -287,3 +287,66 @@ def test_generate_and_store_incident_memory_uses_ai_payload(
     asyncio.run(run())
 
     session.rollback.assert_awaited_once()
+
+
+def test_generate_memory_skips_ai_when_memory_exists(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(
+            spec=AsyncSession,
+        ),
+    )
+
+    existing_memory = IncidentMemory(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        incident_id=incident_id,
+        subject_customer_id=None,
+        category="payment",
+        summary="Existing memory.",
+        resolution="Already resolved.",
+    )
+
+    async def fake_get_incident_memory(
+        **kwargs: object,
+    ) -> IncidentMemory:
+        return existing_memory
+
+    generate_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        memory_service_module,
+        "get_incident_memory",
+        fake_get_incident_memory,
+    )
+
+    monkeypatch.setattr(
+        memory_service_module,
+        "generate_incident_memory",
+        generate_mock,
+    )
+
+    result = asyncio.run(
+        generate_and_store_incident_memory(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+            title="Duplicate payment",
+            description="Customer charged twice.",
+            category=(IncidentCategory.PAYMENT),
+            priority=(IncidentPriority.HIGH),
+            analysis="Confirmed duplicate.",
+            recommendation=("Refund duplicate."),
+            tool_results=[],
+            execution=None,
+        )
+    )
+
+    assert result is existing_memory
+
+    generate_mock.assert_not_awaited()

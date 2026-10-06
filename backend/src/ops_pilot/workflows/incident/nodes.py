@@ -94,18 +94,31 @@ async def retrieve_evidence_node(
 
 async def retrieve_memories_node(
     state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
     if "title" not in state or "description" not in state or "category" not in state:
         raise RuntimeError(
             "Memory retrieval received incomplete incident state",
         )
 
+    category = state["category"]
+
+    category_value = (
+        category.value
+        if hasattr(
+            category,
+            "value",
+        )
+        else str(category)
+    )
+
     memories = await retrieve_similar_incident_memories(
-        organization_id=state["organization_id"],
-        current_incident_id=state["incident_id"],
+        session=runtime.context.session,
+        organization_id=(state["organization_id"]),
+        current_incident_id=(state["incident_id"]),
         title=state["title"],
         description=state["description"],
-        category=state["category"].value,
+        category=category_value,
     )
 
     return {
@@ -581,8 +594,21 @@ async def write_incident_memory_node(
     state: IncidentInvestigationState,
     runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
+    status = state.get(
+        "status",
+    )
+
+    status_value = (
+        status.value
+        if isinstance(
+            status,
+            IncidentStatus,
+        )
+        else str(status)
+    )
+
     if (
-        state.get("status") != IncidentStatus.RESOLVED
+        status_value != IncidentStatus.RESOLVED.value
         or not state.get("refund_verified")
         or "title" not in state
         or "description" not in state
@@ -595,32 +621,55 @@ async def write_incident_memory_node(
             "Memory writing requires a verified resolved incident",
         )
 
-    memory = await generate_and_store_incident_memory(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
-        incident_id=state["incident_id"],
-        title=state["title"],
-        description=state["description"],
-        category=state["category"],
-        priority=state["priority"],
-        analysis=state["analysis"],
-        recommendation=state["recommended_action"],
-        tool_results=state.get(
-            "tool_results",
-            [],
-        ),
-        execution=state.get(
-            "refund_execution",
-        ),
-    )
+    try:
+        memory = await generate_and_store_incident_memory(
+            session=runtime.context.session,
+            organization_id=(state["organization_id"]),
+            incident_id=(state["incident_id"]),
+            title=state["title"],
+            description=state["description"],
+            category=state["category"],
+            priority=state["priority"],
+            analysis=state["analysis"],
+            recommendation=(state["recommended_action"]),
+            tool_results=state.get(
+                "tool_results",
+                [],
+            ),
+            execution=state.get(
+                "refund_execution",
+            ),
+        )
 
-    await index_incident_memory(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
-        incident_id=state["incident_id"],
-    )
+        memory_id = memory.id
+
+    except Exception:
+        # Memory is secondary.
+        # A successfully verified refund must
+        # remain successful even if memory
+        # generation/storage fails.
+        return {
+            "memory_id": None,
+            "memory_indexed": False,
+        }
+
+    try:
+        await index_incident_memory(
+            session=runtime.context.session,
+            organization_id=(state["organization_id"]),
+            incident_id=(state["incident_id"]),
+        )
+
+    except Exception:
+        # PostgreSQL memory exists, but Qdrant
+        # indexing failed. Future background
+        # processing can retry this.
+        return {
+            "memory_id": memory_id,
+            "memory_indexed": False,
+        }
 
     return {
-        "memory_id": memory.id,
+        "memory_id": memory_id,
         "memory_indexed": True,
     }

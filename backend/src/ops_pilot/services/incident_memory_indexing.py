@@ -42,10 +42,24 @@ async def index_incident_memory(
             "Incident memory must exist before indexing",
         )
 
+    # Copy every ORM value we need BEFORE rollback.
+    #
+    # session.rollback() expires SQLAlchemy ORM state.
+    # We must never access `memory.<field>` afterwards.
+    memory_id = memory.id
+    memory_organization_id = memory.organization_id
+    memory_incident_id = memory.incident_id
+    memory_subject_customer_id = memory.subject_customer_id
+    memory_category = memory.category
+    memory_summary = memory.summary
+    memory_resolution = memory.resolution
+
     text = build_memory_embedding_text(
         memory,
     )
 
+    # End the PostgreSQL transaction before waiting
+    # on Qdrant/Mistral.
     await session.rollback()
 
     await ensure_memory_collection()
@@ -63,26 +77,26 @@ async def index_incident_memory(
     client = get_qdrant_client()
 
     await client.upsert(
-        collection_name=settings.qdrant_memory_collection_name,
+        collection_name=(settings.qdrant_memory_collection_name),
         points=[
             models.PointStruct(
-                id=str(memory.id),
+                id=str(memory_id),
                 vector=vectors[0],
                 payload={
                     "organization_id": str(
-                        memory.organization_id,
+                        memory_organization_id,
                     ),
                     "incident_id": str(
-                        memory.incident_id,
+                        memory_incident_id,
                     ),
                     "subject_customer_id": (
-                        str(memory.subject_customer_id)
-                        if memory.subject_customer_id is not None
+                        str(memory_subject_customer_id)
+                        if memory_subject_customer_id is not None
                         else None
                     ),
-                    "category": memory.category,
-                    "summary": memory.summary,
-                    "resolution": memory.resolution,
+                    "category": memory_category,
+                    "summary": memory_summary,
+                    "resolution": memory_resolution,
                     "embedding_model": (settings.embedding_model),
                 },
             )
