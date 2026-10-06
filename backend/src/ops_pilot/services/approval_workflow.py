@@ -43,7 +43,8 @@ async def decide_and_resume_approval(
         decided_by_user_id=decided_by_user_id,
         payload=payload,
     )
-
+    if approval.status == ApprovalStatus.EXECUTED:
+        return approval
     if approval.decided_by_user_id is None:
         raise RuntimeError(
             "Recorded approval is missing reviewer identity",
