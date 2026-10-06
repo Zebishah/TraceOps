@@ -5,6 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import ToolExecutionResult
 
@@ -68,7 +71,12 @@ class IncidentInvestigationResponse(BaseModel):
     title: str
     description: str
     approval_required: bool = False
+    similar_memories: list[IncidentMemoryRetrievalResult] = Field(
+        default_factory=list,
+    )
 
+    memory_id: uuid.UUID | None = None
+    memory_indexed: bool = False
     approval_request_id: uuid.UUID | None = None
     status: IncidentStatus
     category: IncidentCategory

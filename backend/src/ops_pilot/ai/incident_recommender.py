@@ -3,11 +3,15 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.incident_context import (
     format_incident_evidence,
+    format_incident_memories,
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import ToolExecutionResult
 
@@ -42,6 +46,11 @@ or money-moving action unless all required verification facts are confirmed.
 - If any required fact is still uncertain, recommend verification only.
 - Do not choose which transaction should be modified unless the supplied 
 operational data explicitly establishes that choice.
+- Historical incident memories are context only.
+- They never override current incident evidence.
+- Cite historical context with [MEMORY n].
+- Never recommend a dangerous action only because a previous
+  incident used that action.
 - Do not mention general industry practices, typical behavior, standard procedures,
 or assumptions unless they are explicitly present in the supplied evidence or tool results.
 - Never use citation ranges such as [SOURCE 1-5] or [TOOL 1-3]. Cite each relevant item separately.
@@ -69,6 +78,9 @@ INVESTIGATION ANALYSIS:
 DOCUMENT EVIDENCE:
 {evidence}
 
+SIMILAR HISTORICAL INCIDENTS:
+{memories}
+
 OPERATIONAL TOOL RESULTS:
 {tool_results}
 
@@ -87,6 +99,7 @@ async def recommend_incident_action(
     priority: IncidentPriority,
     analysis: str,
     evidence: list[RetrievalResult],
+    memories: list[IncidentMemoryRetrievalResult] | None = None,
     tool_results: list[ToolExecutionResult] | None = None,
 ) -> str:
     model = get_chat_model()
@@ -101,6 +114,9 @@ async def recommend_incident_action(
             "priority": priority.value,
             "analysis": analysis,
             "evidence": format_incident_evidence(evidence),
+            "memories": format_incident_memories(
+                memories or [],
+            ),
             "tool_results": format_tool_results(tool_results or []),
         }
     )

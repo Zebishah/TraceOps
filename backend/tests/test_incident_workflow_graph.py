@@ -94,6 +94,12 @@ def test_incident_investigation_graph_runs_in_order(
             evidence,
         )
 
+    async def fake_retrieve_similar_incident_memories(
+        **kwargs: object,
+    ):
+        call_order.append("retrieve_memories")
+        return []
+
     async def fake_execute_operational_tool_call(
         *,
         session,
@@ -177,6 +183,7 @@ def test_incident_investigation_graph_runs_in_order(
         category,
         priority,
         evidence,
+        memories,
         tool_results,
     ):
         call_order.append("analyze")
@@ -191,6 +198,7 @@ def test_incident_investigation_graph_runs_in_order(
         priority,
         analysis,
         evidence,
+        memories,
         tool_results,
     ):
         call_order.append("recommend")
@@ -224,7 +232,11 @@ def test_incident_investigation_graph_runs_in_order(
         "classify_stored_incident",
         fake_classify_stored_incident,
     )
-
+    monkeypatch.setattr(
+        nodes_module,
+        "retrieve_similar_incident_memories",
+        fake_retrieve_similar_incident_memories,
+    )
     monkeypatch.setattr(
         nodes_module,
         "retrieve_incident_evidence",
@@ -282,6 +294,7 @@ def test_incident_investigation_graph_runs_in_order(
     assert call_order == [
         "classify",
         "retrieve",
+        "retrieve_memories",
         "list_customer_orders",
         "list_order_payments",
         "select_optional_tool",

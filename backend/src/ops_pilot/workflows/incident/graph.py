@@ -14,11 +14,13 @@ from ops_pilot.workflows.incident.nodes import (
     propose_action_node,
     recommend_action_node,
     retrieve_evidence_node,
+    retrieve_memories_node,
     route_after_action_proposal,
     route_after_approval_decision,
     route_after_tool_selection,
     select_operational_tool_node,
     verify_approved_action_node,
+    write_incident_memory_node,
 )
 from ops_pilot.workflows.incident.state import (
     IncidentGraphContext,
@@ -104,6 +106,15 @@ builder.add_node(
     "verify_approved_action",
     verify_approved_action_node,
 )
+builder.add_node(
+    "retrieve_memories",
+    retrieve_memories_node,
+)
+
+builder.add_node(
+    "write_incident_memory",
+    write_incident_memory_node,
+)
 # -------------------------
 # Investigation flow
 # -------------------------
@@ -120,6 +131,11 @@ builder.add_edge(
 
 builder.add_edge(
     "retrieve_evidence",
+    "retrieve_memories",
+)
+
+builder.add_edge(
+    "retrieve_memories",
     "select_operational_tool",
 )
 
@@ -192,6 +208,11 @@ builder.add_edge(
 
 builder.add_edge(
     "verify_approved_action",
+    "write_incident_memory",
+)
+
+builder.add_edge(
+    "write_incident_memory",
     END,
 )
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.workflows.incident.nodes as nodes_module
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.models.incident_memory import IncidentMemory
 from ops_pilot.schemas.action_execution import (
     RefundExecutionResult,
 )
@@ -19,6 +20,9 @@ from ops_pilot.schemas.approvals import (
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
+)
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
 )
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.workflows.incident.state import IncidentGraphContext
@@ -113,8 +117,10 @@ def test_analyze_incident_node_updates_state(
         category,
         priority,
         evidence,
+        memories,
         tool_results,
     ):
+        return "The evidence supports a duplicate payment [SOURCE 1]."
         return "The evidence supports a duplicate payment [SOURCE 1]."
 
     monkeypatch.setattr(
@@ -172,6 +178,7 @@ def test_recommend_action_node_updates_state(
         priority,
         analysis,
         evidence,
+        memories,
         tool_results,
     ):
         return "Verify the transactions before issuing a refund [SOURCE 1]."
@@ -481,3 +488,122 @@ def test_verify_approved_action_node_marks_resolved(
     assert result["refund_verified"] is True
 
     assert result["status"] == IncidentStatus.RESOLVED
+
+
+def test_retrieve_memories_node_updates_state(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    expected = [
+        IncidentMemoryRetrievalResult(
+            memory_id=uuid.uuid4(),
+            incident_id=uuid.uuid4(),
+            subject_customer_id=None,
+            category="payment",
+            summary="Previous duplicate payment.",
+            resolution="Duplicate charge refunded.",
+            vector_score=0.94,
+        )
+    ]
+
+    async def fake_retrieve_similar_incident_memories(
+        **kwargs: object,
+    ) -> list[IncidentMemoryRetrievalResult]:
+        return expected
+
+    monkeypatch.setattr(
+        nodes_module,
+        "retrieve_similar_incident_memories",
+        fake_retrieve_similar_incident_memories,
+    )
+
+    result = asyncio.run(
+        nodes_module.retrieve_memories_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": "test-thread",
+                "title": "Customer charged twice",
+                "description": "Two charges for one order.",
+                "category": IncidentCategory.PAYMENT,
+            }
+        )
+    )
+
+    assert result["similar_memories"] == expected
+
+
+def test_write_incident_memory_node_persists_and_indexes(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+
+    memory = IncidentMemory(
+        id=memory_id,
+        organization_id=organization_id,
+        incident_id=incident_id,
+        subject_customer_id=None,
+        category="payment",
+        summary="Duplicate payment confirmed.",
+        resolution="Duplicate charge refunded.",
+    )
+
+    async def fake_generate_and_store_incident_memory(
+        **kwargs: object,
+    ) -> IncidentMemory:
+        return memory
+
+    async def fake_index_incident_memory(
+        **kwargs: object,
+    ) -> int:
+        return 1
+
+    monkeypatch.setattr(
+        nodes_module,
+        "generate_and_store_incident_memory",
+        fake_generate_and_store_incident_memory,
+    )
+
+    monkeypatch.setattr(
+        nodes_module,
+        "index_incident_memory",
+        fake_index_incident_memory,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(spec=AsyncSession),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.write_incident_memory_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": "test-thread",
+                "title": "Customer charged twice",
+                "description": "Two charges appeared.",
+                "status": IncidentStatus.RESOLVED,
+                "category": IncidentCategory.PAYMENT,
+                "priority": IncidentPriority.HIGH,
+                "analysis": "Duplicate payment confirmed.",
+                "recommended_action": "Refund duplicate charge.",
+                "refund_verified": True,
+                "tool_results": [],
+            },
+            runtime,
+        )
+    )
+
+    assert result["memory_id"] == memory_id
+    assert result["memory_indexed"] is True

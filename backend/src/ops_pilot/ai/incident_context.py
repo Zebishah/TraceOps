@@ -1,3 +1,6 @@
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import ToolExecutionResult
 
@@ -35,6 +38,29 @@ def format_tool_results(
             f"Tool: {result.tool_name.value}\n"
             f"Success: {result.success}\n"
             f"Result:\n{result.content}"
+        )
+
+    return "\n\n".join(parts)
+
+
+def format_incident_memories(
+    memories: list[IncidentMemoryRetrievalResult],
+) -> str:
+    if not memories:
+        return "No similar historical incidents were retrieved."
+
+    parts: list[str] = []
+
+    for index, memory in enumerate(
+        memories,
+        start=1,
+    ):
+        parts.append(
+            f"[MEMORY {index}]\n"
+            f"Category: {memory.category}\n"
+            f"Summary: {memory.summary}\n"
+            f"Resolution: {memory.resolution}\n"
+            f"Similarity score: {memory.vector_score:.4f}"
         )
 
     return "\n\n".join(parts)

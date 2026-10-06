@@ -20,6 +20,9 @@ from ops_pilot.schemas.incident_actions import (
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
 )
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import (
     ToolCallRequest,
@@ -48,7 +51,10 @@ class IncidentInvestigationState(TypedDict):
     tool_round: NotRequired[int]
     pending_tool_call: NotRequired[ToolCallRequest | None]
     tool_results: NotRequired[list[ToolExecutionResult]]
+    similar_memories: NotRequired[list[IncidentMemoryRetrievalResult]]
 
+    memory_id: NotRequired[uuid.UUID | None]
+    memory_indexed: NotRequired[bool]
     needs_more_information: NotRequired[bool]
     clarification_question: NotRequired[str | None]
 

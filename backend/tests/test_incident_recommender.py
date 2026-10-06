@@ -8,6 +8,9 @@ from langchain_core.runnables import RunnableLambda
 import ops_pilot.ai.incident_recommender as recommender_module
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 
 
@@ -51,7 +54,15 @@ def test_recommend_incident_action_uses_analysis_and_evidence(
             reranker_score=0.97,
         )
     ]
-
+    memory = IncidentMemoryRetrievalResult(
+        memory_id=uuid.uuid4(),
+        incident_id=uuid.uuid4(),
+        subject_customer_id=None,
+        category="payment",
+        summary="A previous customer had two charges.",
+        resolution="The verified duplicate was refunded.",
+        vector_score=0.92,
+    )
     result = asyncio.run(
         recommender_module.recommend_incident_action(
             title="Customer charged twice",
@@ -60,6 +71,7 @@ def test_recommend_incident_action_uses_analysis_and_evidence(
             priority=IncidentPriority.HIGH,
             analysis=("The evidence supports a possible duplicate payment [SOURCE 1]."),
             evidence=evidence,
+            memories=[memory],
         )
     )
 
@@ -71,6 +83,8 @@ def test_recommend_incident_action_uses_analysis_and_evidence(
     assert "Customer charged twice" in captured["human"]
     assert "possible duplicate payment" in captured["human"]
     assert "[SOURCE 1]" in captured["human"]
+    assert "[MEMORY 1]" in captured["human"]
+    assert "previous customer" in captured["human"]
 
 
 def test_recommend_incident_action_rejects_empty_response(

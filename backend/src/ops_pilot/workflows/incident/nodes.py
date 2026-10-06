@@ -25,6 +25,11 @@ from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
 from ops_pilot.services.incident_evidence_sufficiency import has_required_operational_evidence
+from ops_pilot.services.incident_memories import generate_and_store_incident_memory
+from ops_pilot.services.incident_memory_indexing import index_incident_memory
+from ops_pilot.services.incident_memory_retrieval import (
+    retrieve_similar_incident_memories,
+)
 from ops_pilot.services.incident_tool_planning import (
     required_operational_tool,
     tool_call_already_executed,
@@ -87,6 +92,27 @@ async def retrieve_evidence_node(
     }
 
 
+async def retrieve_memories_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    if "title" not in state or "description" not in state or "category" not in state:
+        raise RuntimeError(
+            "Memory retrieval received incomplete incident state",
+        )
+
+    memories = await retrieve_similar_incident_memories(
+        organization_id=state["organization_id"],
+        current_incident_id=state["incident_id"],
+        title=state["title"],
+        description=state["description"],
+        category=state["category"].value,
+    )
+
+    return {
+        "similar_memories": memories,
+    }
+
+
 async def analyze_incident_node(
     state: IncidentInvestigationState,
 ) -> dict[str, object]:
@@ -107,6 +133,10 @@ async def analyze_incident_node(
         category=state["category"],
         priority=state["priority"],
         evidence=state["evidence"],
+        memories=state.get(
+            "similar_memories",
+            [],
+        ),
         tool_results=state.get(
             "tool_results",
             [],
@@ -140,6 +170,10 @@ async def recommend_action_node(
         priority=state["priority"],
         analysis=state["analysis"],
         evidence=state["evidence"],
+        memories=state.get(
+            "similar_memories",
+            [],
+        ),
         tool_results=state.get(
             "tool_results",
             [],
@@ -540,4 +574,53 @@ async def verify_approved_action_node(
     return {
         "refund_verified": True,
         "status": IncidentStatus.RESOLVED,
+    }
+
+
+async def write_incident_memory_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    if (
+        state.get("status") != IncidentStatus.RESOLVED
+        or not state.get("refund_verified")
+        or "title" not in state
+        or "description" not in state
+        or "category" not in state
+        or "priority" not in state
+        or "analysis" not in state
+        or "recommended_action" not in state
+    ):
+        raise RuntimeError(
+            "Memory writing requires a verified resolved incident",
+        )
+
+    memory = await generate_and_store_incident_memory(
+        session=runtime.context.session,
+        organization_id=state["organization_id"],
+        incident_id=state["incident_id"],
+        title=state["title"],
+        description=state["description"],
+        category=state["category"],
+        priority=state["priority"],
+        analysis=state["analysis"],
+        recommendation=state["recommended_action"],
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
+        execution=state.get(
+            "refund_execution",
+        ),
+    )
+
+    await index_incident_memory(
+        session=runtime.context.session,
+        organization_id=state["organization_id"],
+        incident_id=state["incident_id"],
+    )
+
+    return {
+        "memory_id": memory.id,
+        "memory_indexed": True,
     }

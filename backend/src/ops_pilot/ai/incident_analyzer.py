@@ -3,11 +3,15 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.incident_context import (
     format_incident_evidence,
+    format_incident_memories,
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
+from ops_pilot.schemas.incident_memories import (
+    IncidentMemoryRetrievalResult,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.tools.schemas import ToolExecutionResult
 
@@ -34,6 +38,11 @@ Rules:
 - Do not recommend actions or execute anything.
 - Keep the analysis clear and concise.
 - Separate observed facts from inferred explanations.
+- Historical incident memories are context only.
+- They do not prove facts about the current incident.
+- Cite historical context using [MEMORY n].
+- Never use a previous resolution as proof that the same action
+  is correct for the current incident.
 - Never state a root cause unless the supplied evidence or tool results explicitly prove it.
 - Multiple successful charges prove that multiple charges occurred; they do not by themselves
 prove why they occurred.
@@ -57,6 +66,9 @@ PRIORITY:
 DOCUMENT EVIDENCE:
 {evidence}
 
+SIMILAR HISTORICAL INCIDENTS:
+{memories}
+
 OPERATIONAL TOOL RESULTS:
 {tool_results}
 
@@ -74,6 +86,7 @@ async def analyze_incident(
     category: IncidentCategory,
     priority: IncidentPriority,
     evidence: list[RetrievalResult],
+    memories: list[IncidentMemoryRetrievalResult] | None = None,
     tool_results: list[ToolExecutionResult] | None = None,
 ) -> str:
     model = get_chat_model()
@@ -87,6 +100,9 @@ async def analyze_incident(
             "category": category.value,
             "priority": priority.value,
             "evidence": format_incident_evidence(evidence),
+            "memories": format_incident_memories(
+                memories or [],
+            ),
             "tool_results": format_tool_results(tool_results or []),
         }
     )
