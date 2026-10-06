@@ -11,10 +11,12 @@ class IncidentMemoryCreate(BaseModel):
 
     summary: str = Field(
         min_length=1,
+        max_length=2000,
     )
 
     resolution: str = Field(
         min_length=1,
+        max_length=2000,
     )
 
 
