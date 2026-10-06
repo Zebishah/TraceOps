@@ -27,6 +27,7 @@ dependencies = [
     "pypdf>=6.19.0",
     "python-multipart>=0.0.32",
     "qdrant-client>=1.19.1",
+    "redis>=5",
     "sqlalchemy[asyncio]>=2.0,<2.2",
     "uvicorn[standard]",
 ]
