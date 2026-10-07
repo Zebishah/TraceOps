@@ -37,15 +37,17 @@ def make_job(
     organization_id: uuid.UUID,
     job_id: uuid.UUID,
     document_id: uuid.UUID,
+    dispatch_id: uuid.UUID | None = None,
 ) -> BackgroundJob:
     return BackgroundJob(
         id=job_id,
         organization_id=organization_id,
         created_by_user_id=None,
-        job_type=(BackgroundJobType.DOCUMENT_PROCESSING),
+        job_type=BackgroundJobType.DOCUMENT_PROCESSING,
         status=BackgroundJobStatus.QUEUED,
         resource_id=document_id,
         idempotency_key=(f"document-processing:{document_id}"),
+        dispatch_id=(dispatch_id if dispatch_id is not None else uuid.uuid4()),
         progress_percent=0,
     )
 
@@ -56,11 +58,13 @@ def test_mark_job_processing(
     organization_id = uuid.uuid4()
     job_id = uuid.uuid4()
     document_id = uuid.uuid4()
+    dispatch_id = uuid.uuid4()
 
     job = make_job(
         organization_id=organization_id,
         job_id=job_id,
         document_id=document_id,
+        dispatch_id=dispatch_id,
     )
 
     session, _ = make_session()
@@ -99,6 +103,7 @@ def test_mark_job_processing(
             organization_id=organization_id,
             job_id=job_id,
             document_id=document_id,
+            dispatch_id=dispatch_id,
         )
     )
 
@@ -122,11 +127,13 @@ def test_mark_job_processing_rejects_wrong_resource(
 
     actual_document_id = uuid.uuid4()
     requested_document_id = uuid.uuid4()
+    dispatch_id = uuid.uuid4()
 
     job = make_job(
         organization_id=organization_id,
         job_id=job_id,
         document_id=actual_document_id,
+        dispatch_id=dispatch_id,
     )
 
     session, _ = make_session()
@@ -158,6 +165,7 @@ def test_mark_job_processing_rejects_wrong_resource(
                 organization_id=organization_id,
                 job_id=job_id,
                 document_id=requested_document_id,
+                dispatch_id=dispatch_id,
             )
         except RuntimeError as exc:
             assert str(exc) == ("Background job resource mismatch")
@@ -231,11 +239,14 @@ def test_extract_failure_event_data() -> None:
     organization_id = uuid.uuid4()
     document_id = uuid.uuid4()
 
+    dispatch_id = uuid.uuid4()
+
     result = module._extract_failure_event_data(
         {
             "event": {
                 "data": {
                     "job_id": str(job_id),
+                    "dispatch_id": str(dispatch_id),
                     "organization_id": str(organization_id),
                     "resource_id": str(document_id),
                 }
@@ -245,6 +256,7 @@ def test_extract_failure_event_data() -> None:
 
     assert result is not None
     assert result.job_id == job_id
+    assert result.dispatch_id == dispatch_id
     assert result.organization_id == organization_id
     assert result.resource_id == document_id
 

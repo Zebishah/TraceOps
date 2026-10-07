@@ -9,6 +9,7 @@ from ops_pilot.inngest.functions.document_processing import (
 )
 from ops_pilot.models.background_job import (
     BackgroundJob,
+    BackgroundJobStatus,
     BackgroundJobType,
 )
 from ops_pilot.schemas.background_jobs import (
@@ -16,6 +17,7 @@ from ops_pilot.schemas.background_jobs import (
 )
 from ops_pilot.services.background_jobs import (
     create_background_job,
+    prepare_background_job_dispatch,
     set_background_job_event_id,
 )
 from ops_pilot.services.document_processing import (
@@ -30,9 +32,6 @@ async def enqueue_document_processing(
     user_id: uuid.UUID,
     document_id: uuid.UUID,
 ) -> BackgroundJob:
-    # Tenant-safe validation:
-    # this raises DocumentNotFoundError if the document
-    # does not belong to this organization.
     await get_document(
         session=session,
         organization_id=organization_id,
@@ -48,20 +47,31 @@ async def enqueue_document_processing(
         idempotency_key=(f"document-processing:{document_id}"),
     )
 
-    # If we already successfully dispatched this job,
-    # don't create another event.
-    if job.inngest_event_id is not None:
-        return job
+    # Active/completed job already exists.
+    # Do not enqueue duplicate work.
+    if job.status in {
+        BackgroundJobStatus.QUEUED,
+        BackgroundJobStatus.PROCESSING,
+        BackgroundJobStatus.SUCCEEDED,
+    }:
+        if job.dispatch_id is not None:
+            return job
+
+    dispatch_id = await prepare_background_job_dispatch(
+        session=session,
+        job=job,
+    )
 
     event_data = BackgroundJobEventData(
         job_id=job.id,
+        dispatch_id=dispatch_id,
         organization_id=organization_id,
         resource_id=document_id,
     )
 
     event_ids = await inngest_client.send(
         inngest.Event(
-            id=str(job.id),
+            id=str(dispatch_id),
             name=DOCUMENT_PROCESSING_EVENT,
             data=event_data.model_dump(
                 mode="json",

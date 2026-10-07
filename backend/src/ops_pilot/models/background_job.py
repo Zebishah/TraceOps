@@ -149,3 +149,9 @@ class BackgroundJob(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    dispatch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )

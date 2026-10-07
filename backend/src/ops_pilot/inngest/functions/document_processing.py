@@ -56,11 +56,21 @@ async def _get_document_job(
         return job
 
 
+def _validate_current_dispatch(
+    *,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+) -> None:
+    if job.dispatch_id != dispatch_id:
+        raise RuntimeError("Background job dispatch mismatch")
+
+
 async def _mark_job_processing(
     *,
     organization_id: uuid.UUID,
     job_id: uuid.UUID,
     document_id: uuid.UUID,
+    dispatch_id: uuid.UUID,
 ) -> dict[str, object]:
     async with async_session_factory() as session:
         job = await get_background_job(
@@ -77,6 +87,11 @@ async def _mark_job_processing(
 
         if job.resource_id != document_id:
             raise RuntimeError("Background job resource mismatch")
+
+        _validate_current_dispatch(
+            job=job,
+            dispatch_id=dispatch_id,
+        )
 
         if job.status == BackgroundJobStatus.SUCCEEDED:
             return {
@@ -292,7 +307,7 @@ async def document_processing_on_failure(
         event=DOCUMENT_PROCESSING_EVENT,
     ),
     retries=4,
-    idempotency="event.data.job_id",
+    idempotency="event.data.dispatch_id",
     on_failure=document_processing_on_failure,
 )
 async def process_document_background(
@@ -309,6 +324,7 @@ async def process_document_background(
             organization_id=organization_id,
             job_id=job_id,
             document_id=document_id,
+            dispatch_id=event_data.dispatch_id,
         )
 
     processing_result = await ctx.step.run(

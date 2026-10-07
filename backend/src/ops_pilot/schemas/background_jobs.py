@@ -38,5 +38,6 @@ class BackgroundJobResponse(BaseModel):
 
 class BackgroundJobEventData(BaseModel):
     job_id: uuid.UUID
+    dispatch_id: uuid.UUID
     organization_id: uuid.UUID
     resource_id: uuid.UUID

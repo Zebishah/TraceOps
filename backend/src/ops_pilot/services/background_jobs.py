@@ -142,3 +142,24 @@ async def set_background_job_event_id(
     job.inngest_event_id = event_id
 
     await session.commit()
+
+
+async def prepare_background_job_dispatch(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+) -> uuid.UUID:
+    dispatch_id = uuid.uuid4()
+
+    job.dispatch_id = dispatch_id
+    job.inngest_event_id = None
+
+    job.status = BackgroundJobStatus.QUEUED
+    job.progress_percent = 0
+    job.error_message = None
+    job.started_at = None
+    job.completed_at = None
+
+    await session.commit()
+
+    return dispatch_id

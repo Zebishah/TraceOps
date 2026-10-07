@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, Mock
 
@@ -15,6 +16,7 @@ from ops_pilot.services.background_jobs import (
     mark_background_job_failed,
     mark_background_job_processing,
     mark_background_job_succeeded,
+    prepare_background_job_dispatch,
 )
 
 
@@ -185,5 +187,41 @@ def test_background_job_failure() -> None:
         assert job.error_message == "Qdrant unavailable"
 
         assert job.completed_at is not None
+
+    asyncio.run(run())
+
+
+def test_prepare_background_job_dispatch_resets_failed_job() -> None:
+    session, _ = make_session()
+
+    job = BackgroundJob(
+        organization_id=uuid.uuid4(),
+        created_by_user_id=None,
+        job_type=BackgroundJobType.DOCUMENT_PROCESSING,
+        status=BackgroundJobStatus.FAILED,
+        resource_id=uuid.uuid4(),
+        idempotency_key="retry-job",
+        progress_percent=60,
+        error_message="Qdrant unavailable",
+        completed_at=datetime.now(
+            UTC,
+        ),
+    )
+
+    async def run() -> None:
+        dispatch_id = await prepare_background_job_dispatch(
+            session=session,
+            job=job,
+        )
+
+        assert job.dispatch_id == dispatch_id
+
+        assert job.status == BackgroundJobStatus.QUEUED
+
+        assert job.progress_percent == 0
+        assert job.error_message is None
+        assert job.started_at is None
+        assert job.completed_at is None
+        assert job.inngest_event_id is None
 
     asyncio.run(run())
