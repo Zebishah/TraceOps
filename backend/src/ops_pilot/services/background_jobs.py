@@ -131,3 +131,14 @@ async def update_background_job_progress(
     job.progress_percent = progress_percent
 
     await session.commit()
+
+
+async def set_background_job_event_id(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    event_id: str,
+) -> None:
+    job.inngest_event_id = event_id
+
+    await session.commit()

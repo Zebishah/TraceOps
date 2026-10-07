@@ -8,19 +8,22 @@ from ops_pilot.api.dependencies import (
     CurrentUser,
     DbSession,
 )
+from ops_pilot.schemas.background_jobs import (
+    BackgroundJobResponse,
+)
 from ops_pilot.schemas.chunks import DocumentChunk
 from ops_pilot.schemas.documents import (
     DocumentIndexResponse,
     DocumentResponse,
+)
+from ops_pilot.services.background_job_dispatch import (
+    enqueue_document_processing,
 )
 from ops_pilot.services.document_chunking import (
     prepare_document_chunks,
 )
 from ops_pilot.services.document_indexing import (
     index_document,
-)
-from ops_pilot.services.document_processing import (
-    process_document,
 )
 from ops_pilot.services.documents import create_document
 
@@ -62,7 +65,8 @@ async def upload_document(
 
 @router.post(
     "/{document_id}/process",
-    response_model=DocumentResponse,
+    response_model=BackgroundJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def process_uploaded_document(
     organization_id: uuid.UUID,
@@ -70,24 +74,16 @@ async def process_uploaded_document(
     current_user: CurrentUser,
     membership: CurrentMembership,
     session: DbSession,
-) -> DocumentResponse:
-    document = await process_document(
+) -> BackgroundJobResponse:
+    job = await enqueue_document_processing(
         session=session,
         organization_id=organization_id,
+        user_id=current_user.id,
         document_id=document_id,
     )
 
-    return DocumentResponse(
-        id=document.id,
-        organization_id=document.organization_id,
-        uploaded_by_user_id=document.uploaded_by_user_id,
-        original_filename=document.original_filename,
-        mime_type=document.mime_type,
-        size_bytes=document.size_bytes,
-        checksum_sha256=document.checksum_sha256,
-        status=document.status,
-        failure_reason=document.failure_reason,
-        created_at=document.created_at,
+    return BackgroundJobResponse.model_validate(
+        job,
     )
 
 

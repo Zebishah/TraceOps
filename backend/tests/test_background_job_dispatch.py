@@ -1,0 +1,178 @@
+import asyncio
+import uuid
+from typing import cast
+from unittest.mock import AsyncMock
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import ops_pilot.services.background_job_dispatch as module
+from ops_pilot.models.background_job import (
+    BackgroundJob,
+    BackgroundJobStatus,
+    BackgroundJobType,
+)
+
+
+def make_session() -> tuple[
+    AsyncSession,
+    AsyncMock,
+]:
+    session_mock = AsyncMock(
+        spec=AsyncSession,
+    )
+
+    return (
+        cast(
+            AsyncSession,
+            session_mock,
+        ),
+        session_mock,
+    )
+
+
+def make_job(
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> BackgroundJob:
+    return BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        created_by_user_id=user_id,
+        job_type=(BackgroundJobType.DOCUMENT_PROCESSING),
+        status=BackgroundJobStatus.QUEUED,
+        resource_id=document_id,
+        idempotency_key=(f"document-processing:{document_id}"),
+        progress_percent=0,
+    )
+
+
+def test_enqueue_document_processing(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    job = make_job(
+        organization_id=organization_id,
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+    session, _ = make_session()
+
+    get_document_mock = AsyncMock()
+    create_job_mock = AsyncMock(
+        return_value=job,
+    )
+    set_event_id_mock = AsyncMock()
+
+    send_mock = AsyncMock(
+        return_value=["evt_test"],
+    )
+
+    monkeypatch.setattr(
+        module,
+        "get_document",
+        get_document_mock,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "create_background_job",
+        create_job_mock,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "set_background_job_event_id",
+        set_event_id_mock,
+    )
+
+    monkeypatch.setattr(
+        module.inngest_client,
+        "send",
+        send_mock,
+    )
+
+    result = asyncio.run(
+        module.enqueue_document_processing(
+            session=session,
+            organization_id=organization_id,
+            user_id=user_id,
+            document_id=document_id,
+        )
+    )
+
+    assert result is job
+
+    get_document_mock.assert_awaited_once_with(
+        session=session,
+        organization_id=organization_id,
+        document_id=document_id,
+    )
+
+    create_job_mock.assert_awaited_once()
+
+    send_mock.assert_awaited_once()
+
+    set_event_id_mock.assert_awaited_once_with(
+        session=session,
+        job=job,
+        event_id="evt_test",
+    )
+
+
+def test_existing_dispatched_job_is_reused(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    job = make_job(
+        organization_id=organization_id,
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+    job.inngest_event_id = "evt_existing"
+
+    session, _ = make_session()
+
+    monkeypatch.setattr(
+        module,
+        "get_document",
+        AsyncMock(),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "create_background_job",
+        AsyncMock(
+            return_value=job,
+        ),
+    )
+
+    send_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        module.inngest_client,
+        "send",
+        send_mock,
+    )
+
+    result = asyncio.run(
+        module.enqueue_document_processing(
+            session=session,
+            organization_id=organization_id,
+            user_id=user_id,
+            document_id=document_id,
+        )
+    )
+
+    assert result is job
+
+    send_mock.assert_not_awaited()
