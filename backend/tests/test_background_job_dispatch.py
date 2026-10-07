@@ -368,3 +368,96 @@ def test_failed_document_job_is_redispatched(
         job=job,
         event_id="evt_new",
     )
+
+
+def test_enqueue_memory_indexing(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    job = BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        status=BackgroundJobStatus.QUEUED,
+        resource_id=incident_id,
+        idempotency_key=(f"memory-indexing:{incident_id}"),
+        dispatch_id=None,
+        progress_percent=0,
+    )
+
+    session, _ = make_session()
+
+    create_job_mock = AsyncMock(
+        return_value=job,
+    )
+
+    dispatch_id = uuid.uuid4()
+
+    prepare_mock = AsyncMock(
+        return_value=dispatch_id,
+    )
+
+    send_mock = AsyncMock(
+        return_value=["evt_memory"],
+    )
+
+    set_event_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        module,
+        "create_background_job",
+        create_job_mock,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "prepare_background_job_dispatch",
+        prepare_mock,
+    )
+
+    monkeypatch.setattr(
+        module.inngest_client,
+        "send",
+        send_mock,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "set_background_job_event_id",
+        set_event_mock,
+    )
+
+    result = asyncio.run(
+        module.enqueue_memory_indexing(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+        )
+    )
+
+    assert result is job
+
+    create_job_mock.assert_awaited_once_with(
+        session=session,
+        organization_id=organization_id,
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        resource_id=incident_id,
+        idempotency_key=(f"memory-indexing:{incident_id}"),
+    )
+
+    prepare_mock.assert_awaited_once_with(
+        session=session,
+        job=job,
+    )
+
+    send_mock.assert_awaited_once()
+
+    set_event_mock.assert_awaited_once_with(
+        session=session,
+        job=job,
+        event_id="evt_memory",
+    )

@@ -24,6 +24,8 @@ from ops_pilot.services.document_processing import (
     get_document,
 )
 
+MEMORY_INDEXING_EVENT = "ops_pilot/memory.indexing.requested"
+
 
 async def enqueue_document_processing(
     *,
@@ -77,6 +79,68 @@ async def enqueue_document_processing(
         inngest.Event(
             id=str(dispatch_id),
             name=DOCUMENT_PROCESSING_EVENT,
+            data=event_data.model_dump(
+                mode="json",
+            ),
+        )
+    )
+
+    if not event_ids:
+        raise RuntimeError("Inngest did not return an event ID")
+
+    await set_background_job_event_id(
+        session=session,
+        job=job,
+        event_id=event_ids[0],
+    )
+
+    return job
+
+
+async def enqueue_memory_indexing(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+) -> BackgroundJob:
+    job = await create_background_job(
+        session=session,
+        organization_id=organization_id,
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        resource_id=incident_id,
+        idempotency_key=(f"memory-indexing:{incident_id}"),
+    )
+
+    if job.status in {
+        BackgroundJobStatus.PROCESSING,
+        BackgroundJobStatus.SUCCEEDED,
+    }:
+        return job
+
+    if job.status == BackgroundJobStatus.QUEUED and job.dispatch_id is not None:
+        if job.inngest_event_id is not None:
+            return job
+
+        dispatch_id = job.dispatch_id
+
+    else:
+        dispatch_id = await prepare_background_job_dispatch(
+            session=session,
+            job=job,
+        )
+
+    event_data = BackgroundJobEventData(
+        job_id=job.id,
+        dispatch_id=dispatch_id,
+        organization_id=organization_id,
+        resource_id=incident_id,
+    )
+
+    event_ids = await inngest_client.send(
+        inngest.Event(
+            id=str(dispatch_id),
+            name=MEMORY_INDEXING_EVENT,
             data=event_data.model_dump(
                 mode="json",
             ),

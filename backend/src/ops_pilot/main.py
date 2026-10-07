@@ -17,6 +17,9 @@ from ops_pilot.inngest.functions.document_processing import (
 from ops_pilot.inngest.functions.health import (
     background_health_check,
 )
+from ops_pilot.inngest.functions.memory_indexing import (
+    index_incident_memory_background,
+)
 from ops_pilot.vectorstore.qdrant import close_qdrant_client
 
 
@@ -41,10 +44,7 @@ def create_app() -> FastAPI:
     inngest.fast_api.serve(
         application,
         inngest_client,
-        [
-            background_health_check,
-            process_document_background,
-        ],
+        [background_health_check, process_document_background, index_incident_memory_background],
     )
     register_exception_handlers(
         application,

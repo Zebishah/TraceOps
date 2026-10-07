@@ -18,6 +18,9 @@ from ops_pilot.schemas.approvals import (
 from ops_pilot.services.approvals import (
     create_or_get_pending_approval,
 )
+from ops_pilot.services.background_job_dispatch import (
+    enqueue_memory_indexing,
+)
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
@@ -644,10 +647,6 @@ async def write_incident_memory_node(
         memory_id = memory.id
 
     except Exception:
-        # Memory is secondary.
-        # A successfully verified refund must
-        # remain successful even if memory
-        # generation/storage fails.
         return {
             "memory_id": None,
             "memory_indexed": False,
@@ -661,9 +660,15 @@ async def write_incident_memory_node(
         )
 
     except Exception:
-        # PostgreSQL memory exists, but Qdrant
-        # indexing failed. Future background
-        # processing can retry this.
+        try:
+            await enqueue_memory_indexing(
+                session=runtime.context.session,
+                organization_id=(state["organization_id"]),
+                incident_id=(state["incident_id"]),
+            )
+        except Exception:
+            pass
+
         return {
             "memory_id": memory_id,
             "memory_indexed": False,
