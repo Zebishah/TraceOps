@@ -38,7 +38,8 @@ from ops_pilot.services.incident_evidence import (
 from ops_pilot.services.incident_investigation import investigate_incident
 from ops_pilot.services.incidents import (
     create_incident,
-    get_incident,
+    get_incident_response_cached,
+    invalidate_incident_cache,
     list_incidents,
 )
 
@@ -96,13 +97,11 @@ async def get_incident_endpoint(
     membership: CurrentMembership,
     session: DbSession,
 ) -> IncidentResponse:
-    incident = await get_incident(
+    return await get_incident_response_cached(
         session=session,
         organization_id=organization_id,
         incident_id=incident_id,
     )
-
-    return IncidentResponse.model_validate(incident)
 
 
 @router.post(
@@ -120,7 +119,10 @@ async def classify_incident_endpoint(
         organization_id=organization_id,
         incident_id=incident_id,
     )
-
+    await invalidate_incident_cache(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
     return IncidentClassificationResponse(
         incident_id=incident.id,
         status=incident.status,
@@ -163,11 +165,18 @@ async def investigate_incident_endpoint(
     membership: CurrentMembership,
     session: DbSession,
 ) -> IncidentInvestigationResponse:
-    return await investigate_incident(
+    result = await investigate_incident(
         session=session,
         organization_id=organization_id,
         incident_id=incident_id,
     )
+
+    await invalidate_incident_cache(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    return result
 
 
 @router.get(
@@ -226,7 +235,10 @@ async def decide_approval_endpoint(
         decided_by_user_id=current_user.id,
         payload=payload,
     )
-
+    await invalidate_incident_cache(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
     return ApprovalResponse.model_validate(
         approval,
     )

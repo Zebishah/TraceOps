@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     database_url: str
-
+    redis_url: str
+    redis_key_prefix: str = "ops_pilot"
+    redis_default_ttl_seconds: int = 300
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
