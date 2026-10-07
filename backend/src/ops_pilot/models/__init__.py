@@ -3,6 +3,11 @@ from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from ops_pilot.models.background_job import (
+    BackgroundJob,
+    BackgroundJobStatus,
+    BackgroundJobType,
+)
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.document import Document, DocumentStatus
 from ops_pilot.models.incident import (
@@ -41,4 +46,7 @@ __all__ = [
     "PaymentTransactionStatus",
     "PaymentTransactionType",
     "IncidentMemory",
+    "BackgroundJob",
+    "BackgroundJobStatus",
+    "BackgroundJobType",
 ]
