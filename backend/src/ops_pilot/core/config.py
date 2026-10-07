@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = "ops_pilot_document_chunks_v2"
     qdrant_memory_collection_name: str = "ops_pilot_incident_memories_v1"
 
+    inngest_event_key: str | None = None
+    inngest_signing_key: str | None = None
+    inngest_dev: bool = True
+
     mistral_api_key: str
     embedding_model: str = "mistral-embed"
     embedding_dimension: int = 1024

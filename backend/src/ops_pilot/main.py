@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import inngest.fast_api
 from fastapi import FastAPI
 
 from ops_pilot.ai.embeddings import close_mistral_embedding_client
@@ -9,6 +10,10 @@ from ops_pilot.api.exception_handlers import register_exception_handlers
 from ops_pilot.api.router import api_router
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
+from ops_pilot.inngest.client import inngest_client
+from ops_pilot.inngest.functions.health import (
+    background_health_check,
+)
 from ops_pilot.vectorstore.qdrant import close_qdrant_client
 
 
@@ -30,7 +35,13 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         lifespan=lifespan,
     )
-
+    inngest.fast_api.serve(
+        application,
+        inngest_client,
+        [
+            background_health_check,
+        ],
+    )
     register_exception_handlers(
         application,
     )
