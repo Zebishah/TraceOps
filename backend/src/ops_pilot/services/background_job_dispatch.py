@@ -50,17 +50,21 @@ async def enqueue_document_processing(
     # Active/completed job already exists.
     # Do not enqueue duplicate work.
     if job.status in {
-        BackgroundJobStatus.QUEUED,
         BackgroundJobStatus.PROCESSING,
         BackgroundJobStatus.SUCCEEDED,
     }:
-        if job.dispatch_id is not None:
+        return job
+
+    if job.status == BackgroundJobStatus.QUEUED and job.dispatch_id is not None:
+        if job.inngest_event_id is not None:
             return job
 
-    dispatch_id = await prepare_background_job_dispatch(
-        session=session,
-        job=job,
-    )
+        dispatch_id = job.dispatch_id
+    else:
+        dispatch_id = await prepare_background_job_dispatch(
+            session=session,
+            job=job,
+        )
 
     event_data = BackgroundJobEventData(
         job_id=job.id,

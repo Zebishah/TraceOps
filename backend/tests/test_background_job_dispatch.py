@@ -201,6 +201,88 @@ def test_existing_dispatched_job_is_reused(
     send_mock.assert_not_awaited()
 
 
+def test_queued_job_without_event_id_resends_same_dispatch(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    dispatch_id = uuid.uuid4()
+
+    job = make_job(
+        organization_id=organization_id,
+        user_id=user_id,
+        document_id=document_id,
+        dispatch_id=dispatch_id,
+    )
+
+    job.status = BackgroundJobStatus.QUEUED
+    job.inngest_event_id = None
+
+    session, _ = make_session()
+
+    monkeypatch.setattr(
+        module,
+        "get_document",
+        AsyncMock(),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "create_background_job",
+        AsyncMock(
+            return_value=job,
+        ),
+    )
+
+    prepare_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        module,
+        "prepare_background_job_dispatch",
+        prepare_mock,
+    )
+
+    send_mock = AsyncMock(
+        return_value=["evt_recovered"],
+    )
+
+    monkeypatch.setattr(
+        module.inngest_client,
+        "send",
+        send_mock,
+    )
+
+    set_event_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        module,
+        "set_background_job_event_id",
+        set_event_mock,
+    )
+
+    result = asyncio.run(
+        module.enqueue_document_processing(
+            session=session,
+            organization_id=organization_id,
+            user_id=user_id,
+            document_id=document_id,
+        )
+    )
+
+    assert result is job
+
+    prepare_mock.assert_not_awaited()
+
+    send_mock.assert_awaited_once()
+
+    set_event_mock.assert_awaited_once_with(
+        session=session,
+        job=job,
+        event_id="evt_recovered",
+    )
+
+
 def test_failed_document_job_is_redispatched(
     monkeypatch,
 ) -> None:
