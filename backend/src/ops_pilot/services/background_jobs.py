@@ -87,6 +87,7 @@ async def mark_background_job_processing(
         )
 
     await session.commit()
+    await session.refresh(job)
 
 
 async def mark_background_job_succeeded(
@@ -102,6 +103,7 @@ async def mark_background_job_succeeded(
     )
 
     await session.commit()
+    await session.refresh(job)
 
 
 async def mark_background_job_failed(
@@ -117,6 +119,7 @@ async def mark_background_job_failed(
     )
 
     await session.commit()
+    await session.refresh(job)
 
 
 async def update_background_job_progress(
@@ -131,6 +134,7 @@ async def update_background_job_progress(
     job.progress_percent = progress_percent
 
     await session.commit()
+    await session.refresh(job)
 
 
 async def set_background_job_event_id(
@@ -142,6 +146,7 @@ async def set_background_job_event_id(
     job.inngest_event_id = event_id
 
     await session.commit()
+    await session.refresh(job)
 
 
 async def prepare_background_job_dispatch(
@@ -161,5 +166,6 @@ async def prepare_background_job_dispatch(
     job.completed_at = None
 
     await session.commit()
+    await session.refresh(job)
 
     return dispatch_id
