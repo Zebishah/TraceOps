@@ -18,7 +18,7 @@ from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
 )
-from ops_pilot.schemas.incidents import IncidentInvestigationResponse
+from ops_pilot.schemas.incidents import IncidentInvestigationResponse, IncidentResponse
 from ops_pilot.schemas.retrieval import RetrievalResult
 
 client = TestClient(app)
@@ -151,7 +151,7 @@ def test_list_incidents(monkeypatch) -> None:
 
 
 def test_get_incident(monkeypatch) -> None:
-    async def fake_get_incident(
+    async def fake_get_incident_response_cached(
         *,
         session,
         organization_id,
@@ -160,12 +160,12 @@ def test_get_incident(monkeypatch) -> None:
         assert organization_id == ORGANIZATION_ID
         assert incident_id == INCIDENT_ID
 
-        return make_incident()
+        return IncidentResponse.model_validate(make_incident())
 
     monkeypatch.setattr(
         incident_routes,
-        "get_incident",
-        fake_get_incident,
+        "get_incident_response_cached",
+        fake_get_incident_response_cached,
     )
 
     set_authenticated_dependencies()
@@ -181,8 +181,10 @@ def test_get_incident(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_get_incident_returns_404(monkeypatch) -> None:
-    async def fake_get_incident(
+def test_get_incident_returns_404(
+    monkeypatch,
+) -> None:
+    async def fake_get_incident_response_cached(
         *,
         session,
         organization_id,
@@ -192,8 +194,8 @@ def test_get_incident_returns_404(monkeypatch) -> None:
 
     monkeypatch.setattr(
         incident_routes,
-        "get_incident",
-        fake_get_incident,
+        "get_incident_response_cached",
+        fake_get_incident_response_cached,
     )
 
     set_authenticated_dependencies()
