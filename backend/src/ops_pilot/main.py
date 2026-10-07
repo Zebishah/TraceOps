@@ -11,6 +11,9 @@ from ops_pilot.api.router import api_router
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
 from ops_pilot.inngest.client import inngest_client
+from ops_pilot.inngest.functions.document_processing import (
+    process_document_background,
+)
 from ops_pilot.inngest.functions.health import (
     background_health_check,
 )
@@ -40,6 +43,7 @@ def create_app() -> FastAPI:
         inngest_client,
         [
             background_health_check,
+            process_document_background,
         ],
     )
     register_exception_handlers(

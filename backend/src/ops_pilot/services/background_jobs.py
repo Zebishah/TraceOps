@@ -117,3 +117,17 @@ async def mark_background_job_failed(
     )
 
     await session.commit()
+
+
+async def update_background_job_progress(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    progress_percent: int,
+) -> None:
+    if not 0 <= progress_percent <= 100:
+        raise ValueError("Background job progress must be between 0 and 100")
+
+    job.progress_percent = progress_percent
+
+    await session.commit()
