@@ -21,9 +21,16 @@ class HighRiskIncidentPayload(BaseModel):
     category: str | None
 
 
+class DocumentIndexingFailedPayload(BaseModel):
+    document_id: uuid.UUID
+    job_id: uuid.UUID
+    filename: str
+    error_message: str
+
+
 class AutomationEvent(BaseModel):
     event_id: uuid.UUID
     event_type: str
     organization_id: uuid.UUID
     occurred_at: datetime
-    payload: IncidentResolvedPayload | HighRiskIncidentPayload
+    payload: IncidentResolvedPayload | HighRiskIncidentPayload | DocumentIndexingFailedPayload

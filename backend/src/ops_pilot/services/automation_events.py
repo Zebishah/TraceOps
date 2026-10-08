@@ -9,6 +9,7 @@ from ops_pilot.models.customer import Customer
 from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.schemas.automation_events import (
     AutomationEvent,
+    DocumentIndexingFailedPayload,
     HighRiskIncidentPayload,
     IncidentResolvedPayload,
 )
@@ -112,5 +113,32 @@ async def dispatch_high_risk_incident_automation(
 
     await send_n8n_event(
         webhook_path="incident-high-risk",
+        event=event,
+    )
+
+
+async def dispatch_document_indexing_failed_automation(
+    *,
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    job_id: uuid.UUID,
+    filename: str,
+    error_message: str,
+) -> None:
+    event = AutomationEvent(
+        event_id=uuid.uuid4(),
+        event_type="document.indexing_failed",
+        organization_id=organization_id,
+        occurred_at=datetime.now(UTC),
+        payload=DocumentIndexingFailedPayload(
+            document_id=document_id,
+            job_id=job_id,
+            filename=filename,
+            error_message=error_message,
+        ),
+    )
+
+    await send_n8n_event(
+        webhook_path="document-indexing-failed",
         event=event,
     )

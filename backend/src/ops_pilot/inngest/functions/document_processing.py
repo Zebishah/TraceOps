@@ -14,6 +14,9 @@ from ops_pilot.models.background_job import (
 from ops_pilot.schemas.background_jobs import (
     BackgroundJobEventData,
 )
+from ops_pilot.services.automation_events import (
+    dispatch_document_indexing_failed_automation,
+)
 from ops_pilot.services.background_jobs import (
     get_background_job,
     mark_background_job_failed,
@@ -25,6 +28,7 @@ from ops_pilot.services.document_indexing import (
     index_document,
 )
 from ops_pilot.services.document_processing import (
+    get_document,
     process_document,
 )
 
@@ -297,6 +301,58 @@ async def document_processing_on_failure(
     await ctx.step.run(
         "mark-job-failed",
         mark_failed,
+    )
+
+    async def dispatch_indexing_failure() -> dict[str, object]:
+        try:
+            async with async_session_factory() as session:
+                job = await get_background_job(
+                    session=session,
+                    organization_id=(event_data.organization_id),
+                    job_id=event_data.job_id,
+                )
+
+                if job is None:
+                    return {
+                        "dispatched": False,
+                        "reason": "job_not_found",
+                    }
+
+                # 60% means document processing finished
+                # and the workflow had reached indexing.
+                if job.progress_percent < 60:
+                    return {
+                        "dispatched": False,
+                        "reason": "not_indexing_failure",
+                    }
+
+                document = await get_document(
+                    session=session,
+                    organization_id=(event_data.organization_id),
+                    document_id=(event_data.resource_id),
+                )
+
+            await dispatch_document_indexing_failed_automation(
+                organization_id=(event_data.organization_id),
+                document_id=(event_data.resource_id),
+                job_id=event_data.job_id,
+                filename=document.original_filename,
+                error_message=error_message,
+            )
+
+        except Exception:
+            return {
+                "dispatched": False,
+                "reason": "automation_failed",
+            }
+
+        return {
+            "dispatched": True,
+        }
+
+    await ctx.step.run(
+        "dispatch-indexing-failure-automation",
+        dispatch_indexing_failure,
     )
 
 
