@@ -100,6 +100,16 @@ def test_incident_investigation_graph_runs_in_order(
         call_order.append("retrieve_memories")
         return []
 
+    def fake_detect_duplicate_payment_candidate(
+        *,
+        tool_results,
+    ):
+        call_order.append(
+            "detect_duplicate_payment",
+        )
+
+        return None
+
     async def fake_execute_operational_tool_call(
         *,
         session,
@@ -185,6 +195,7 @@ def test_incident_investigation_graph_runs_in_order(
         evidence,
         memories,
         tool_results,
+        duplicate_payment,
     ):
         call_order.append("analyze")
 
@@ -200,6 +211,7 @@ def test_incident_investigation_graph_runs_in_order(
         evidence,
         memories,
         tool_results,
+        duplicate_payment,
     ):
         call_order.append("recommend")
 
@@ -242,7 +254,11 @@ def test_incident_investigation_graph_runs_in_order(
         "retrieve_incident_evidence",
         fake_retrieve_incident_evidence,
     )
-
+    monkeypatch.setattr(
+        nodes_module,
+        "detect_duplicate_payment_candidate",
+        fake_detect_duplicate_payment_candidate,
+    )
     monkeypatch.setattr(
         nodes_module,
         "execute_operational_tool_call",
@@ -298,6 +314,7 @@ def test_incident_investigation_graph_runs_in_order(
         "list_customer_orders",
         "list_order_payments",
         "select_optional_tool",
+        "detect_duplicate_payment",
         "analyze",
         "recommend",
         "propose_action",

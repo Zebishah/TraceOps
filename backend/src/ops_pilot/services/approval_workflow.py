@@ -79,5 +79,5 @@ async def decide_and_resume_approval(
                 session=session,
             ),
         )
-
+    await session.refresh(approval)
     return approval

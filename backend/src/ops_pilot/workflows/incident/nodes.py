@@ -11,15 +11,28 @@ from ops_pilot.ai.incident_recommender import (
 from ops_pilot.ai.incident_tool_selector import (
     select_incident_tool,
 )
+from ops_pilot.models.approval import (
+    ApprovalActionType,
+)
 from ops_pilot.models.incident import IncidentStatus
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
+from ops_pilot.schemas.incident_actions import (
+    IncidentActionProposal,
+)
 from ops_pilot.services.approvals import (
     create_or_get_pending_approval,
 )
+from ops_pilot.services.automation_events import (
+    dispatch_high_risk_incident_automation,
+    dispatch_incident_resolved_automation,
+)
 from ops_pilot.services.background_job_dispatch import (
     enqueue_memory_indexing,
+)
+from ops_pilot.services.duplicate_payment_detection import (
+    detect_duplicate_payment_candidate,
 )
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
@@ -27,7 +40,9 @@ from ops_pilot.services.incident_classification import (
 from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
-from ops_pilot.services.incident_evidence_sufficiency import has_required_operational_evidence
+from ops_pilot.services.incident_evidence_sufficiency import (
+    has_required_operational_evidence,
+)
 from ops_pilot.services.incident_memories import generate_and_store_incident_memory
 from ops_pilot.services.incident_memory_indexing import index_incident_memory
 from ops_pilot.services.incident_memory_retrieval import (
@@ -76,6 +91,60 @@ async def classify_incident_node(
             "subject_customer_id",
             None,
         ),
+    }
+
+
+async def dispatch_high_risk_automation_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    priority = state.get("priority")
+
+    if priority is None:
+        return {
+            "high_risk_automation_dispatched": False,
+        }
+
+    priority_value = priority.value if hasattr(priority, "value") else str(priority)
+
+    if priority_value not in {
+        "high",
+        "critical",
+    }:
+        return {
+            "high_risk_automation_dispatched": False,
+        }
+
+    title = state.get("title")
+
+    if title is None:
+        raise RuntimeError(
+            "High-risk automation requires incident title",
+        )
+
+    category = state.get("category")
+
+    category_value = (
+        category.value
+        if category is not None and hasattr(category, "value")
+        else (str(category) if category is not None else None)
+    )
+
+    try:
+        await dispatch_high_risk_incident_automation(
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+            title=title,
+            priority=priority_value,
+            category=category_value,
+        )
+
+    except Exception:
+        return {
+            "high_risk_automation_dispatched": False,
+        }
+
+    return {
+        "high_risk_automation_dispatched": True,
     }
 
 
@@ -153,6 +222,9 @@ async def analyze_incident_node(
             "similar_memories",
             [],
         ),
+        duplicate_payment=state.get(
+            "duplicate_payment_candidate",
+        ),
         tool_results=state.get(
             "tool_results",
             [],
@@ -190,6 +262,9 @@ async def recommend_action_node(
             "similar_memories",
             [],
         ),
+        duplicate_payment=state.get(
+            "duplicate_payment_candidate",
+        ),
         tool_results=state.get(
             "tool_results",
             [],
@@ -222,10 +297,10 @@ async def propose_action_node(
         [],
     )
 
-    # Backend safety gate:
+    # Safety gate:
     # payment actions cannot be proposed
     # until required operational data
-    # has actually been collected.
+    # has been collected.
     if not has_required_operational_evidence(
         category=state["category"],
         tool_results=tool_results,
@@ -235,6 +310,36 @@ async def propose_action_node(
             "approval_required": False,
         }
 
+    duplicate_payment = state.get(
+        "duplicate_payment_candidate",
+    )
+
+    # Deterministic payment path:
+    # if OpsPilot safely identified the exact
+    # duplicate transaction, propose that refund.
+    if state["category"].value == "payment" and duplicate_payment is not None:
+        proposal = IncidentActionProposal(
+            requires_approval=True,
+            action_type=(ApprovalActionType.REFUND_TRANSACTION),
+            external_transaction_id=(duplicate_payment.duplicate_transaction_id),
+            amount=duplicate_payment.amount,
+            currency=duplicate_payment.currency,
+            reason=(
+                "OpsPilot deterministically identified "
+                f"{duplicate_payment.duplicate_transaction_id} "
+                "as the later matching successful charge "
+                f"for order {duplicate_payment.order_id}. "
+                "Human approval is required before refund."
+            ),
+        )
+
+        return {
+            "proposed_action": proposal,
+            "approval_required": True,
+        }
+
+    # Normal AI proposal path for cases where
+    # there is no deterministic duplicate payment.
     proposal = await propose_incident_action(
         title=state["title"],
         description=state["description"],
@@ -248,7 +353,7 @@ async def propose_action_node(
 
     return {
         "proposed_action": proposal,
-        "approval_required": (proposal.requires_approval),
+        "approval_required": proposal.requires_approval,
     }
 
 
@@ -549,6 +654,35 @@ async def execute_operational_tool_node(
     }
 
 
+def detect_duplicate_payment_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    category = state.get(
+        "category",
+    )
+
+    if category is None:
+        raise RuntimeError(
+            "Duplicate payment detection requires incident category",
+        )
+
+    if category.value != "payment":
+        return {
+            "duplicate_payment_candidate": None,
+        }
+
+    candidate = detect_duplicate_payment_candidate(
+        tool_results=state.get(
+            "tool_results",
+            [],
+        ),
+    )
+
+    return {
+        "duplicate_payment_candidate": candidate,
+    }
+
+
 def route_after_tool_selection(
     state: IncidentInvestigationState,
 ) -> str:
@@ -677,4 +811,25 @@ async def write_incident_memory_node(
     return {
         "memory_id": memory_id,
         "memory_indexed": True,
+    }
+
+
+async def dispatch_incident_resolved_automation_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    try:
+        await dispatch_incident_resolved_automation(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+        )
+
+    except Exception:
+        return {
+            "automation_dispatched": False,
+        }
+
+    return {
+        "automation_dispatched": True,
     }

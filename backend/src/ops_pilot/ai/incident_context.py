@@ -1,3 +1,6 @@
+from ops_pilot.schemas.duplicate_payments import (
+    DuplicatePaymentCandidate,
+)
 from ops_pilot.schemas.incident_memories import (
     IncidentMemoryRetrievalResult,
 )
@@ -64,3 +67,24 @@ def format_incident_memories(
         )
 
     return "\n\n".join(parts)
+
+
+def format_duplicate_payment_candidate(
+    candidate: DuplicatePaymentCandidate | None,
+) -> str:
+    if candidate is None:
+        return "No duplicate payment transaction was deterministically identified."
+
+    return (
+        "A duplicate payment candidate was "
+        "deterministically identified by OpsPilot.\n"
+        f"Order ID: {candidate.order_id}\n"
+        f"Original transaction: "
+        f"{candidate.original_transaction_id}\n"
+        f"Duplicate transaction: "
+        f"{candidate.duplicate_transaction_id}\n"
+        f"Amount: {candidate.amount}\n"
+        f"Currency: {candidate.currency}\n"
+        f"Provider: {candidate.provider}\n"
+        f"Seconds apart: {candidate.seconds_apart}"
+    )

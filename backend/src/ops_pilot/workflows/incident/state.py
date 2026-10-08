@@ -14,6 +14,9 @@ from ops_pilot.schemas.action_execution import (
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
+from ops_pilot.schemas.duplicate_payments import (
+    DuplicatePaymentCandidate,
+)
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
@@ -42,6 +45,7 @@ class IncidentInvestigationState(TypedDict):
     category: NotRequired[IncidentCategory]
     priority: NotRequired[IncidentPriority]
     classification_confidence: NotRequired[float]
+    high_risk_automation_dispatched: NotRequired[bool]
 
     retrieval_query: NotRequired[str]
     evidence: NotRequired[list[RetrievalResult]]
@@ -51,10 +55,13 @@ class IncidentInvestigationState(TypedDict):
     tool_round: NotRequired[int]
     pending_tool_call: NotRequired[ToolCallRequest | None]
     tool_results: NotRequired[list[ToolExecutionResult]]
+    duplicate_payment_candidate: NotRequired[DuplicatePaymentCandidate | None]
     similar_memories: NotRequired[list[IncidentMemoryRetrievalResult]]
 
     memory_id: NotRequired[uuid.UUID | None]
     memory_indexed: NotRequired[bool]
+    automation_dispatched: NotRequired[bool]
+
     needs_more_information: NotRequired[bool]
     clarification_question: NotRequired[str | None]
 

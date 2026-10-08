@@ -2,12 +2,16 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.incident_context import (
+    format_duplicate_payment_candidate,
     format_incident_evidence,
     format_incident_memories,
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.models.incident import IncidentPriority
+from ops_pilot.schemas.duplicate_payments import (
+    DuplicatePaymentCandidate,
+)
 from ops_pilot.schemas.incident_classification import IncidentCategory
 from ops_pilot.schemas.incident_memories import (
     IncidentMemoryRetrievalResult,
@@ -72,6 +76,9 @@ SIMILAR HISTORICAL INCIDENTS:
 OPERATIONAL TOOL RESULTS:
 {tool_results}
 
+VERIFIED DUPLICATE PAYMENT DETECTION:
+{duplicate_payment}
+
 Produce only a grounded investigation analysis.
 """,
         ),
@@ -88,6 +95,7 @@ async def analyze_incident(
     evidence: list[RetrievalResult],
     memories: list[IncidentMemoryRetrievalResult] | None = None,
     tool_results: list[ToolExecutionResult] | None = None,
+    duplicate_payment: DuplicatePaymentCandidate | None = None,
 ) -> str:
     model = get_chat_model()
 
@@ -102,6 +110,11 @@ async def analyze_incident(
             "evidence": format_incident_evidence(evidence),
             "memories": format_incident_memories(
                 memories or [],
+            ),
+            "duplicate_payment": (
+                format_duplicate_payment_candidate(
+                    duplicate_payment,
+                )
             ),
             "tool_results": format_tool_results(tool_results or []),
         }
