@@ -25,6 +25,7 @@ from ops_pilot.services.approvals import (
     create_or_get_pending_approval,
 )
 from ops_pilot.services.automation_events import (
+    dispatch_customer_recovery_automation,
     dispatch_high_risk_incident_automation,
     dispatch_incident_resolved_automation,
 )
@@ -832,4 +833,66 @@ async def dispatch_incident_resolved_automation_node(
 
     return {
         "automation_dispatched": True,
+    }
+
+
+async def dispatch_customer_recovery_automation_node(
+    state: IncidentInvestigationState,
+    runtime: Runtime[IncidentGraphContext],
+) -> dict[str, object]:
+    customer_id = state.get(
+        "subject_customer_id",
+    )
+
+    execution = state.get(
+        "refund_execution",
+    )
+
+    title = state.get(
+        "title",
+    )
+
+    category = state.get(
+        "category",
+    )
+
+    priority = state.get(
+        "priority",
+    )
+
+    if (
+        customer_id is None
+        or execution is None
+        or title is None
+        or category is None
+        or priority is None
+        or not state.get("refund_verified")
+    ):
+        return {
+            "customer_recovery_automation_dispatched": False,
+        }
+
+    category_value = category.value if hasattr(category, "value") else str(category)
+
+    priority_value = priority.value if hasattr(priority, "value") else str(priority)
+
+    try:
+        await dispatch_customer_recovery_automation(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+            title=title,
+            category=category_value,
+            priority=priority_value,
+            customer_id=customer_id,
+            execution=execution,
+        )
+
+    except Exception:
+        return {
+            "customer_recovery_automation_dispatched": False,
+        }
+
+    return {
+        "customer_recovery_automation_dispatched": True,
     }

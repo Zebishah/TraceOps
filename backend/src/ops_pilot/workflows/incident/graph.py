@@ -10,6 +10,7 @@ from ops_pilot.workflows.incident.nodes import (
     classify_incident_node,
     create_approval_node,
     detect_duplicate_payment_node,
+    dispatch_customer_recovery_automation_node,
     dispatch_high_risk_automation_node,
     dispatch_incident_resolved_automation_node,
     execute_approved_action_node,
@@ -123,6 +124,10 @@ builder.add_node(
 builder.add_node(
     "write_incident_memory",
     write_incident_memory_node,
+)
+builder.add_node(
+    "dispatch_customer_recovery_automation",
+    dispatch_customer_recovery_automation_node,
 )
 builder.add_node(
     "dispatch_incident_resolved_automation",
@@ -239,6 +244,11 @@ builder.add_edge(
 
 builder.add_edge(
     "dispatch_incident_resolved_automation",
+    "dispatch_customer_recovery_automation",
+)
+
+builder.add_edge(
+    "dispatch_customer_recovery_automation",
     END,
 )
 

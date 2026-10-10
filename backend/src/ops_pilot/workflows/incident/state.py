@@ -46,6 +46,7 @@ class IncidentInvestigationState(TypedDict):
     priority: NotRequired[IncidentPriority]
     classification_confidence: NotRequired[float]
     high_risk_automation_dispatched: NotRequired[bool]
+    customer_recovery_automation_dispatched: NotRequired[bool]
 
     retrieval_query: NotRequired[str]
     evidence: NotRequired[list[RetrievalResult]]

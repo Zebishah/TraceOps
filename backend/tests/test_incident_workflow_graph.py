@@ -173,6 +173,11 @@ def test_incident_investigation_graph_runs_in_order(
 
         raise AssertionError("Unexpected operational tool call")
 
+    async def fake_dispatch_high_risk_incident_automation(
+        **kwargs,
+    ) -> None:
+        return None
+
     async def fake_select_incident_tool(
         *,
         title,
@@ -183,7 +188,6 @@ def test_incident_investigation_graph_runs_in_order(
         tool_results,
     ):
         call_order.append("select_optional_tool")
-
         return None
 
     async def fake_analyze_incident(
@@ -243,6 +247,11 @@ def test_incident_investigation_graph_runs_in_order(
         nodes_module,
         "classify_stored_incident",
         fake_classify_stored_incident,
+    )
+    monkeypatch.setattr(
+        nodes_module,
+        "dispatch_high_risk_incident_automation",
+        fake_dispatch_high_risk_incident_automation,
     )
     monkeypatch.setattr(
         nodes_module,
