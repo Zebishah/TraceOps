@@ -12,7 +12,14 @@ async def send_n8n_event(
     settings = get_settings()
 
     if settings.n8n_webhook_base_url is None:
-        raise RuntimeError("N8N_WEBHOOK_BASE_URL is not configured")
+        raise RuntimeError(
+            "N8N_WEBHOOK_BASE_URL is not configured",
+        )
+
+    if settings.n8n_webhook_secret is None:
+        raise RuntimeError(
+            "N8N_WEBHOOK_SECRET is not configured",
+        )
 
     base_url = settings.n8n_webhook_base_url.rstrip("/")
     path = webhook_path.lstrip("/")
@@ -22,7 +29,12 @@ async def send_n8n_event(
     ) as client:
         response = await client.post(
             f"{base_url}/{path}",
-            json=event.model_dump(mode="json"),
+            json=event.model_dump(
+                mode="json",
+            ),
+            headers={
+                "X-OpsPilot-Webhook-Secret": (settings.n8n_webhook_secret),
+            },
         )
 
         response.raise_for_status()
