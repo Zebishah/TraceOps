@@ -139,8 +139,6 @@ async def index_project_knowledge_directory(
     *,
     directory: Path,
 ) -> int:
-    await ensure_project_knowledge_collection()
-
     markdown_files = sorted(
         directory.glob("*.md"),
     )
@@ -179,6 +177,19 @@ async def index_project_knowledge_directory(
     settings = get_settings()
     client = get_qdrant_client()
 
+    collection_name = settings.qdrant_project_knowledge_collection_name
+
+    collection_exists = await client.collection_exists(
+        collection_name=collection_name,
+    )
+
+    if collection_exists:
+        await client.delete_collection(
+            collection_name=collection_name,
+        )
+
+    await ensure_project_knowledge_collection()
+
     points: list[models.PointStruct] = []
 
     for chunk, vector in zip(
@@ -201,7 +212,7 @@ async def index_project_knowledge_directory(
         )
 
     await client.upsert(
-        collection_name=(settings.qdrant_project_knowledge_collection_name),
+        collection_name=collection_name,
         points=points,
         wait=True,
     )
