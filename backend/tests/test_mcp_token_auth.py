@@ -1,7 +1,10 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 
+from ops_pilot.core.config import get_settings
 from ops_pilot.core.security import (
     create_access_token,
     create_mcp_access_token,
@@ -55,6 +58,64 @@ async def test_mcp_token_verifier_rejects_invalid_token() -> None:
 
     result = await verifier.verify_token(
         "definitely-not-a-valid-token",
+    )
+
+    assert result is None
+
+
+@pytest.mark.anyio
+async def test_mcp_token_verifier_rejects_wrong_audience() -> None:
+    settings = get_settings()
+
+    token = jwt.encode(
+        {
+            "sub": str(USER_ID),
+            "exp": datetime.now(UTC)
+            + timedelta(
+                minutes=30,
+            ),
+            "iss": str(settings.mcp_issuer_url),
+            "aud": "https://attacker.example.com/mcp",
+            "scope": settings.mcp_required_scope,
+            "token_use": "mcp",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    verifier = OpsPilotMCPTokenVerifier()
+
+    result = await verifier.verify_token(
+        token,
+    )
+
+    assert result is None
+
+
+@pytest.mark.anyio
+async def test_mcp_token_verifier_rejects_expired_token() -> None:
+    settings = get_settings()
+
+    token = jwt.encode(
+        {
+            "sub": str(USER_ID),
+            "exp": datetime.now(UTC)
+            - timedelta(
+                minutes=1,
+            ),
+            "iss": str(settings.mcp_issuer_url),
+            "aud": str(settings.mcp_resource_url),
+            "scope": settings.mcp_required_scope,
+            "token_use": "mcp",
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    verifier = OpsPilotMCPTokenVerifier()
+
+    result = await verifier.verify_token(
+        token,
     )
 
     assert result is None

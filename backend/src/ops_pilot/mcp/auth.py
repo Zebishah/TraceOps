@@ -61,10 +61,10 @@ class OpsPilotMCPTokenVerifier:
                 client_id="ops-pilot-mcp",
                 scopes=scopes,
                 expires_at=expires_at,
-                resource=settings.mcp_resource_url,
+                resource=str(settings.mcp_resource_url),
                 subject=str(user_id),
                 claims={
-                    "iss": settings.mcp_issuer_url,
+                    "iss": str(settings.mcp_issuer_url),
                 },
             )
 

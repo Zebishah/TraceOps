@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,8 +16,8 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    mcp_issuer_url: str = "http://localhost:8000"
-    mcp_resource_url: str = "http://localhost:8000/mcp"
+    mcp_issuer_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
+    mcp_resource_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000/mcp")
     mcp_required_scope: str = "ops-pilot:read"
     mcp_access_token_expire_minutes: int = 60
 
