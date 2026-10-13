@@ -33,3 +33,7 @@ class MCPIncidentDetail(BaseModel):
     subject_customer_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class MCPIncidentDetailResponse(BaseModel):
+    incident: MCPIncidentDetail | None
