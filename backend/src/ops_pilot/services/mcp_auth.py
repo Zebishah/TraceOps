@@ -4,7 +4,9 @@ import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ops_pilot.core.security import decode_access_token
+from ops_pilot.core.security import (
+    decode_mcp_access_token,
+)
 from ops_pilot.models.membership import Membership
 from ops_pilot.models.user import User
 from ops_pilot.schemas.mcp_auth import (
@@ -27,7 +29,7 @@ async def authenticate_mcp_access(
     organization_id: uuid.UUID,
 ) -> MCPAuthenticatedContext:
     try:
-        payload = decode_access_token(
+        payload = decode_mcp_access_token(
             access_token,
         )
 

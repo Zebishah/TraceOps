@@ -25,7 +25,7 @@ async def test_authenticate_mcp_access_returns_trusted_context(
 
     monkeypatch.setattr(
         mcp_auth,
-        "decode_access_token",
+        "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
         },
@@ -76,7 +76,7 @@ async def test_authenticate_mcp_access_rejects_invalid_token(
 
     monkeypatch.setattr(
         mcp_auth,
-        "decode_access_token",
+        "decode_mcp_access_token",
         fake_decode_access_token,
     )
 
@@ -102,7 +102,7 @@ async def test_authenticate_mcp_access_rejects_missing_subject(
 
     monkeypatch.setattr(
         mcp_auth,
-        "decode_access_token",
+        "decode_mcp_access_token",
         lambda token: {},
     )
 
@@ -127,7 +127,7 @@ async def test_authenticate_mcp_access_rejects_inactive_user(
 
     monkeypatch.setattr(
         mcp_auth,
-        "decode_access_token",
+        "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
         },
@@ -159,7 +159,7 @@ async def test_authenticate_mcp_access_rejects_foreign_organization(
 
     monkeypatch.setattr(
         mcp_auth,
-        "decode_access_token",
+        "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
         },
@@ -186,3 +186,4 @@ async def test_authenticate_mcp_access_rejects_foreign_organization(
         )
 
     session.execute.assert_awaited_once()
+    session.get.assert_awaited_once()

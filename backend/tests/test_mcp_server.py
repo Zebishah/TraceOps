@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -12,6 +13,7 @@ from ops_pilot.models.incident import (
     IncidentStatus,
 )
 from ops_pilot.models.membership import MembershipRole
+from ops_pilot.models.order import OrderStatus
 from ops_pilot.schemas.mcp_auth import MCPAuthenticatedContext
 from ops_pilot.schemas.mcp_incidents import (
     MCPIncidentDetail,
@@ -20,6 +22,7 @@ from ops_pilot.schemas.mcp_incidents import (
 from ops_pilot.schemas.project_knowledge import (
     ProjectKnowledgeResult,
 )
+from ops_pilot.tools.schemas import OperationalOrderData
 
 ORGANIZATION_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
@@ -385,3 +388,90 @@ async def test_get_incident_tool(
     assert incident is not None
     assert incident["id"] == str(INCIDENT_ID)
     assert incident["title"] == "Customer charged twice"
+
+
+@pytest.mark.anyio
+async def test_list_customer_orders_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    customer_id = uuid.uuid4()
+
+    fake_access_token = SimpleNamespace(
+        token="valid-token",
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.get_access_token",
+        lambda: fake_access_token,
+    )
+
+    fake_authenticate = AsyncMock(
+        return_value=MCPAuthenticatedContext(
+            user_id=USER_ID,
+            organization_id=ORGANIZATION_ID,
+            role=MembershipRole.VIEWER,
+        )
+    )
+
+    fake_orders = AsyncMock(
+        return_value=[
+            OperationalOrderData(
+                external_order_id="order_123",
+                product_name="Pro Plan",
+                total_amount=Decimal("49.99"),
+                currency="USD",
+                status=OrderStatus.PAID,
+                ordered_at=datetime.now(UTC),
+            )
+        ]
+    )
+
+    fake_session_context = FakeSessionContext()
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.authenticate_mcp_access",
+        fake_authenticate,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.list_customer_orders_service",
+        fake_orders,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.async_session_factory",
+        lambda: fake_session_context,
+    )
+
+    async with Client(
+        mcp,
+        raise_exceptions=True,
+    ) as client:
+        result = await client.call_tool(
+            "list_customer_orders",
+            {
+                "organization_id": str(ORGANIZATION_ID),
+                "customer_id": str(customer_id),
+                "limit": 10,
+            },
+        )
+
+    fake_authenticate.assert_awaited_once_with(
+        session=fake_session_context.session,
+        access_token="valid-token",
+        organization_id=ORGANIZATION_ID,
+    )
+
+    fake_orders.assert_awaited_once_with(
+        session=fake_session_context.session,
+        organization_id=ORGANIZATION_ID,
+        customer_id=customer_id,
+        limit=10,
+    )
+
+    assert result.structured_content is not None
+
+    orders = result.structured_content["orders"]
+
+    assert len(orders) == 1
+    assert orders[0]["external_order_id"] == "order_123"

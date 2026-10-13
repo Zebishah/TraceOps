@@ -4,10 +4,13 @@ from typing import Annotated
 from mcp.server.auth.middleware.auth_context import (
     get_access_token,
 )
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field
 
+from ops_pilot.core.config import get_settings
 from ops_pilot.db.session import async_session_factory
+from ops_pilot.mcp.auth import OpsPilotMCPTokenVerifier
 from ops_pilot.schemas.mcp_incidents import (
     MCPIncidentDetailResponse,
     MCPIncidentSearchResponse,
@@ -73,11 +76,22 @@ def get_mcp_bearer_token() -> str:
     return access_token.token
 
 
+settings = get_settings()
+
 mcp = MCPServer(
     "OpsPilot",
     instructions=(
         "OpsPilot provides secure incident investigation, "
         "project knowledge, and operational support tools."
+    ),
+    token_verifier=OpsPilotMCPTokenVerifier(),
+    auth=AuthSettings(
+        issuer_url=settings.mcp_issuer_url,
+        resource_server_url=settings.mcp_resource_url,
+        required_scopes=[
+            settings.mcp_required_scope,
+        ],
+        validate_token_resource=True,
     ),
 )
 
@@ -391,7 +405,6 @@ async def search_incident_memory(
         ),
     ] = 3,
 ) -> MCPIncidentMemoryResponse:
-    """Find similar resolved incident memories for an incident."""
 
     access_token = get_mcp_bearer_token()
 

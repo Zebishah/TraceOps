@@ -1,7 +1,10 @@
+import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
+from ops_pilot.api.dependencies import get_current_user
 from ops_pilot.api.routes import auth as auth_routes
 from ops_pilot.db.session import get_db_session
 from ops_pilot.main import app
@@ -96,3 +99,45 @@ def test_me_requires_authentication() -> None:
         401,
         403,
     }
+
+
+def test_mcp_token_requires_authentication() -> None:
+    response = client.post(
+        "/api/v1/auth/mcp-token",
+    )
+
+    assert response.status_code in {
+        401,
+        403,
+    }
+
+
+def test_authenticated_user_can_create_mcp_token() -> None:
+    user_id = uuid.uuid4()
+
+    async def fake_current_user() -> SimpleNamespace:
+        return SimpleNamespace(
+            id=user_id,
+            is_active=True,
+        )
+
+    app.dependency_overrides[get_current_user] = fake_current_user
+
+    try:
+        response = client.post(
+            "/api/v1/auth/mcp-token",
+        )
+
+        assert response.status_code == 200
+
+        payload = response.json()
+
+        assert isinstance(
+            payload["access_token"],
+            str,
+        )
+
+        assert payload["token_type"] == "bearer"
+
+    finally:
+        app.dependency_overrides.clear()
