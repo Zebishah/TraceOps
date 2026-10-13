@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     qdrant_api_key: str
     qdrant_collection_name: str = "ops_pilot_document_chunks_v2"
     qdrant_memory_collection_name: str = "ops_pilot_incident_memories_v1"
+    qdrant_project_knowledge_collection_name: str = "ops_pilot_project_knowledge_v1"
 
     inngest_event_key: str | None = None
     inngest_signing_key: str | None = None

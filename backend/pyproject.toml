@@ -21,6 +21,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "langgraph==1.2.12",
     "langgraph-checkpoint-postgres==3.1.2",
+    "mcp[cli]>=2,<3",
     "psycopg[binary]>=3.2",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings",
