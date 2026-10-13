@@ -6,11 +6,15 @@ import jwt
 import pytest
 
 from ops_pilot.models.membership import MembershipRole
+from ops_pilot.schemas.mcp_auth import (
+    MCPAuthenticatedContext,
+)
 from ops_pilot.services import mcp_auth
 from ops_pilot.services.mcp_auth import (
     MCPAuthenticationError,
     MCPAuthorizationError,
     authenticate_mcp_access,
+    require_mcp_investigation_role,
 )
 
 USER_ID = uuid.uuid4()
@@ -187,3 +191,31 @@ async def test_authenticate_mcp_access_rejects_foreign_organization(
 
     session.execute.assert_awaited_once()
     session.get.assert_awaited_once()
+
+
+def test_investigation_role_allows_operator() -> None:
+    context = MCPAuthenticatedContext(
+        user_id=USER_ID,
+        organization_id=ORGANIZATION_ID,
+        role=MembershipRole.OPERATOR,
+    )
+
+    require_mcp_investigation_role(
+        context,
+    )
+
+
+def test_investigation_role_rejects_viewer() -> None:
+    context = MCPAuthenticatedContext(
+        user_id=USER_ID,
+        organization_id=ORGANIZATION_ID,
+        role=MembershipRole.VIEWER,
+    )
+
+    with pytest.raises(
+        MCPAuthorizationError,
+        match="cannot start incident investigations",
+    ):
+        require_mcp_investigation_role(
+            context,
+        )

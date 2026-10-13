@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 from ops_pilot.core.config import get_settings
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.mcp.auth import OpsPilotMCPTokenVerifier
+from ops_pilot.schemas.incidents import (
+    IncidentInvestigationResponse,
+)
 from ops_pilot.schemas.mcp_incidents import (
     MCPIncidentDetailResponse,
     MCPIncidentSearchResponse,
@@ -29,6 +32,7 @@ from ops_pilot.schemas.project_knowledge import (
 from ops_pilot.services.mcp_auth import (
     MCPAuthenticationError,
     authenticate_mcp_access,
+    require_mcp_investigation_role,
 )
 from ops_pilot.services.mcp_incidents import (
     get_incident_detail as get_incident_detail_service,
@@ -38,6 +42,9 @@ from ops_pilot.services.mcp_incidents import (
 )
 from ops_pilot.services.mcp_incidents import (
     search_incidents as search_incidents_service,
+)
+from ops_pilot.services.mcp_investigation import (
+    investigate_incident_for_mcp as investigate_incident_service,
 )
 from ops_pilot.services.mcp_operational import (
     get_customer as get_customer_service,
@@ -426,3 +433,29 @@ async def search_incident_memory(
         incident_id=incident_id,
         memories=memories,
     )
+
+
+@mcp.tool()
+async def investigate_incident(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+) -> IncidentInvestigationResponse | None:
+
+    access_token = get_mcp_bearer_token()
+
+    async with async_session_factory() as session:
+        auth_context = await authenticate_mcp_access(
+            session=session,
+            access_token=access_token,
+            organization_id=organization_id,
+        )
+        require_mcp_investigation_role(
+            auth_context,
+        )
+        investigation = await investigate_incident_service(
+            session=session,
+            organization_id=auth_context.organization_id,
+            incident_id=incident_id,
+        )
+
+    return investigation

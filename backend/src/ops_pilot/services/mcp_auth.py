@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ops_pilot.core.security import (
     decode_mcp_access_token,
 )
-from ops_pilot.models.membership import Membership
+from ops_pilot.models.membership import (
+    Membership,
+    MembershipRole,
+)
 from ops_pilot.models.user import User
 from ops_pilot.schemas.mcp_auth import (
     MCPAuthenticatedContext,
@@ -73,3 +76,17 @@ async def authenticate_mcp_access(
         organization_id=membership.organization_id,
         role=membership.role,
     )
+
+
+def require_mcp_investigation_role(
+    context: MCPAuthenticatedContext,
+) -> None:
+    allowed_roles = {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.OPERATOR,
+        MembershipRole.REVIEWER,
+    }
+
+    if context.role not in allowed_roles:
+        raise MCPAuthorizationError("User role cannot start incident investigations")

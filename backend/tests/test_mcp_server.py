@@ -14,6 +14,12 @@ from ops_pilot.models.incident import (
 )
 from ops_pilot.models.membership import MembershipRole
 from ops_pilot.models.order import OrderStatus
+from ops_pilot.schemas.incident_classification import (
+    IncidentCategory,
+)
+from ops_pilot.schemas.incidents import (
+    IncidentInvestigationResponse,
+)
 from ops_pilot.schemas.mcp_auth import MCPAuthenticatedContext
 from ops_pilot.schemas.mcp_incidents import (
     MCPIncidentDetail,
@@ -65,6 +71,7 @@ async def test_mcp_health_tool() -> None:
         assert "get_order" in tool_names
         assert "list_order_payments" in tool_names
         assert "get_payment_transaction" in tool_names
+        assert "investigate_incident" in tool_names
         assert "search_incident_memory" in tool_names
         result = await client.call_tool(
             "ops_pilot_health",
@@ -475,3 +482,108 @@ async def test_list_customer_orders_tool(
 
     assert len(orders) == 1
     assert orders[0]["external_order_id"] == "order_123"
+
+
+@pytest.mark.anyio
+async def test_investigate_incident_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_access_token = SimpleNamespace(
+        token="valid-token",
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.get_access_token",
+        lambda: fake_access_token,
+    )
+
+    fake_authenticate = AsyncMock(
+        return_value=MCPAuthenticatedContext(
+            user_id=USER_ID,
+            organization_id=ORGANIZATION_ID,
+            role=MembershipRole.OPERATOR,
+        )
+    )
+
+    fake_investigation = IncidentInvestigationResponse(
+        organization_id=ORGANIZATION_ID,
+        incident_id=INCIDENT_ID,
+        workflow_thread_id="thread-123",
+        title="Customer charged twice",
+        description="Customer reports duplicate payment.",
+        approval_required=True,
+        similar_memories=[],
+        memory_id=None,
+        memory_indexed=False,
+        approval_request_id=uuid.uuid4(),
+        status=IncidentStatus.AWAITING_APPROVAL,
+        category=IncidentCategory.PAYMENT,
+        priority=IncidentPriority.HIGH,
+        classification_confidence=0.98,
+        retrieval_query="duplicate payment policy",
+        evidence=[],
+        tool_results=[],
+        needs_more_information=False,
+        clarification_question=None,
+        analysis="Two matching successful charges were found.",
+        recommended_action="Refund the duplicate charge after approval.",
+    )
+
+    fake_investigate = AsyncMock(
+        return_value=fake_investigation,
+    )
+
+    fake_session_context = FakeSessionContext()
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.authenticate_mcp_access",
+        fake_authenticate,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.investigate_incident_service",
+        fake_investigate,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.async_session_factory",
+        lambda: fake_session_context,
+    )
+
+    async with Client(
+        mcp,
+        raise_exceptions=True,
+    ) as client:
+        result = await client.call_tool(
+            "investigate_incident",
+            {
+                "organization_id": str(ORGANIZATION_ID),
+                "incident_id": str(INCIDENT_ID),
+            },
+        )
+
+    fake_authenticate.assert_awaited_once_with(
+        session=fake_session_context.session,
+        access_token="valid-token",
+        organization_id=ORGANIZATION_ID,
+    )
+
+    fake_investigate.assert_awaited_once_with(
+        session=fake_session_context.session,
+        organization_id=ORGANIZATION_ID,
+        incident_id=INCIDENT_ID,
+    )
+    assert result.is_error is False
+    assert result.structured_content is not None
+
+    investigation = result.structured_content["result"]
+
+    assert investigation is not None
+
+    assert investigation["incident_id"] == str(INCIDENT_ID)
+
+    assert investigation["approval_required"] is True
+
+    assert investigation["status"] == (IncidentStatus.AWAITING_APPROVAL.value)
+
+    assert investigation["workflow_thread_id"] == "thread-123"
