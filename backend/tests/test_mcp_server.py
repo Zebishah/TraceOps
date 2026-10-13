@@ -57,6 +57,12 @@ async def test_mcp_health_tool() -> None:
         assert "list_open_incidents" in tool_names
         assert "search_incidents" in tool_names
         assert "get_incident" in tool_names
+        assert "get_customer" in tool_names
+        assert "list_customer_orders" in tool_names
+        assert "get_order" in tool_names
+        assert "list_order_payments" in tool_names
+        assert "get_payment_transaction" in tool_names
+        assert "search_incident_memory" in tool_names
         result = await client.call_tool(
             "ops_pilot_health",
             {},
@@ -121,7 +127,6 @@ async def test_search_project_knowledge_tool(
         }
 
 
-@pytest.mark.anyio
 @pytest.mark.anyio
 async def test_operational_tool_requires_authentication(
     monkeypatch: pytest.MonkeyPatch,
