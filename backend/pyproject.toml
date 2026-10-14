@@ -15,6 +15,7 @@ dependencies = [
     "fastapi",
     "groq==0.37.1",
     "httpx>=0.28.1",
+    "httpx2>=2.13.1",
     "inngest>=0.5.19",
     "langchain==1.4.2",
     "langchain-groq==1.1.3",
