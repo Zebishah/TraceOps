@@ -66,7 +66,7 @@ class OpsPilotMCPTokenVerifier:
 
             return AccessToken(
                 token=token,
-                client_id="ops-pilot-mcp",
+                client_id=client_id,
                 scopes=scopes,
                 expires_at=expires_at,
                 resource=str(settings.mcp_resource_url),
