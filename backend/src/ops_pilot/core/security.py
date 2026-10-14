@@ -70,7 +70,7 @@ def create_mcp_access_token(
     payload: dict[str, Any] = {
         "sub": subject,
         "exp": expire,
-        "iss": str(settings.mcp_issuer_url),
+        "iss": str(settings.mcp_authorization_server_url),
         "aud": str(settings.mcp_resource_url),
         "scope": settings.mcp_required_scope,
         "token_use": "mcp",
@@ -95,7 +95,7 @@ def decode_mcp_access_token(
             settings.jwt_algorithm,
         ],
         audience=str(settings.mcp_resource_url),
-        issuer=str(settings.mcp_issuer_url),
+        issuer=str(settings.mcp_authorization_server_url),
     )
 
     if payload.get("token_use") != "mcp":

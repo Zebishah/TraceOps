@@ -64,7 +64,9 @@ class OpsPilotMCPTokenVerifier:
                 resource=str(settings.mcp_resource_url),
                 subject=str(user_id),
                 claims={
-                    "iss": str(settings.mcp_issuer_url),
+                    "iss": str(
+                        settings.mcp_authorization_server_url,
+                    ),
                 },
             )
 

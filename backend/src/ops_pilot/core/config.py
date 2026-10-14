@@ -16,10 +16,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    mcp_issuer_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
+    mcp_authorization_server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000/oauth")
     mcp_resource_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000/mcp")
     mcp_required_scope: str = "ops-pilot:read"
     mcp_access_token_expire_minutes: int = 60
+    mcp_authorization_code_expire_minutes: int = 10
+    mcp_refresh_token_expire_days: int = 30
     mcp_allowed_hosts: str = "localhost,127.0.0.1"
     mcp_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 

@@ -93,7 +93,7 @@ mcp = MCPServer(
     ),
     token_verifier=OpsPilotMCPTokenVerifier(),
     auth=AuthSettings(
-        issuer_url=settings.mcp_issuer_url,
+        issuer_url=settings.mcp_authorization_server_url,
         resource_server_url=settings.mcp_resource_url,
         required_scopes=[
             settings.mcp_required_scope,

@@ -17,6 +17,11 @@ from ops_pilot.models.incident import (
 )
 from ops_pilot.models.incident_memory import IncidentMemory
 from ops_pilot.models.membership import Membership, MembershipRole
+from ops_pilot.models.oauth_authorization_code import (
+    OAuthAuthorizationCode,
+)
+from ops_pilot.models.oauth_client import OAuthClient
+from ops_pilot.models.oauth_refresh_token import OAuthRefreshToken
 from ops_pilot.models.order import OperationalOrder, OrderStatus
 from ops_pilot.models.organization import Organization
 from ops_pilot.models.payment_transaction import (
@@ -49,4 +54,7 @@ __all__ = [
     "BackgroundJob",
     "BackgroundJobStatus",
     "BackgroundJobType",
+    "OAuthClient",
+    "OAuthAuthorizationCode",
+    "OAuthRefreshToken",
 ]
