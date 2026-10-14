@@ -22,7 +22,15 @@ class OpsPilotMCPTokenVerifier:
             )
 
             subject = payload.get("sub")
+            client_id = payload.get(
+                "client_id",
+            )
 
+            if not isinstance(
+                client_id,
+                str,
+            ):
+                return None
             if subject is None:
                 return None
 

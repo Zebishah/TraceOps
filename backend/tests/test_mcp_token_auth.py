@@ -74,9 +74,10 @@ async def test_mcp_token_verifier_rejects_wrong_audience() -> None:
             + timedelta(
                 minutes=30,
             ),
-            "iss": str(settings.mcp_issuer_url),
+            "iss": str(settings.mcp_authorization_server_url),
             "aud": "https://attacker.example.com/mcp",
             "scope": settings.mcp_required_scope,
+            "client_id": "test-client",
             "token_use": "mcp",
         },
         settings.jwt_secret_key,
@@ -103,9 +104,10 @@ async def test_mcp_token_verifier_rejects_expired_token() -> None:
             - timedelta(
                 minutes=1,
             ),
-            "iss": str(settings.mcp_issuer_url),
+            "iss": str(settings.mcp_authorization_server_url),
             "aud": str(settings.mcp_resource_url),
             "scope": settings.mcp_required_scope,
+            "client_id": "test-client",
             "token_use": "mcp",
         },
         settings.jwt_secret_key,

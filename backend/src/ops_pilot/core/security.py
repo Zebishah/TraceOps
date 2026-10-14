@@ -55,6 +55,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
 def create_mcp_access_token(
     *,
     subject: str,
+    client_id: str = "ops-pilot-mcp",
+    scopes: list[str] | None = None,
     expires_delta: timedelta | None = None,
 ) -> str:
     settings = get_settings()
@@ -67,12 +69,21 @@ def create_mcp_access_token(
         )
     )
 
+    granted_scopes = (
+        scopes
+        if scopes is not None
+        else [
+            settings.mcp_required_scope,
+        ]
+    )
+
     payload: dict[str, Any] = {
         "sub": subject,
         "exp": expire,
         "iss": str(settings.mcp_authorization_server_url),
         "aud": str(settings.mcp_resource_url),
-        "scope": settings.mcp_required_scope,
+        "scope": " ".join(granted_scopes),
+        "client_id": client_id,
         "token_use": "mcp",
     }
 
