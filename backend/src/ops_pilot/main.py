@@ -20,12 +20,15 @@ from ops_pilot.inngest.functions.health import (
 from ops_pilot.inngest.functions.memory_indexing import (
     index_incident_memory_background,
 )
+from ops_pilot.mcp.http import mcp_http_app
+from ops_pilot.mcp.server import mcp
 from ops_pilot.vectorstore.qdrant import close_qdrant_client
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
+    async with mcp.session_manager.run():
+        yield
 
     await close_redis_client()
     await close_mistral_embedding_client()
@@ -54,7 +57,10 @@ def create_app() -> FastAPI:
         api_router,
         prefix="/api/v1",
     )
-
+    application.mount(
+        "/",
+        mcp_http_app,
+    )
     return application
 
 

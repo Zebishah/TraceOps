@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     mcp_resource_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000/mcp")
     mcp_required_scope: str = "ops-pilot:read"
     mcp_access_token_expire_minutes: int = 60
+    mcp_allowed_hosts: str = "localhost,127.0.0.1"
+    mcp_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
     aws_access_key_id: str
     aws_secret_access_key: str
