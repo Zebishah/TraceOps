@@ -6,6 +6,9 @@ import ops_pilot.ai.reranker as reranker_module
 
 
 class FakeResponse:
+    status_code = 200
+    headers: dict[str, str] = {}
+
     def raise_for_status(self) -> None:
         pass
 

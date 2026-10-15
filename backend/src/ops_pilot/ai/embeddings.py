@@ -1,9 +1,13 @@
+import asyncio
 from functools import lru_cache
 from typing import Any, cast
 
 import httpx
 
 from ops_pilot.core.config import get_settings
+
+MAX_EMBEDDING_ATTEMPTS = 4
+BASE_RETRY_DELAY_SECONDS = 1.0
 
 
 @lru_cache
@@ -31,6 +35,33 @@ async def close_mistral_embedding_client() -> None:
     get_mistral_embedding_client.cache_clear()
 
 
+def _retry_delay_seconds(
+    *,
+    response: httpx.Response,
+    attempt: int,
+) -> float:
+    retry_after = response.headers.get(
+        "Retry-After",
+    )
+
+    if retry_after is not None:
+        try:
+            retry_after_seconds = float(
+                retry_after,
+            )
+
+            return max(
+                retry_after_seconds,
+                0.0,
+            )
+        except ValueError:
+            pass
+
+    delay: float = BASE_RETRY_DELAY_SECONDS * float(2**attempt)
+
+    return delay
+
+
 async def embed_texts(
     texts: list[str],
 ) -> list[list[float]]:
@@ -40,26 +71,55 @@ async def embed_texts(
     settings = get_settings()
     client = get_mistral_embedding_client()
 
-    response = await client.post(
-        "/v1/embeddings",
-        json={
-            "model": settings.embedding_model,
-            "input": texts,
-        },
-    )
+    response: httpx.Response | None = None
+
+    for attempt in range(
+        MAX_EMBEDDING_ATTEMPTS,
+    ):
+        response = await client.post(
+            "/v1/embeddings",
+            json={
+                "model": settings.embedding_model,
+                "input": texts,
+            },
+        )
+
+        if response.status_code != 429:
+            break
+
+        if attempt == MAX_EMBEDDING_ATTEMPTS - 1:
+            break
+
+        await asyncio.sleep(
+            _retry_delay_seconds(
+                response=response,
+                attempt=attempt,
+            )
+        )
+
+    if response is None:
+        raise RuntimeError("Mistral embeddings did not return a response")
 
     response.raise_for_status()
 
-    payload = cast(dict[str, Any], response.json())
+    payload = cast(
+        dict[str, Any],
+        response.json(),
+    )
 
     data = payload.get("data")
 
-    if not isinstance(data, list):
+    if not isinstance(
+        data,
+        list,
+    ):
         raise RuntimeError("Mistral returned an invalid embeddings response")
 
     ordered = sorted(
         data,
-        key=lambda item: int(item["index"]),
+        key=lambda item: int(
+            item["index"],
+        ),
     )
 
     embeddings: list[list[float]] = []
@@ -70,7 +130,9 @@ async def embed_texts(
         if len(vector) != settings.embedding_dimension:
             raise RuntimeError("Mistral embedding dimension does not match configuration")
 
-        embeddings.append(vector)
+        embeddings.append(
+            vector,
+        )
 
     if len(embeddings) != len(texts):
         raise RuntimeError("Mistral embedding count does not match input count")
@@ -81,6 +143,8 @@ async def embed_texts(
 async def embed_query(
     query: str,
 ) -> list[float]:
-    embeddings = await embed_texts([query])
+    embeddings = await embed_texts(
+        [query],
+    )
 
     return embeddings[0]
