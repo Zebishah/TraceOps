@@ -14,13 +14,22 @@ from ops_pilot.ai.incident_tool_selector import (
 from ops_pilot.models.approval import (
     ApprovalActionType,
 )
-from ops_pilot.models.incident import IncidentStatus
+from ops_pilot.models.incident import (
+    Incident,
+    IncidentStatus,
+)
+from ops_pilot.schemas.action_execution import RefundExecutionResult
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
+from ops_pilot.schemas.incident_classification import (
+    IncidentClassification,
+)
+from ops_pilot.schemas.incident_memories import IncidentMemoryRetrievalResult
+from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.services.approvals import (
     create_or_get_pending_approval,
 )
@@ -62,9 +71,13 @@ from ops_pilot.services.refund_verification import (
 from ops_pilot.tools.executor import (
     execute_operational_tool_call,
 )
+from ops_pilot.tools.schemas import ToolExecutionResult
 from ops_pilot.workflows.incident.state import (
     IncidentGraphContext,
     IncidentInvestigationState,
+)
+from ops_pilot.workflows.observability import (
+    observe_workflow_step,
 )
 
 MAX_TOOL_ROUNDS = 5
@@ -74,10 +87,21 @@ async def classify_incident_node(
     state: IncidentInvestigationState,
     runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
-    incident, classification = await classify_stored_incident(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
+    async def run_classification() -> tuple[
+        Incident,
+        IncidentClassification,
+    ]:
+        return await classify_stored_incident(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+        )
+
+    incident, classification = await observe_workflow_step(
+        node="classify_incident",
         incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_classification,
     )
 
     return {
@@ -153,10 +177,18 @@ async def retrieve_evidence_node(
     state: IncidentInvestigationState,
     runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
-    query, evidence = await retrieve_incident_evidence(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
+    async def run_retrieval() -> tuple[str, list[RetrievalResult]]:
+        return await retrieve_incident_evidence(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+        )
+
+    query, evidence = await observe_workflow_step(
+        node="retrieve_evidence",
         incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_retrieval,
     )
 
     return {
@@ -185,13 +217,21 @@ async def retrieve_memories_node(
         else str(category)
     )
 
-    memories = await retrieve_similar_incident_memories(
-        session=runtime.context.session,
-        organization_id=(state["organization_id"]),
-        current_incident_id=(state["incident_id"]),
-        title=state["title"],
-        description=state["description"],
-        category=category_value,
+    async def run_memory_retrieval() -> list[IncidentMemoryRetrievalResult]:
+        return await retrieve_similar_incident_memories(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            current_incident_id=state["incident_id"],
+            title=state["title"],
+            description=state["description"],
+            category=category_value,
+        )
+
+    memories = await observe_workflow_step(
+        node="retrieve_memories",
+        incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_memory_retrieval,
     )
 
     return {
@@ -213,23 +253,31 @@ async def analyze_incident_node(
             "Analysis node received incomplete incident state",
         )
 
-    analysis = await analyze_incident(
-        title=state["title"],
-        description=state["description"],
-        category=state["category"],
-        priority=state["priority"],
-        evidence=state["evidence"],
-        memories=state.get(
-            "similar_memories",
-            [],
-        ),
-        duplicate_payment=state.get(
-            "duplicate_payment_candidate",
-        ),
-        tool_results=state.get(
-            "tool_results",
-            [],
-        ),
+    async def run_analysis() -> str:
+        return await analyze_incident(
+            title=state["title"],
+            description=state["description"],
+            category=state["category"],
+            priority=state["priority"],
+            evidence=state["evidence"],
+            memories=state.get(
+                "similar_memories",
+                [],
+            ),
+            duplicate_payment=state.get(
+                "duplicate_payment_candidate",
+            ),
+            tool_results=state.get(
+                "tool_results",
+                [],
+            ),
+        )
+
+    analysis = await observe_workflow_step(
+        node="analyze_incident",
+        incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_analysis,
     )
 
     return {
@@ -252,24 +300,32 @@ async def recommend_action_node(
             "Recommendation node received incomplete incident state",
         )
 
-    recommendation = await recommend_incident_action(
-        title=state["title"],
-        description=state["description"],
-        category=state["category"],
-        priority=state["priority"],
-        analysis=state["analysis"],
-        evidence=state["evidence"],
-        memories=state.get(
-            "similar_memories",
-            [],
-        ),
-        duplicate_payment=state.get(
-            "duplicate_payment_candidate",
-        ),
-        tool_results=state.get(
-            "tool_results",
-            [],
-        ),
+    async def run_recommendation() -> str:
+        return await recommend_incident_action(
+            title=state["title"],
+            description=state["description"],
+            category=state["category"],
+            priority=state["priority"],
+            analysis=state["analysis"],
+            evidence=state["evidence"],
+            memories=state.get(
+                "similar_memories",
+                [],
+            ),
+            duplicate_payment=state.get(
+                "duplicate_payment_candidate",
+            ),
+            tool_results=state.get(
+                "tool_results",
+                [],
+            ),
+        )
+
+    recommendation = await observe_workflow_step(
+        node="recommend_action",
+        incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_recommendation,
     )
 
     return {
@@ -502,12 +558,20 @@ async def execute_approved_action_node(
             "Refund execution requires customer context",
         )
 
-    result = await execute_approved_refund(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
+    async def run_approved_action() -> RefundExecutionResult:
+        return await execute_approved_refund(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+            approval_request_id=(approval_request_id),
+            customer_id=customer_id,
+        )
+
+    result = await observe_workflow_step(
+        node="execute_approved_action",
         incident_id=state["incident_id"],
-        approval_request_id=(approval_request_id),
-        customer_id=customer_id,
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_approved_action,
     )
 
     return {
@@ -629,11 +693,19 @@ async def execute_operational_tool_node(
             "Tool execution requires a pending tool call",
         )
 
-    result = await execute_operational_tool_call(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
-        customer_id=customer_id,
-        tool_call=tool_call,
+    async def run_tool_execution() -> ToolExecutionResult:
+        return await execute_operational_tool_call(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            customer_id=customer_id,
+            tool_call=tool_call,
+        )
+
+    result = await observe_workflow_step(
+        node="execute_operational_tool",
+        incident_id=state["incident_id"],
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_tool_execution,
     )
 
     return {
@@ -714,12 +786,20 @@ async def verify_approved_action_node(
             "Refund verification requires execution result",
         )
 
-    await verify_refund_execution(
-        session=runtime.context.session,
-        organization_id=state["organization_id"],
+    async def run_verification() -> None:
+        await verify_refund_execution(
+            session=runtime.context.session,
+            organization_id=state["organization_id"],
+            incident_id=state["incident_id"],
+            approval_request_id=(approval_request_id),
+            execution=execution,
+        )
+
+    await observe_workflow_step(
+        node="verify_approved_action",
         incident_id=state["incident_id"],
-        approval_request_id=(approval_request_id),
-        execution=execution,
+        workflow_thread_id=state.get("workflow_thread_id"),
+        call=run_verification,
     )
 
     return {

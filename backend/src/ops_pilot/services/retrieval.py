@@ -3,10 +3,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from qdrant_client import models
+from qdrant_client.http.models import QueryResponse
 
 from ops_pilot.ai.embeddings import embed_query
 from ops_pilot.ai.reranker import rerank_passages
 from ops_pilot.core.config import get_settings
+from ops_pilot.integrations.observability import (
+    observe_external_call,
+)
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.vectorstore.qdrant import get_qdrant_client
 
@@ -34,25 +38,35 @@ async def retrieve_document_chunks(
 
     client = get_qdrant_client()
 
-    response = await client.query_points(
-        collection_name=settings.qdrant_collection_name,
-        query=query_vector,
-        query_filter=models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="organization_id",
-                    match=models.MatchValue(
-                        value=str(organization_id),
-                    ),
-                )
-            ]
-        ),
-        limit=max(
-            limit,
-            settings.retrieval_candidate_limit,
-        ),
-        with_payload=True,
-        with_vectors=False,
+    async def run_qdrant_query() -> QueryResponse:
+        return await client.query_points(
+            collection_name=settings.qdrant_collection_name,
+            query=query_vector,
+            query_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="organization_id",
+                        match=models.MatchValue(
+                            value=str(organization_id),
+                        ),
+                    )
+                ]
+            ),
+            limit=max(
+                limit,
+                settings.retrieval_candidate_limit,
+            ),
+            with_payload=True,
+            with_vectors=False,
+        )
+
+    response = await observe_external_call(
+        provider="qdrant",
+        operation="document_vector_search",
+        metadata={
+            "organization_id": str(organization_id),
+        },
+        call=run_qdrant_query,
     )
 
     candidates: list[RetrievalCandidate] = []
@@ -100,8 +114,8 @@ async def retrieve_document_chunks(
             chunk_index=candidate.chunk_index,
             page_number=candidate.page_number,
             text=candidate.text,
-            source_filename=candidate.source_filename,
-            vector_score=candidate.vector_score,
+            source_filename=(candidate.source_filename),
+            vector_score=(candidate.vector_score),
             reranker_score=reranker_score,
         )
         for candidate, reranker_score in ranked[:limit]

@@ -8,6 +8,9 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import (
+    observe_llm_call,
+)
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.duplicate_payments import (
     DuplicatePaymentCandidate,
@@ -101,23 +104,28 @@ async def analyze_incident(
 
     chain = INCIDENT_ANALYSIS_PROMPT | model | StrOutputParser()
 
-    analysis = await chain.ainvoke(
-        {
-            "title": title,
-            "description": description,
-            "category": category.value,
-            "priority": priority.value,
-            "evidence": format_incident_evidence(evidence),
-            "memories": format_incident_memories(
-                memories or [],
-            ),
-            "duplicate_payment": (
-                format_duplicate_payment_candidate(
-                    duplicate_payment,
-                )
-            ),
-            "tool_results": format_tool_results(tool_results or []),
-        }
+    analysis = await observe_llm_call(
+        operation="incident_analysis",
+        call=lambda: chain.ainvoke(
+            {
+                "title": title,
+                "description": description,
+                "category": category.value,
+                "priority": priority.value,
+                "evidence": format_incident_evidence(
+                    evidence,
+                ),
+                "memories": format_incident_memories(
+                    memories or [],
+                ),
+                "duplicate_payment": (
+                    format_duplicate_payment_candidate(
+                        duplicate_payment,
+                    )
+                ),
+                "tool_results": format_tool_results(tool_results or []),
+            }
+        ),
     )
 
     analysis = analysis.strip()

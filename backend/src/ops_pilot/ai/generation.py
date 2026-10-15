@@ -2,6 +2,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import (
+    observe_llm_call,
+)
 
 GROUNDED_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -50,11 +53,14 @@ async def generate_grounded_answer(
 
     chain = GROUNDED_ANSWER_PROMPT | model | StrOutputParser()
 
-    answer = await chain.ainvoke(
-        {
-            "question": question,
-            "context": context,
-        }
+    answer = await observe_llm_call(
+        operation="grounded_answer_generation",
+        call=lambda: chain.ainvoke(
+            {
+                "question": question,
+                "context": context,
+            }
+        ),
     )
 
     answer = answer.strip()

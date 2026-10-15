@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     aws_region: str
     s3_bucket_name: str
 
+    log_level: str = "INFO"
+
     qdrant_url: str
     qdrant_api_key: str
     qdrant_collection_name: str = "ops_pilot_document_chunks_v2"

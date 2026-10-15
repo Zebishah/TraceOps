@@ -1,11 +1,16 @@
 import asyncio
+import logging
 from functools import lru_cache
 from typing import Any, cast
 
 import httpx
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.integrations.observability import (
+    observe_external_call,
+)
 
+logger = logging.getLogger(__name__)
 MAX_EMBEDDING_ATTEMPTS = 4
 BASE_RETRY_DELAY_SECONDS = 1.0
 
@@ -76,14 +81,35 @@ async def embed_texts(
     for attempt in range(
         MAX_EMBEDDING_ATTEMPTS,
     ):
-        response = await client.post(
-            "/v1/embeddings",
-            json={
+
+        async def send_request() -> httpx.Response:
+            return await client.post(
+                "/v1/embeddings",
+                json={
+                    "model": settings.embedding_model,
+                    "input": texts,
+                },
+            )
+
+        response = await observe_external_call(
+            provider="mistral",
+            operation="embeddings",
+            metadata={
                 "model": settings.embedding_model,
-                "input": texts,
+                "attempt": attempt + 1,
+            },
+            call=send_request,
+        )
+        logger.info(
+            "external_http_response",
+            extra={
+                "provider": "mistral",
+                "operation": "embeddings",
+                "model": settings.embedding_model,
+                "attempt": attempt + 1,
+                "status_code": response.status_code,
             },
         )
-
         if response.status_code != 429:
             break
 

@@ -1,11 +1,16 @@
 import asyncio
+import logging
 from functools import lru_cache
 from typing import Any, cast
 
 import httpx
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.integrations.observability import (
+    observe_external_call,
+)
 
+logger = logging.getLogger(__name__)
 MAX_RERANK_ATTEMPTS = 4
 BASE_RETRY_DELAY_SECONDS = 1.0
 
@@ -76,16 +81,37 @@ async def rerank_passages(
     response: httpx.Response | None = None
 
     for attempt in range(MAX_RERANK_ATTEMPTS):
-        response = await client.post(
-            "/v1/rerank",
-            json={
+
+        async def send_request() -> httpx.Response:
+            return await client.post(
+                "/v1/rerank",
+                json={
+                    "model": settings.reranker_model,
+                    "query": query,
+                    "documents": passages,
+                    "return_documents": False,
+                },
+            )
+
+        response = await observe_external_call(
+            provider="voyage",
+            operation="rerank",
+            metadata={
                 "model": settings.reranker_model,
-                "query": query,
-                "documents": passages,
-                "return_documents": False,
+                "attempt": attempt + 1,
+            },
+            call=send_request,
+        )
+        logger.info(
+            "external_http_response",
+            extra={
+                "provider": "voyage",
+                "operation": "rerank",
+                "model": settings.reranker_model,
+                "attempt": attempt + 1,
+                "status_code": response.status_code,
             },
         )
-
         if response.status_code != 429:
             break
 

@@ -1,6 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import (
+    observe_llm_call,
+)
 from ops_pilot.schemas.incident_classification import IncidentClassification
 
 CLASSIFICATION_PROMPT = ChatPromptTemplate.from_messages(
@@ -66,11 +69,14 @@ async def classify_incident(
 
     chain = CLASSIFICATION_PROMPT | structured_model
 
-    result = await chain.ainvoke(
-        {
-            "title": title,
-            "description": description,
-        }
+    result = await observe_llm_call(
+        operation="incident_classification",
+        call=lambda: chain.ainvoke(
+            {
+                "title": title,
+                "description": description,
+            }
+        ),
     )
 
     if not isinstance(result, IncidentClassification):

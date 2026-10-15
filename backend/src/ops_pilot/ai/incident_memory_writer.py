@@ -4,6 +4,9 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import (
+    observe_llm_call,
+)
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.action_execution import (
     RefundExecutionResult,
@@ -150,21 +153,24 @@ async def generate_incident_memory(
         priority,
     )
 
-    result = await chain.ainvoke(
-        {
-            "title": title,
-            "description": description,
-            "category": category_value,
-            "priority": priority_value,
-            "analysis": analysis,
-            "recommendation": recommendation,
-            "tool_results": format_tool_results(
-                tool_results,
-            ),
-            "execution": format_refund_execution(
-                execution,
-            ),
-        }
+    result = await observe_llm_call(
+        operation="incident_memory_write",
+        call=lambda: chain.ainvoke(
+            {
+                "title": title,
+                "description": description,
+                "category": category_value,
+                "priority": priority_value,
+                "analysis": analysis,
+                "recommendation": recommendation,
+                "tool_results": format_tool_results(
+                    tool_results,
+                ),
+                "execution": format_refund_execution(
+                    execution,
+                ),
+            }
+        ),
     )
 
     if not isinstance(

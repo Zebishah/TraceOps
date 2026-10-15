@@ -5,6 +5,7 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import observe_llm_call
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
@@ -110,23 +111,25 @@ async def propose_incident_action(
 
     chain = ACTION_PROPOSAL_PROMPT | structured_model
 
-    result = await chain.ainvoke(
-        {
-            "title": title,
-            "description": description,
-            "category": category.value,
-            "priority": priority.value,
-            "evidence": format_incident_evidence(
-                evidence,
-            ),
-            "tool_results": format_tool_results(
-                tool_results,
-            ),
-            "analysis": analysis,
-            "recommendation": recommendation,
-        }
+    result = await observe_llm_call(
+        operation="incident_action_proposal",
+        call=lambda: chain.ainvoke(
+            {
+                "title": title,
+                "description": description,
+                "category": category.value,
+                "priority": priority.value,
+                "evidence": format_incident_evidence(
+                    evidence,
+                ),
+                "tool_results": format_tool_results(
+                    tool_results,
+                ),
+                "analysis": analysis,
+                "recommendation": recommendation,
+            }
+        ),
     )
-
     if not isinstance(
         result,
         IncidentActionProposal,

@@ -8,6 +8,9 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
+from ops_pilot.ai.observability import (
+    observe_llm_call,
+)
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.incident_classification import IncidentCategory
 from ops_pilot.schemas.retrieval import RetrievalResult
@@ -88,15 +91,22 @@ async def select_incident_tool(
 
     chain = TOOL_SELECTION_PROMPT | model
 
-    response = await chain.ainvoke(
-        {
-            "title": title,
-            "description": description,
-            "category": category.value,
-            "priority": priority.value,
-            "evidence": format_incident_evidence(evidence),
-            "tool_results": format_tool_results(tool_results),
-        }
+    response = await observe_llm_call(
+        operation="incident_tool_selection",
+        call=lambda: chain.ainvoke(
+            {
+                "title": title,
+                "description": description,
+                "category": category.value,
+                "priority": priority.value,
+                "evidence": format_incident_evidence(
+                    evidence,
+                ),
+                "tool_results": format_tool_results(
+                    tool_results,
+                ),
+            }
+        ),
     )
 
     if not isinstance(response, AIMessage):

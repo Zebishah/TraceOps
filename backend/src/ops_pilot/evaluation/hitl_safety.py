@@ -15,7 +15,7 @@ from ops_pilot.schemas.incident_actions import (
 
 
 def evaluate_hitl_safety() -> EvaluationSuiteResult:
-    results: list[EvaluationCaseResult] = []
+    # results: list[EvaluationCaseResult] = []
 
     cases: list[tuple[str, bool]] = []
 
