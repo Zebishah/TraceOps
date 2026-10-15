@@ -66,6 +66,7 @@ async def test_mcp_health_tool() -> None:
         assert "list_open_incidents" in tool_names
         assert "search_incidents" in tool_names
         assert "get_incident" in tool_names
+        assert "list_my_organizations" in tool_names
         assert "get_customer" in tool_names
         assert "list_customer_orders" in tool_names
         assert "get_order" in tool_names
@@ -223,7 +224,6 @@ async def test_list_open_incidents_tool(
         result = await client.call_tool(
             "list_open_incidents",
             {
-                "organization_id": str(ORGANIZATION_ID),
                 "limit": 10,
             },
         )
@@ -231,7 +231,7 @@ async def test_list_open_incidents_tool(
     fake_authenticate.assert_awaited_once_with(
         session=fake_session_context.session,
         access_token="valid-token",
-        organization_id=ORGANIZATION_ID,
+        organization_id=None,
     )
 
     fake_list.assert_awaited_once_with(

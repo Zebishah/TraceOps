@@ -11,9 +11,11 @@ from ops_pilot.models.membership import (
     Membership,
     MembershipRole,
 )
+from ops_pilot.models.organization import Organization
 from ops_pilot.models.user import User
 from ops_pilot.schemas.mcp_auth import (
     MCPAuthenticatedContext,
+    MCPOrganizationSummary,
 )
 
 
@@ -25,12 +27,11 @@ class MCPAuthorizationError(Exception):
     pass
 
 
-async def authenticate_mcp_access(
+async def _get_authenticated_mcp_user(
     *,
     session: AsyncSession,
     access_token: str,
-    organization_id: uuid.UUID,
-) -> MCPAuthenticatedContext:
+) -> User:
     try:
         payload = decode_mcp_access_token(
             access_token,
@@ -59,17 +60,94 @@ async def authenticate_mcp_access(
     if user is None or not user.is_active:
         raise MCPAuthenticationError("Authenticated user is not available")
 
+    return user
+
+
+async def list_mcp_organizations(
+    *,
+    session: AsyncSession,
+    access_token: str,
+) -> list[MCPOrganizationSummary]:
+    user = await _get_authenticated_mcp_user(
+        session=session,
+        access_token=access_token,
+    )
+
     result = await session.execute(
-        select(Membership).where(
-            Membership.organization_id == organization_id,
-            Membership.user_id == user_id,
+        select(
+            Membership,
+            Organization,
+        )
+        .join(
+            Organization,
+            Organization.id == Membership.organization_id,
+        )
+        .where(
+            Membership.user_id == user.id,
+        )
+        .order_by(
+            Organization.name.asc(),
         )
     )
 
-    membership = result.scalar_one_or_none()
+    rows = result.all()
 
-    if membership is None:
-        raise MCPAuthorizationError("User does not have access to this organization")
+    return [
+        MCPOrganizationSummary(
+            id=organization.id,
+            name=organization.name,
+            slug=organization.slug,
+            role=membership.role,
+        )
+        for membership, organization in rows
+    ]
+
+
+async def authenticate_mcp_access(
+    *,
+    session: AsyncSession,
+    access_token: str,
+    organization_id: uuid.UUID | None = None,
+) -> MCPAuthenticatedContext:
+    user = await _get_authenticated_mcp_user(
+        session=session,
+        access_token=access_token,
+    )
+
+    query = select(
+        Membership,
+    ).where(
+        Membership.user_id == user.id,
+    )
+
+    if organization_id is not None:
+        query = query.where(
+            Membership.organization_id == organization_id,
+        )
+
+    result = await session.execute(
+        query,
+    )
+
+    memberships = list(result.scalars().all())
+
+    if organization_id is not None:
+        if not memberships:
+            raise MCPAuthorizationError("User does not have access to this organization")
+
+        membership = memberships[0]
+
+    else:
+        if not memberships:
+            raise MCPAuthorizationError("User does not belong to an organization")
+
+        if len(memberships) > 1:
+            raise MCPAuthorizationError(
+                "Multiple organizations are available. "
+                "Call list_my_organizations and provide organization_id."
+            )
+
+        membership = memberships[0]
 
     return MCPAuthenticatedContext(
         user_id=user.id,

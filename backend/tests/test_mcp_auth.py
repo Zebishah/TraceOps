@@ -49,7 +49,9 @@ async def test_authenticate_mcp_access_returns_trusted_context(
     )
 
     result = Mock()
-    result.scalar_one_or_none.return_value = membership
+    result.scalars.return_value.all.return_value = [
+        membership,
+    ]
 
     session.execute.return_value = result
 
@@ -175,7 +177,7 @@ async def test_authenticate_mcp_access_rejects_foreign_organization(
     )
 
     result = Mock()
-    result.scalar_one_or_none.return_value = None
+    result.scalars.return_value.all.return_value = []
 
     session.execute.return_value = result
 
@@ -218,4 +220,90 @@ def test_investigation_role_rejects_viewer() -> None:
     ):
         require_mcp_investigation_role(
             context,
+        )
+
+
+@pytest.mark.anyio
+async def test_authenticate_mcp_access_auto_resolves_single_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+
+    monkeypatch.setattr(
+        mcp_auth,
+        "decode_mcp_access_token",
+        lambda token: {
+            "sub": str(USER_ID),
+        },
+    )
+
+    session.get.return_value = SimpleNamespace(
+        id=USER_ID,
+        is_active=True,
+    )
+
+    membership = SimpleNamespace(
+        organization_id=ORGANIZATION_ID,
+        user_id=USER_ID,
+        role=MembershipRole.OPERATOR,
+    )
+
+    result = Mock()
+    result.scalars.return_value.all.return_value = [
+        membership,
+    ]
+
+    session.execute.return_value = result
+
+    context = await authenticate_mcp_access(
+        session=session,
+        access_token="valid-token",
+    )
+
+    assert context.organization_id == ORGANIZATION_ID
+
+
+@pytest.mark.anyio
+async def test_authenticate_mcp_access_requires_selection_for_multiple_memberships(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+
+    monkeypatch.setattr(
+        mcp_auth,
+        "decode_mcp_access_token",
+        lambda token: {
+            "sub": str(USER_ID),
+        },
+    )
+
+    session.get.return_value = SimpleNamespace(
+        id=USER_ID,
+        is_active=True,
+    )
+
+    result = Mock()
+
+    result.scalars.return_value.all.return_value = [
+        SimpleNamespace(
+            organization_id=uuid.uuid4(),
+            user_id=USER_ID,
+            role=MembershipRole.OPERATOR,
+        ),
+        SimpleNamespace(
+            organization_id=uuid.uuid4(),
+            user_id=USER_ID,
+            role=MembershipRole.VIEWER,
+        ),
+    ]
+
+    session.execute.return_value = result
+
+    with pytest.raises(
+        MCPAuthorizationError,
+        match="Multiple organizations are available",
+    ):
+        await authenticate_mcp_access(
+            session=session,
+            access_token="valid-token",
         )

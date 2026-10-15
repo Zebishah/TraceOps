@@ -14,6 +14,9 @@ from ops_pilot.mcp.auth import OpsPilotMCPTokenVerifier
 from ops_pilot.schemas.incidents import (
     IncidentInvestigationResponse,
 )
+from ops_pilot.schemas.mcp_auth import (
+    MCPOrganizationsResponse,
+)
 from ops_pilot.schemas.mcp_incidents import (
     MCPIncidentDetailResponse,
     MCPIncidentSearchResponse,
@@ -32,6 +35,7 @@ from ops_pilot.schemas.project_knowledge import (
 from ops_pilot.services.mcp_auth import (
     MCPAuthenticationError,
     authenticate_mcp_access,
+    list_mcp_organizations,
     require_mcp_investigation_role,
 )
 from ops_pilot.services.mcp_incidents import (
@@ -88,8 +92,14 @@ settings = get_settings()
 mcp = MCPServer(
     "OpsPilot",
     instructions=(
-        "OpsPilot provides secure incident investigation, "
-        "project knowledge, and operational support tools."
+        "OpsPilot provides secure incident investigation, project knowledge, "
+        "and operational support tools. For tenant-scoped operations, omit "
+        "organization_id unless the user explicitly selected an organization. "
+        "The server automatically resolves a single authorized organization. "
+        "If multiple organizations are available, call list_my_organizations "
+        "before asking the user to choose one. Never invent organization IDs. "
+        "Sensitive incident actions remain subject to OpsPilot authorization "
+        "and human approval."
     ),
     token_verifier=OpsPilotMCPTokenVerifier(),
     auth=AuthSettings(
@@ -114,12 +124,27 @@ async def ops_pilot_health() -> OpsPilotHealthResult:
 
 
 @mcp.tool()
+async def list_my_organizations() -> MCPOrganizationsResponse:
+    """List organizations available to the authenticated OpsPilot user."""
+
+    access_token = get_mcp_bearer_token()
+
+    async with async_session_factory() as session:
+        organizations = await list_mcp_organizations(
+            session=session,
+            access_token=access_token,
+        )
+
+    return MCPOrganizationsResponse(
+        organizations=organizations,
+    )
+
+
+@mcp.tool()
 async def search_project_knowledge(
     query: str,
     limit: int = 5,
 ) -> ProjectKnowledgeSearchResponse:
-    """Search OpsPilot architecture and implementation knowledge."""
-
     results = await search_project_knowledge_service(
         query=query,
         limit=limit,
@@ -133,7 +158,6 @@ async def search_project_knowledge(
 
 @mcp.tool()
 async def list_open_incidents(
-    organization_id: uuid.UUID,
     limit: Annotated[
         int,
         Field(
@@ -141,8 +165,8 @@ async def list_open_incidents(
             le=50,
         ),
     ] = 20,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPIncidentSearchResponse:
-    """List open incidents for an organization the caller can access."""
 
     access_token = get_mcp_bearer_token()
 
@@ -166,7 +190,6 @@ async def list_open_incidents(
 
 @mcp.tool()
 async def search_incidents(
-    organization_id: uuid.UUID,
     query: Annotated[
         str,
         Field(
@@ -181,8 +204,8 @@ async def search_incidents(
             le=50,
         ),
     ] = 20,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPIncidentSearchResponse:
-    """Search incidents in an organization the caller can access."""
 
     access_token = get_mcp_bearer_token()
 
@@ -208,10 +231,9 @@ async def search_incidents(
 
 @mcp.tool()
 async def get_incident(
-    organization_id: uuid.UUID,
     incident_id: uuid.UUID,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPIncidentDetailResponse:
-    """Get one incident from an organization the caller can access."""
 
     access_token = get_mcp_bearer_token()
 
@@ -235,10 +257,9 @@ async def get_incident(
 
 @mcp.tool()
 async def get_customer(
-    organization_id: uuid.UUID,
     customer_id: uuid.UUID,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPCustomerResponse:
-    """Get a customer from an organization the caller can access."""
 
     access_token = get_mcp_bearer_token()
 
@@ -262,7 +283,6 @@ async def get_customer(
 
 @mcp.tool()
 async def list_customer_orders(
-    organization_id: uuid.UUID,
     customer_id: uuid.UUID,
     limit: Annotated[
         int,
@@ -271,8 +291,8 @@ async def list_customer_orders(
             le=20,
         ),
     ] = 10,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPOrdersResponse:
-    """List recent orders for a customer the caller can access."""
 
     access_token = get_mcp_bearer_token()
 
@@ -297,7 +317,6 @@ async def list_customer_orders(
 
 @mcp.tool()
 async def get_order(
-    organization_id: uuid.UUID,
     customer_id: uuid.UUID,
     external_order_id: Annotated[
         str,
@@ -306,8 +325,8 @@ async def get_order(
             max_length=120,
         ),
     ],
+    organization_id: uuid.UUID | None = None,
 ) -> MCPOrderResponse:
-    """Get one operational order for an authorized customer."""
 
     access_token = get_mcp_bearer_token()
 
@@ -332,7 +351,6 @@ async def get_order(
 
 @mcp.tool()
 async def list_order_payments(
-    organization_id: uuid.UUID,
     customer_id: uuid.UUID,
     external_order_id: Annotated[
         str,
@@ -341,8 +359,8 @@ async def list_order_payments(
             max_length=120,
         ),
     ],
+    organization_id: uuid.UUID | None = None,
 ) -> MCPPaymentsResponse:
-    """List payments for an authorized customer's order."""
 
     access_token = get_mcp_bearer_token()
 
@@ -367,7 +385,6 @@ async def list_order_payments(
 
 @mcp.tool()
 async def get_payment_transaction(
-    organization_id: uuid.UUID,
     customer_id: uuid.UUID,
     external_transaction_id: Annotated[
         str,
@@ -376,8 +393,8 @@ async def get_payment_transaction(
             max_length=160,
         ),
     ],
+    organization_id: uuid.UUID | None = None,
 ) -> MCPPaymentResponse:
-    """Get one payment transaction for an authorized customer."""
 
     access_token = get_mcp_bearer_token()
 
@@ -402,7 +419,6 @@ async def get_payment_transaction(
 
 @mcp.tool()
 async def search_incident_memory(
-    organization_id: uuid.UUID,
     incident_id: uuid.UUID,
     limit: Annotated[
         int,
@@ -411,6 +427,7 @@ async def search_incident_memory(
             le=10,
         ),
     ] = 3,
+    organization_id: uuid.UUID | None = None,
 ) -> MCPIncidentMemoryResponse:
 
     access_token = get_mcp_bearer_token()
@@ -437,8 +454,8 @@ async def search_incident_memory(
 
 @mcp.tool()
 async def investigate_incident(
-    organization_id: uuid.UUID,
     incident_id: uuid.UUID,
+    organization_id: uuid.UUID | None = None,
 ) -> IncidentInvestigationResponse | None:
 
     access_token = get_mcp_bearer_token()

@@ -63,7 +63,10 @@ def test_mcp_http_transport(
         },
     }
 
-    with TestClient(app) as client:
+    with TestClient(
+        app,
+        base_url="http://localhost",
+    ) as client:
         anonymous_response = client.post(
             "/mcp",
             headers={

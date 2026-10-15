@@ -18,6 +18,7 @@ EXPECTED_TOOLS = {
     "list_order_payments",
     "get_payment_transaction",
     "search_incident_memory",
+    "list_my_organizations",
     "investigate_incident",
 }
 
@@ -41,9 +42,9 @@ async def main() -> None:
         "OPSPILOT_MCP_TOKEN",
     )
 
-    organization_id = require_env(
-        "OPSPILOT_ORG_ID",
-    )
+    # organization_id = require_env(
+    #     "OPSPILOT_ORG_ID",
+    # )
 
     async with httpx2.AsyncClient(
         headers={
@@ -107,7 +108,6 @@ async def main() -> None:
             incidents_result = await client.call_tool(
                 "list_open_incidents",
                 {
-                    "organization_id": organization_id,
                     "limit": 10,
                 },
             )
