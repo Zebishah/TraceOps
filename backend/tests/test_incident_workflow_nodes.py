@@ -121,6 +121,7 @@ def test_analyze_incident_node_updates_state(
         evidence,
         memories,
         tool_results,
+        duplicate_payment,
     ):
         return "The evidence supports a duplicate payment [SOURCE 1]."
         return "The evidence supports a duplicate payment [SOURCE 1]."
@@ -182,6 +183,7 @@ def test_recommend_action_node_updates_state(
         evidence,
         memories,
         tool_results,
+        duplicate_payment,
     ):
         return "Verify the transactions before issuing a refund [SOURCE 1]."
 
@@ -633,3 +635,185 @@ def test_write_incident_memory_node_persists_and_indexes(
 
     assert result["memory_id"] == memory_id
     assert result["memory_indexed"] is True
+
+
+def test_write_incident_memory_node_enqueues_retry_when_indexing_fails(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+
+    memory = IncidentMemory(
+        id=memory_id,
+        organization_id=organization_id,
+        incident_id=incident_id,
+        subject_customer_id=None,
+        category="payment",
+        summary="Duplicate payment confirmed.",
+        resolution="Duplicate charge refunded.",
+    )
+
+    async def fake_generate_and_store_incident_memory(
+        **kwargs: object,
+    ) -> IncidentMemory:
+        return memory
+
+    async def fake_index_incident_memory(
+        **kwargs: object,
+    ) -> int:
+        raise RuntimeError("Qdrant unavailable")
+
+    enqueue_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        nodes_module,
+        "generate_and_store_incident_memory",
+        fake_generate_and_store_incident_memory,
+    )
+
+    monkeypatch.setattr(
+        nodes_module,
+        "index_incident_memory",
+        fake_index_incident_memory,
+    )
+
+    monkeypatch.setattr(
+        nodes_module,
+        "enqueue_memory_indexing",
+        enqueue_mock,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(
+            spec=AsyncSession,
+        ),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.write_incident_memory_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": "test-thread",
+                "title": "Customer charged twice",
+                "description": "Two charges appeared.",
+                "status": IncidentStatus.RESOLVED,
+                "category": IncidentCategory.PAYMENT,
+                "priority": IncidentPriority.HIGH,
+                "analysis": "Duplicate payment confirmed.",
+                "recommended_action": ("Refund duplicate charge."),
+                "refund_verified": True,
+                "tool_results": [],
+            },
+            runtime,
+        )
+    )
+
+    assert result["memory_id"] == memory_id
+    assert result["memory_indexed"] is False
+
+    enqueue_mock.assert_awaited_once_with(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+
+def test_dispatch_incident_resolved_automation_node(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    dispatch_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        nodes_module,
+        "dispatch_incident_resolved_automation",
+        dispatch_mock,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(
+            spec=AsyncSession,
+        ),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.dispatch_incident_resolved_automation_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": "test-thread",
+            },
+            runtime,
+        )
+    )
+
+    assert result == {
+        "automation_dispatched": True,
+    }
+
+    dispatch_mock.assert_awaited_once_with(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+
+def test_dispatch_incident_resolved_automation_failure_is_non_fatal(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    dispatch_mock = AsyncMock(side_effect=RuntimeError("n8n unavailable"))
+
+    monkeypatch.setattr(
+        nodes_module,
+        "dispatch_incident_resolved_automation",
+        dispatch_mock,
+    )
+
+    session = cast(
+        AsyncSession,
+        AsyncMock(
+            spec=AsyncSession,
+        ),
+    )
+
+    runtime = Runtime[IncidentGraphContext](
+        context=IncidentGraphContext(
+            session=session,
+        )
+    )
+
+    result = asyncio.run(
+        nodes_module.dispatch_incident_resolved_automation_node(
+            {
+                "organization_id": organization_id,
+                "incident_id": incident_id,
+                "workflow_thread_id": "test-thread",
+            },
+            runtime,
+        )
+    )
+
+    assert result == {
+        "automation_dispatched": False,
+    }

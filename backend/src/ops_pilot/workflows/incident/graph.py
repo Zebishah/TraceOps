@@ -9,6 +9,10 @@ from ops_pilot.workflows.incident.nodes import (
     approval_rejected_node,
     classify_incident_node,
     create_approval_node,
+    detect_duplicate_payment_node,
+    dispatch_customer_recovery_automation_node,
+    dispatch_high_risk_automation_node,
+    dispatch_incident_resolved_automation_node,
     execute_approved_action_node,
     execute_operational_tool_node,
     propose_action_node,
@@ -49,7 +53,10 @@ builder.add_node(
     "classify_incident",
     classify_incident_node,
 )
-
+builder.add_node(
+    "dispatch_high_risk_automation",
+    dispatch_high_risk_automation_node,
+)
 builder.add_node(
     "retrieve_evidence",
     retrieve_evidence_node,
@@ -110,10 +117,21 @@ builder.add_node(
     "retrieve_memories",
     retrieve_memories_node,
 )
-
+builder.add_node(
+    "detect_duplicate_payment",
+    detect_duplicate_payment_node,
+)
 builder.add_node(
     "write_incident_memory",
     write_incident_memory_node,
+)
+builder.add_node(
+    "dispatch_customer_recovery_automation",
+    dispatch_customer_recovery_automation_node,
+)
+builder.add_node(
+    "dispatch_incident_resolved_automation",
+    dispatch_incident_resolved_automation_node,
 )
 # -------------------------
 # Investigation flow
@@ -126,6 +144,11 @@ builder.add_edge(
 
 builder.add_edge(
     "classify_incident",
+    "dispatch_high_risk_automation",
+)
+
+builder.add_edge(
+    "dispatch_high_risk_automation",
     "retrieve_evidence",
 )
 
@@ -146,11 +169,14 @@ builder.add_conditional_edges(
     {
         "needs_more_information": END,
         "execute_operational_tool": "execute_operational_tool",
-        "analyze_incident": "analyze_incident",
+        "analyze_incident": "detect_duplicate_payment",
     },
 )
 
-
+builder.add_edge(
+    "detect_duplicate_payment",
+    "analyze_incident",
+)
 builder.add_edge(
     "execute_operational_tool",
     "select_operational_tool",
@@ -213,6 +239,16 @@ builder.add_edge(
 
 builder.add_edge(
     "write_incident_memory",
+    "dispatch_incident_resolved_automation",
+)
+
+builder.add_edge(
+    "dispatch_incident_resolved_automation",
+    "dispatch_customer_recovery_automation",
+)
+
+builder.add_edge(
+    "dispatch_customer_recovery_automation",
     END,
 )
 

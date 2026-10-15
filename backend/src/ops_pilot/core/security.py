@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -50,3 +51,67 @@ def decode_access_token(token: str) -> dict[str, Any]:
         settings.jwt_secret_key,
         algorithms=[settings.jwt_algorithm],
     )
+
+
+def create_mcp_access_token(
+    *,
+    subject: str,
+    client_id: str = "ops-pilot-mcp",
+    scopes: list[str] | None = None,
+    expires_delta: timedelta | None = None,
+) -> str:
+    settings = get_settings()
+
+    expire = datetime.now(UTC) + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(
+            minutes=settings.mcp_access_token_expire_minutes,
+        )
+    )
+
+    granted_scopes = (
+        scopes
+        if scopes is not None
+        else [
+            settings.mcp_required_scope,
+        ]
+    )
+
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "exp": expire,
+        "jti": str(uuid.uuid4()),
+        "iss": str(settings.mcp_authorization_server_url),
+        "aud": str(settings.mcp_resource_url),
+        "scope": " ".join(granted_scopes),
+        "client_id": client_id,
+        "token_use": "mcp",
+    }
+
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_mcp_access_token(
+    token: str,
+) -> dict[str, Any]:
+    settings = get_settings()
+
+    payload: dict[str, Any] = jwt.decode(
+        token,
+        settings.jwt_secret_key,
+        algorithms=[
+            settings.jwt_algorithm,
+        ],
+        audience=str(settings.mcp_resource_url),
+        issuer=str(settings.mcp_authorization_server_url),
+    )
+
+    if payload.get("token_use") != "mcp":
+        raise jwt.InvalidTokenError("Token is not an MCP access token")
+
+    return payload

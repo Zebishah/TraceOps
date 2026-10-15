@@ -2,7 +2,10 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from ops_pilot.api.dependencies import CurrentUser, DbSession
-from ops_pilot.core.security import create_access_token
+from ops_pilot.core.security import (
+    create_access_token,
+    create_mcp_access_token,
+)
 from ops_pilot.models.membership import Membership
 from ops_pilot.schemas.auth import (
     LoginRequest,
@@ -65,6 +68,24 @@ async def login(
 
     token = create_access_token(
         subject=str(user.id),
+    )
+
+    return TokenResponse(
+        access_token=token,
+    )
+
+
+@router.post(
+    "/mcp-token",
+    response_model=TokenResponse,
+)
+async def create_mcp_token(
+    current_user: CurrentUser,
+) -> TokenResponse:
+    token = create_mcp_access_token(
+        subject=str(
+            current_user.id,
+        ),
     )
 
     return TokenResponse(

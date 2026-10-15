@@ -100,3 +100,35 @@ async def ensure_memory_collection() -> None:
         field_name="category",
         field_schema=models.PayloadSchemaType.KEYWORD,
     )
+
+
+async def ensure_project_knowledge_collection() -> None:
+    settings = get_settings()
+    client = get_qdrant_client()
+
+    exists = await client.collection_exists(
+        collection_name=(settings.qdrant_project_knowledge_collection_name),
+    )
+
+    if exists:
+        return
+
+    await client.create_collection(
+        collection_name=(settings.qdrant_project_knowledge_collection_name),
+        vectors_config=models.VectorParams(
+            size=settings.embedding_dimension,
+            distance=models.Distance.COSINE,
+        ),
+    )
+
+    await client.create_payload_index(
+        collection_name=(settings.qdrant_project_knowledge_collection_name),
+        field_name="source",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+
+    await client.create_payload_index(
+        collection_name=(settings.qdrant_project_knowledge_collection_name),
+        field_name="section",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
