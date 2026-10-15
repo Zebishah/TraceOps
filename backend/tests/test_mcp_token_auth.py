@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import jwt
 import pytest
@@ -17,13 +18,20 @@ USER_ID = uuid.uuid4()
 
 
 @pytest.mark.anyio
-async def test_mcp_token_verifier_accepts_valid_mcp_token() -> None:
+async def test_mcp_token_verifier_accepts_valid_mcp_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     token = create_mcp_access_token(
         subject=str(
             USER_ID,
         ),
     )
-
+    monkeypatch.setattr(
+        "ops_pilot.mcp.auth.is_mcp_access_token_revoked",
+        AsyncMock(
+            return_value=False,
+        ),
+    )
     verifier = OpsPilotMCPTokenVerifier()
 
     result = await verifier.verify_token(
@@ -77,6 +85,7 @@ async def test_mcp_token_verifier_rejects_wrong_audience() -> None:
             "iss": str(settings.mcp_authorization_server_url),
             "aud": "https://attacker.example.com/mcp",
             "scope": settings.mcp_required_scope,
+            "jti": str(uuid.uuid4()),
             "client_id": "test-client",
             "token_use": "mcp",
         },
@@ -109,9 +118,34 @@ async def test_mcp_token_verifier_rejects_expired_token() -> None:
             "scope": settings.mcp_required_scope,
             "client_id": "test-client",
             "token_use": "mcp",
+            "jti": str(uuid.uuid4()),
         },
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
+    )
+
+    verifier = OpsPilotMCPTokenVerifier()
+
+    result = await verifier.verify_token(
+        token,
+    )
+
+    assert result is None
+
+
+@pytest.mark.anyio
+async def test_mcp_token_verifier_rejects_revoked_access_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = create_mcp_access_token(
+        subject=str(USER_ID),
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.auth.is_mcp_access_token_revoked",
+        AsyncMock(
+            return_value=True,
+        ),
     )
 
     verifier = OpsPilotMCPTokenVerifier()

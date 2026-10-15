@@ -99,6 +99,7 @@ async def create_authorization_code(
     client_id: str,
     user_id: uuid.UUID,
     redirect_uri: str,
+    redirect_uri_provided_explicitly: bool,
     scopes: list[str],
     code_challenge: str,
     resource: str,
@@ -115,6 +116,7 @@ async def create_authorization_code(
         scopes=" ".join(scopes),
         code_challenge=code_challenge,
         resource=resource,
+        redirect_uri_provided_explicitly=redirect_uri_provided_explicitly,
         expires_at=(
             datetime.now(UTC) + timedelta(minutes=(settings.mcp_authorization_code_expire_minutes))
         ),

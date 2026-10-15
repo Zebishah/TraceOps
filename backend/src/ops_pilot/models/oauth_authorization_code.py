@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     String,
@@ -50,7 +51,12 @@ class OAuthAuthorizationCode(Base):
         Text,
         nullable=False,
     )
-
+    redirect_uri_provided_explicitly: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
     scopes: Mapped[str] = mapped_column(
         Text,
         nullable=False,

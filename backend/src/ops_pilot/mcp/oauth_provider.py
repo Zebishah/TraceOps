@@ -23,6 +23,10 @@ from ops_pilot.core.security import (
 )
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.models.oauth_client import OAuthClient
+from ops_pilot.services.mcp_token_revocation import (
+    is_mcp_access_token_revoked,
+    revoke_mcp_access_token,
+)
 from ops_pilot.services.oauth import (
     consume_authorization_code,
     create_refresh_token,
@@ -193,7 +197,7 @@ class OpsPilotOAuthProvider(
                 client_id=code.client_id,
                 code_challenge=code.code_challenge,
                 redirect_uri=AnyUrl(code.redirect_uri),
-                redirect_uri_provided_explicitly=True,
+                redirect_uri_provided_explicitly=(code.redirect_uri_provided_explicitly),
                 resource=code.resource,
                 subject=str(code.user_id),
             )
@@ -329,59 +333,6 @@ class OpsPilotOAuthProvider(
             refresh_token=new_refresh_token,
         )
 
-    async def load_access_token(
-        self,
-        token: str,
-    ) -> AccessToken | None:
-        try:
-            payload = decode_mcp_access_token(token)
-        except Exception:
-            return None
-
-        subject = payload.get("sub")
-        client_id = payload.get("client_id")
-        scope_value = payload.get(
-            "scope",
-            "",
-        )
-        expires_at = payload.get("exp")
-
-        if not isinstance(
-            subject,
-            str,
-        ):
-            return None
-
-        if not isinstance(
-            client_id,
-            str,
-        ):
-            return None
-
-        if not isinstance(
-            scope_value,
-            str,
-        ):
-            return None
-
-        if not isinstance(
-            expires_at,
-            int,
-        ):
-            return None
-
-        return AccessToken(
-            token=token,
-            client_id=client_id,
-            scopes=scope_value.split(),
-            expires_at=expires_at,
-            resource=str(get_settings().mcp_resource_url),
-            subject=subject,
-            claims={
-                "iss": str(get_settings().mcp_authorization_server_url),
-            },
-        )
-
     async def revoke_token(
         self,
         token: AccessToken | RefreshToken,
@@ -402,3 +353,97 @@ class OpsPilotOAuthProvider(
                         session=session,
                         token=stored,
                     )
+
+                    return
+
+        if isinstance(
+            token,
+            AccessToken,
+        ):
+            claims = token.claims
+
+            if claims is None:
+                return
+
+            jti = claims.get(
+                "jti",
+            )
+
+            if not isinstance(
+                jti,
+                str,
+            ):
+                return
+            if await is_mcp_access_token_revoked(
+                jti=jti,
+            ):
+                return None
+            if token.expires_at is None:
+                return
+
+            await revoke_mcp_access_token(
+                jti=jti,
+                expires_at=int(token.expires_at),
+            )
+
+    async def load_access_token(
+        self,
+        token: str,
+    ) -> AccessToken | None:
+        try:
+            payload = decode_mcp_access_token(token)
+        except Exception:
+            return None
+
+        subject = payload.get("sub")
+        client_id = payload.get("client_id")
+        scope_value = payload.get(
+            "scope",
+            "",
+        )
+        expires_at = payload.get("exp")
+        jti = payload.get("jti")
+        if not isinstance(
+            subject,
+            str,
+        ):
+            return None
+
+        if not isinstance(
+            client_id,
+            str,
+        ):
+            return None
+
+        if not isinstance(
+            scope_value,
+            str,
+        ):
+            return None
+        if not isinstance(
+            jti,
+            str,
+        ):
+            return None
+        if await is_mcp_access_token_revoked(
+            jti=jti,
+        ):
+            return None
+        if not isinstance(
+            expires_at,
+            int,
+        ):
+            return None
+
+        return AccessToken(
+            token=token,
+            client_id=client_id,
+            scopes=scope_value.split(),
+            expires_at=expires_at,
+            resource=str(get_settings().mcp_resource_url),
+            subject=subject,
+            claims={
+                "iss": str(get_settings().mcp_authorization_server_url),
+                "jti": jti,
+            },
+        )

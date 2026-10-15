@@ -9,6 +9,9 @@ from ops_pilot.core.config import get_settings
 from ops_pilot.core.security import (
     decode_mcp_access_token,
 )
+from ops_pilot.services.mcp_token_revocation import (
+    is_mcp_access_token_revoked,
+)
 
 
 class OpsPilotMCPTokenVerifier:
@@ -20,7 +23,15 @@ class OpsPilotMCPTokenVerifier:
             payload = decode_mcp_access_token(
                 token,
             )
+            jti = payload.get(
+                "jti",
+            )
 
+            if not isinstance(
+                jti,
+                str,
+            ):
+                return None
             subject = payload.get("sub")
             client_id = payload.get(
                 "client_id",
@@ -57,10 +68,20 @@ class OpsPilotMCPTokenVerifier:
                 return None
 
             expires_at = payload.get("exp")
-
+            jti = payload.get("jti")
             if not isinstance(
                 expires_at,
                 int,
+            ):
+                return None
+
+            if not isinstance(
+                jti,
+                str,
+            ):
+                return None
+            if await is_mcp_access_token_revoked(
+                jti=jti,
             ):
                 return None
 
@@ -75,6 +96,7 @@ class OpsPilotMCPTokenVerifier:
                     "iss": str(
                         settings.mcp_authorization_server_url,
                     ),
+                    "jti": jti,
                 },
             )
 

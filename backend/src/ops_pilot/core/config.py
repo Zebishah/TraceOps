@@ -15,11 +15,11 @@ class Settings(BaseSettings):
     redis_default_ttl_seconds: int = 300
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 1440
     mcp_authorization_server_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
     mcp_resource_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000/mcp")
     mcp_required_scope: str = "ops-pilot:read"
-    mcp_access_token_expire_minutes: int = 60
+    mcp_access_token_expire_minutes: int = 1440
     mcp_authorization_code_expire_minutes: int = 10
     mcp_refresh_token_expire_days: int = 30
     mcp_allowed_hosts: str = "localhost,127.0.0.1"

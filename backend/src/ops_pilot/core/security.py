@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -80,6 +81,7 @@ def create_mcp_access_token(
     payload: dict[str, Any] = {
         "sub": subject,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
         "iss": str(settings.mcp_authorization_server_url),
         "aud": str(settings.mcp_resource_url),
         "scope": " ".join(granted_scopes),

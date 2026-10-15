@@ -18,7 +18,14 @@ def test_mcp_http_transport(
     close_mistral = AsyncMock()
     close_voyage = AsyncMock()
     close_qdrant = AsyncMock()
+    revocation_check = AsyncMock(
+        return_value=False,
+    )
 
+    monkeypatch.setattr(
+        "ops_pilot.mcp.auth.is_mcp_access_token_revoked",
+        revocation_check,
+    )
     monkeypatch.setattr(
         "ops_pilot.main.close_redis_client",
         close_redis,

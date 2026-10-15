@@ -39,7 +39,39 @@ async def oauth_login_page(
             "Invalid OAuth authorization request.",
             status_code=400,
         )
+    client_id = params.get("client_id")
+    scope = params.get("scope")
 
+    if client_id is None or scope is None:
+        return HTMLResponse(
+            "Invalid OAuth authorization request.",
+            status_code=400,
+        )
+
+    async with async_session_factory() as session:
+        client = await get_oauth_client(
+            session=session,
+            client_id=client_id,
+        )
+
+    if client is None:
+        return HTMLResponse(
+            "Unknown OAuth client.",
+            status_code=400,
+        )
+
+    client_name = client.client_name or "Unknown application"
+    settings = get_settings()
+
+    requested_scopes = scope.split()
+
+    if requested_scopes != [
+        settings.mcp_required_scope,
+    ]:
+        return HTMLResponse(
+            "Invalid OAuth scope.",
+            status_code=400,
+        )
     # state = params.get(
     #     "state",
     #     "",
@@ -61,7 +93,8 @@ async def oauth_login_page(
             f'name="{html.escape(key)}" '
             f'value="{html.escape(params.get(key, ""))}">'
         )
-
+    safe_client_name = html.escape(client_name)
+    safe_scope = html.escape(scope)
     return HTMLResponse(
         f"""
         <!doctype html>
@@ -70,11 +103,22 @@ async def oauth_login_page(
             <title>Authorize OpsPilot</title>
         </head>
         <body>
-            <h1>Authorize OpsPilot</h1>
-            <p>
-                Sign in to allow this MCP client
-                to access your OpsPilot account.
-            </p>
+            <h1>Authorize access to OpsPilot</h1>
+
+        <p>
+            <strong>{safe_client_name}</strong>
+            is requesting access to your OpsPilot account.
+        </p>
+
+        <p>
+            Requested permission:
+            <code>{safe_scope}</code>
+        </p>
+
+        <p>
+            This access allows the client to use approved
+            OpsPilot MCP tools on your behalf.
+        </p>
 
             <form method="post" action="/oauth/login">
                 {hidden_inputs}
@@ -152,6 +196,18 @@ async def oauth_login_submit(
     scope = str(values["scope"])
     resource = str(values["resource"])
     code_challenge = str(values["code_challenge"])
+    redirect_uri_explicit_value = str(values["redirect_uri_explicit"]).lower()
+
+    if redirect_uri_explicit_value not in {
+        "true",
+        "false",
+    }:
+        return HTMLResponse(
+            "Invalid OAuth redirect URI state.",
+            status_code=400,
+        )
+
+    redirect_uri_provided_explicitly = redirect_uri_explicit_value == "true"
     state = (
         str(values["state"])
         if isinstance(
@@ -210,6 +266,7 @@ async def oauth_login_submit(
             client_id=client_id,
             user_id=user.id,
             redirect_uri=redirect_uri,
+            redirect_uri_provided_explicitly=(redirect_uri_provided_explicitly),
             scopes=scopes,
             code_challenge=code_challenge,
             resource=resource,
