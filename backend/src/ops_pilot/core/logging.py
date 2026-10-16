@@ -47,6 +47,7 @@ class JsonFormatter(logging.Formatter):
             "status_code",
             "attempt",
             "duration_ms",
+            "webhook_path",
         ):
             value = getattr(
                 record,

@@ -7,9 +7,13 @@ from fastapi import FastAPI
 from ops_pilot.ai.embeddings import close_mistral_embedding_client
 from ops_pilot.ai.reranker import close_voyage_reranker_client
 from ops_pilot.api.exception_handlers import register_exception_handlers
+from ops_pilot.api.request_context import (
+    RequestContextMiddleware,
+)
 from ops_pilot.api.router import api_router
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
+from ops_pilot.core.logging import configure_logging
 from ops_pilot.inngest.client import inngest_client
 from ops_pilot.inngest.functions.document_processing import (
     process_document_background,
@@ -41,12 +45,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-
+    configure_logging(
+        level=settings.log_level,
+    )
     application = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         lifespan=lifespan,
     )
+    application.add_middleware(RequestContextMiddleware)
     inngest.fast_api.serve(
         application,
         inngest_client,

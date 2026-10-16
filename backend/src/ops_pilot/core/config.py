@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +56,62 @@ class Settings(BaseSettings):
 
     groq_api_key: str
     generation_model: str = "qwen/qwen3.8-27b"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @model_validator(mode="after")
+    def validate_security_settings(self) -> "Settings":
+        environment = self.environment.lower()
+
+        if len(self.jwt_secret_key) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")
+
+        if self.jwt_algorithm != "HS256":
+            raise ValueError("JWT_ALGORITHM must be HS256")
+
+        if self.access_token_expire_minutes <= 0:
+            raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be greater than 0")
+
+        if self.mcp_access_token_expire_minutes <= 0:
+            raise ValueError("MCP_ACCESS_TOKEN_EXPIRE_MINUTES must be greater than 0")
+
+        if self.mcp_authorization_code_expire_minutes <= 0:
+            raise ValueError("MCP_AUTHORIZATION_CODE_EXPIRE_MINUTES must be greater than 0")
+
+        if self.mcp_refresh_token_expire_days <= 0:
+            raise ValueError("MCP_REFRESH_TOKEN_EXPIRE_DAYS must be greater than 0")
+
+        allowed_hosts = {host.strip() for host in self.mcp_allowed_hosts.split(",") if host.strip()}
+
+        allowed_origins = {
+            origin.strip() for origin in self.mcp_allowed_origins.split(",") if origin.strip()
+        }
+
+        if "*" in allowed_hosts:
+            raise ValueError("MCP_ALLOWED_HOSTS must not contain wildcard '*'")
+
+        if "*" in allowed_origins:
+            raise ValueError("MCP_ALLOWED_ORIGINS must not contain wildcard '*'")
+
+        if environment == "production":
+            authorization_url = str(self.mcp_authorization_server_url)
+
+            resource_url = str(self.mcp_resource_url)
+
+            if not authorization_url.startswith("https://"):
+                raise ValueError("Production MCP authorization server must use HTTPS")
+
+            if not resource_url.startswith("https://"):
+                raise ValueError("Production MCP resource URL must use HTTPS")
+
+            if self.inngest_dev:
+                raise ValueError("INNGEST_DEV must be false in production")
+
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

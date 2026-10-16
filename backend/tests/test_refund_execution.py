@@ -86,9 +86,9 @@ def make_approval(
     incident_id: uuid.UUID,
     amount: str = "12000.00",
     currency: str = "PKR",
-    status: ApprovalStatus = (ApprovalStatus.APPROVED),
+    status: ApprovalStatus = ApprovalStatus.APPROVED,
 ) -> ApprovalRequest:
-    return ApprovalRequest(
+    approval = ApprovalRequest(
         id=uuid.uuid4(),
         organization_id=organization_id,
         incident_id=incident_id,
@@ -102,6 +102,15 @@ def make_approval(
         reason="Confirmed duplicate payment.",
         status=status,
     )
+
+    if status in {
+        ApprovalStatus.APPROVED,
+        ApprovalStatus.EXECUTED,
+    }:
+        approval.decided_by_user_id = uuid.uuid4()
+        approval.decided_at = datetime.now(UTC)
+
+    return approval
 
 
 def make_source_transaction(
@@ -421,3 +430,45 @@ def test_execute_refund_blocks_transaction_from_other_customer() -> None:
         )
 
     assert fake_session.added == []
+
+
+def test_execute_refund_rejects_approval_without_human_identity() -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+
+    approval = make_approval(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    approval.decided_by_user_id = None
+    approval.decided_at = None
+
+    fake_session = FakeSession(
+        [
+            approval,
+        ]
+    )
+
+    session = cast(
+        AsyncSession,
+        fake_session,
+    )
+
+    with pytest.raises(
+        ApprovalExecutionError,
+        match="recorded human approval",
+    ):
+        asyncio.run(
+            execute_approved_refund(
+                session=session,
+                organization_id=organization_id,
+                incident_id=incident_id,
+                approval_request_id=approval.id,
+                customer_id=customer_id,
+            )
+        )
+
+    assert fake_session.added == []
+    assert fake_session.commit_count == 0

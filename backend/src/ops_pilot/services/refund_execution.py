@@ -101,7 +101,8 @@ async def execute_approved_refund(
         raise ApprovalExecutionError(
             "Refund execution requires an approved request",
         )
-
+    if approval.decided_by_user_id is None or approval.decided_at is None:
+        raise ApprovalExecutionError("Refund execution requires a recorded human approval")
     payload = approval.action_payload
 
     external_transaction_id = payload.get("external_transaction_id")
@@ -162,7 +163,15 @@ async def execute_approved_refund(
 
     if source_transaction.status == PaymentTransactionStatus.REFUNDED:
         existing_result = await session.execute(
-            select(PaymentTransaction).where(
+            select(PaymentTransaction)
+            .join(
+                OperationalOrder,
+                PaymentTransaction.order_id == OperationalOrder.id,
+            )
+            .where(
+                PaymentTransaction.organization_id == organization_id,
+                OperationalOrder.organization_id == organization_id,
+                OperationalOrder.customer_id == customer_id,
                 PaymentTransaction.source_transaction_id == source_transaction.id,
                 PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
             )
@@ -206,12 +215,19 @@ async def execute_approved_refund(
         )
 
     existing_refund_result = await session.execute(
-        select(PaymentTransaction).where(
+        select(PaymentTransaction)
+        .join(
+            OperationalOrder,
+            PaymentTransaction.order_id == OperationalOrder.id,
+        )
+        .where(
+            PaymentTransaction.organization_id == organization_id,
+            OperationalOrder.organization_id == organization_id,
+            OperationalOrder.customer_id == customer_id,
             PaymentTransaction.source_transaction_id == source_transaction.id,
             PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
         )
     )
-
     existing_refund = existing_refund_result.scalar_one_or_none()
 
     if existing_refund is not None:
