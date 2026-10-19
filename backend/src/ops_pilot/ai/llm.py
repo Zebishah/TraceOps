@@ -16,5 +16,5 @@ def get_chat_model() -> ChatGroq:
         temperature=0,
         max_retries=2,
         max_tokens=500,
-        timeout=30.0,
+        timeout=settings.groq_timeout_seconds,
     )

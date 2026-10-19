@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ops_pilot.models.background_job import (
@@ -20,13 +21,12 @@ async def create_background_job(
     resource_id: uuid.UUID,
     idempotency_key: str,
 ) -> BackgroundJob:
-    result = await session.execute(
-        select(BackgroundJob).where(
-            BackgroundJob.organization_id == organization_id,
-            BackgroundJob.idempotency_key == idempotency_key,
-        )
+    statement = select(BackgroundJob).where(
+        BackgroundJob.organization_id == organization_id,
+        BackgroundJob.idempotency_key == idempotency_key,
     )
 
+    result = await session.execute(statement)
     existing = result.scalar_one_or_none()
 
     if existing is not None:
@@ -46,12 +46,21 @@ async def create_background_job(
 
     try:
         await session.commit()
+    except IntegrityError:
+        await session.rollback()
+
+        result = await session.execute(statement)
+        existing = result.scalar_one_or_none()
+
+        if existing is None:
+            raise
+
+        return existing
     except Exception:
         await session.rollback()
         raise
 
     await session.refresh(job)
-
     return job
 
 

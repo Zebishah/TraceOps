@@ -9,10 +9,13 @@ from ops_pilot.core.config import get_settings
 from ops_pilot.integrations.observability import (
     observe_external_call,
 )
+from ops_pilot.integrations.retry import (
+    retry_delay_seconds,
+    should_retry_response,
+)
 
 logger = logging.getLogger(__name__)
 MAX_RERANK_ATTEMPTS = 4
-BASE_RETRY_DELAY_SECONDS = 1.0
 
 
 @lru_cache
@@ -25,7 +28,7 @@ def get_voyage_reranker_client() -> httpx.AsyncClient:
             "Authorization": f"Bearer {settings.voyage_api_key}",
             "Content-Type": "application/json",
         },
-        timeout=30.0,
+        timeout=settings.voyage_timeout_seconds,
     )
 
 
@@ -38,33 +41,6 @@ async def close_voyage_reranker_client() -> None:
     await client.aclose()
 
     get_voyage_reranker_client.cache_clear()
-
-
-def _retry_delay_seconds(
-    *,
-    response: httpx.Response,
-    attempt: int,
-) -> float:
-    retry_after = response.headers.get(
-        "Retry-After",
-    )
-
-    if retry_after is not None:
-        try:
-            retry_after_seconds = float(
-                retry_after,
-            )
-
-            return max(
-                retry_after_seconds,
-                0.0,
-            )
-        except ValueError:
-            pass
-
-    delay: float = BASE_RETRY_DELAY_SECONDS * float(2**attempt)
-
-    return delay
 
 
 async def rerank_passages(
@@ -112,14 +88,14 @@ async def rerank_passages(
                 "status_code": response.status_code,
             },
         )
-        if response.status_code != 429:
+        if not should_retry_response(response):
             break
 
         if attempt == MAX_RERANK_ATTEMPTS - 1:
             break
 
         await asyncio.sleep(
-            _retry_delay_seconds(
+            retry_delay_seconds(
                 response=response,
                 attempt=attempt,
             )

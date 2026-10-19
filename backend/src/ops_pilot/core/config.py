@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     embedding_model: str = "mistral-embed"
     embedding_dimension: int = 1024
 
+    mistral_timeout_seconds: float = 30.0
+    voyage_timeout_seconds: float = 30.0
+    groq_timeout_seconds: float = 30.0
+
     voyage_api_key: str
     reranker_model: str = "rerank-3-lite"
     retrieval_candidate_limit: int = 12
@@ -84,7 +88,17 @@ class Settings(BaseSettings):
 
         if self.mcp_refresh_token_expire_days <= 0:
             raise ValueError("MCP_REFRESH_TOKEN_EXPIRE_DAYS must be greater than 0")
+        if self.mistral_timeout_seconds <= 0:
+            raise ValueError("MISTRAL_TIMEOUT_SECONDS must be greater than 0")
 
+        if self.voyage_timeout_seconds <= 0:
+            raise ValueError("VOYAGE_TIMEOUT_SECONDS must be greater than 0")
+
+        if self.n8n_timeout_seconds <= 0:
+            raise ValueError("N8N_TIMEOUT_SECONDS must be greater than 0")
+
+        if self.groq_timeout_seconds <= 0:
+            raise ValueError("GROQ_TIMEOUT_SECONDS must be greater than 0")
         allowed_hosts = {host.strip() for host in self.mcp_allowed_hosts.split(",") if host.strip()}
 
         allowed_origins = {

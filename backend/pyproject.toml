@@ -41,6 +41,7 @@ dev = [
     "httpx",
     "mypy",
     "pytest",
+    "pytest-asyncio",
     "ruff",
 ]
 
@@ -65,6 +66,7 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "strict"
 
 [tool.mypy]
 python_version = "3.12"

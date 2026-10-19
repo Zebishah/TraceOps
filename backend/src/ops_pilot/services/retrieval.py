@@ -1,3 +1,4 @@
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -13,6 +14,8 @@ from ops_pilot.integrations.observability import (
 )
 from ops_pilot.schemas.retrieval import RetrievalResult
 from ops_pilot.vectorstore.qdrant import get_qdrant_client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,23 +92,48 @@ async def retrieve_document_chunks(
     if not candidates:
         return []
 
-    reranker_scores = await rerank_passages(
-        query=query,
-        passages=[candidate.text for candidate in candidates],
-    )
+    try:
+        reranker_scores = await rerank_passages(
+            query=query,
+            passages=[candidate.text for candidate in candidates],
+        )
 
-    if len(reranker_scores) != len(candidates):
-        raise RuntimeError("Reranker score count does not match candidate count")
+        if len(reranker_scores) != len(candidates):
+            raise RuntimeError("Reranker score count does not match candidate count")
 
-    ranked = sorted(
-        zip(
+        ranked = sorted(
+            zip(
+                candidates,
+                reranker_scores,
+                strict=True,
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+    except Exception:
+        logger.warning(
+            "retrieval_reranker_fallback",
+            extra={
+                "provider": "voyage",
+                "operation": "rerank",
+                "organization_id": str(organization_id),
+                "candidate_count": len(candidates),
+            },
+            exc_info=True,
+        )
+
+    ranked = [
+        (
+            candidate,
+            candidate.vector_score,
+        )
+        for candidate in sorted(
             candidates,
-            reranker_scores,
-            strict=True,
-        ),
-        key=lambda item: item[1],
-        reverse=True,
-    )
+            key=lambda item: item.vector_score,
+            reverse=True,
+        )
+    ]
 
     return [
         RetrievalResult(

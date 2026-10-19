@@ -19,6 +19,18 @@ from ops_pilot.schemas.automation_events import (
 )
 
 
+def build_automation_event_id(
+    *,
+    organization_id: uuid.UUID,
+    event_type: str,
+    resource_key: str,
+) -> uuid.UUID:
+    return uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        (f"ops-pilot:{organization_id}:{event_type}:{resource_key}"),
+    )
+
+
 async def build_incident_resolved_event(
     *,
     session: AsyncSession,
@@ -68,7 +80,11 @@ async def build_incident_resolved_event(
     )
 
     return AutomationEvent(
-        event_id=uuid.uuid4(),
+        event_id=build_automation_event_id(
+            organization_id=organization_id,
+            event_type="incident.resolved",
+            resource_key=str(incident.id),
+        ),
         event_type="incident.resolved",
         organization_id=organization_id,
         occurred_at=datetime.now(UTC),
@@ -103,7 +119,11 @@ async def dispatch_high_risk_incident_automation(
     category: str | None,
 ) -> None:
     event = AutomationEvent(
-        event_id=uuid.uuid4(),
+        event_id=build_automation_event_id(
+            organization_id=organization_id,
+            event_type="incident.high_risk",
+            resource_key=str(incident_id),
+        ),
         event_type="incident.high_risk",
         organization_id=organization_id,
         occurred_at=datetime.now(UTC),
@@ -130,7 +150,11 @@ async def dispatch_document_indexing_failed_automation(
     error_message: str,
 ) -> None:
     event = AutomationEvent(
-        event_id=uuid.uuid4(),
+        event_id=build_automation_event_id(
+            organization_id=organization_id,
+            event_type="document.indexing_failed",
+            resource_key=str(job_id),
+        ),
         event_type="document.indexing_failed",
         organization_id=organization_id,
         occurred_at=datetime.now(UTC),
@@ -180,7 +204,11 @@ async def dispatch_customer_recovery_automation(
     )
 
     event = AutomationEvent(
-        event_id=uuid.uuid4(),
+        event_id=build_automation_event_id(
+            organization_id=organization_id,
+            event_type="incident.customer_recovery",
+            resource_key=execution.refund_transaction_id,
+        ),
         event_type="incident.customer_recovery",
         organization_id=organization_id,
         occurred_at=datetime.now(UTC),

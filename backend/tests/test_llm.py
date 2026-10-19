@@ -17,6 +17,7 @@ def test_get_chat_model_uses_configured_model(
         lambda: SimpleNamespace(
             generation_model="qwen/qwen3.8-27b",
             groq_api_key="test-key",
+            groq_timeout_seconds=30.0,
         ),
     )
 

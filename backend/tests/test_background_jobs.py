@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, Mock
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ops_pilot.models.background_job import (
@@ -225,3 +226,54 @@ def test_prepare_background_job_dispatch_resets_failed_job() -> None:
         assert job.inngest_event_id is None
 
     asyncio.run(run())
+
+
+def test_concurrent_duplicate_job_returns_existing() -> None:
+    session, session_mock = make_session()
+
+    organization_id = uuid.uuid4()
+    resource_id = uuid.uuid4()
+
+    existing = BackgroundJob(
+        organization_id=organization_id,
+        created_by_user_id=None,
+        job_type=BackgroundJobType.DOCUMENT_PROCESSING,
+        status=BackgroundJobStatus.QUEUED,
+        resource_id=resource_id,
+        idempotency_key=f"document-processing:{resource_id}",
+    )
+
+    first_result = Mock()
+    first_result.scalar_one_or_none.return_value = None
+
+    second_result = Mock()
+    second_result.scalar_one_or_none.return_value = existing
+
+    session_mock.execute.side_effect = [
+        first_result,
+        second_result,
+    ]
+
+    session_mock.commit.side_effect = IntegrityError(
+        "INSERT",
+        {},
+        Exception("duplicate key"),
+    )
+
+    async def run() -> None:
+        result = await create_background_job(
+            session=session,
+            organization_id=organization_id,
+            created_by_user_id=None,
+            job_type=BackgroundJobType.DOCUMENT_PROCESSING,
+            resource_id=resource_id,
+            idempotency_key=f"document-processing:{resource_id}",
+        )
+
+        assert result is existing
+
+    asyncio.run(run())
+
+    session_mock.rollback.assert_awaited_once()
+    assert session_mock.execute.await_count == 2
+    session_mock.refresh.assert_not_awaited()
