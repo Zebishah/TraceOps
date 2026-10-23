@@ -151,12 +151,10 @@ async def main() -> None:
     result = await recover_abandoned_dispatches()
 
     logger.info(
-        "background_dispatch_recovery_completed",
-        extra={
-            "candidates": result.candidates,
-            "attempted": result.attempted,
-            "failed": result.failed,
-        },
+        "Background dispatch recovery completed: candidates=%d attempted=%d failed=%d",
+        result.candidates,
+        result.attempted,
+        result.failed,
     )
 
     if result.failed:
