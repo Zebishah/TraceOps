@@ -3,6 +3,7 @@ from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.services.background_job_dispatch as dispatch_module
@@ -57,6 +58,74 @@ async def test_lease_claim_winner() -> None:
     assert result == token
     mocked.commit.assert_awaited_once()
     mocked.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_accepts_processing_job() -> None:
+    job = make_job()
+    job.status = BackgroundJobStatus.PROCESSING
+
+    session, mocked = make_session(job.id)
+
+    assert job.dispatch_id is not None
+
+    recorded = await record_background_job_send_success(
+        session=session,
+        job=job,
+        dispatch_id=job.dispatch_id,
+        lease_token=uuid.uuid4(),
+        event_id="evt_processing",
+    )
+
+    assert recorded is True
+    mocked.commit.assert_awaited_once()
+
+    statement = mocked.execute.await_args.args[0]
+
+    compiled = statement.compile(
+        dialect=postgresql.dialect(),
+    )
+
+    # The allowed state values are collected in one SQL
+    # parameter, rather than as separate scalar parameters.
+    assert any(
+        isinstance(value, (tuple, list))
+        and set(value)
+        == {
+            BackgroundJobStatus.QUEUED,
+            BackgroundJobStatus.PROCESSING,
+            BackgroundJobStatus.SUCCEEDED,
+        }
+        for value in compiled.params.values()
+    )
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_never_overwrites_job_status() -> None:
+    job = make_job()
+    job.status = BackgroundJobStatus.SUCCEEDED
+    job.progress_percent = 100
+
+    session, mocked = make_session(job.id)
+
+    assert job.dispatch_id is not None
+
+    recorded = await record_background_job_send_success(
+        session=session,
+        job=job,
+        dispatch_id=job.dispatch_id,
+        lease_token=uuid.uuid4(),
+        event_id="evt_completed",
+    )
+
+    assert recorded is True
+
+    statement = mocked.execute.await_args.args[0]
+
+    assert "status" not in statement._values
+    assert "progress_percent" not in statement._values
+
+    mocked.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

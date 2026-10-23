@@ -133,7 +133,13 @@ async def record_background_job_send_success(
             BackgroundJob.organization_id == job.organization_id,
             BackgroundJob.dispatch_id == dispatch_id,
             BackgroundJob.dispatch_lease_token == lease_token,
-            BackgroundJob.status == BackgroundJobStatus.QUEUED,
+            BackgroundJob.status.in_(
+                (
+                    BackgroundJobStatus.QUEUED,
+                    BackgroundJobStatus.PROCESSING,
+                    BackgroundJobStatus.SUCCEEDED,
+                )
+            ),
             BackgroundJob.inngest_event_id.is_(None),
         )
         .values(
