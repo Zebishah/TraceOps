@@ -69,6 +69,14 @@ def _validate_current_dispatch(
         raise RuntimeError("Background job dispatch mismatch")
 
 
+def _should_ignore_failure(
+    *,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+) -> bool:
+    return job.dispatch_id != dispatch_id or job.status == BackgroundJobStatus.SUCCEEDED
+
+
 async def _mark_job_processing(
     *,
     organization_id: uuid.UUID,
@@ -288,6 +296,14 @@ async def document_processing_on_failure(
                     "status": "job_not_found",
                 }
 
+            if _should_ignore_failure(
+                job=job,
+                dispatch_id=event_data.dispatch_id,
+            ):
+                return {
+                    "status": "ignored_stale_failure",
+                }
+
             await mark_background_job_failed(
                 session=session,
                 job=job,
@@ -316,6 +332,15 @@ async def document_processing_on_failure(
                     return {
                         "dispatched": False,
                         "reason": "job_not_found",
+                    }
+
+                if _should_ignore_failure(
+                    job=job,
+                    dispatch_id=event_data.dispatch_id,
+                ):
+                    return {
+                        "dispatched": False,
+                        "reason": "stale_or_completed_dispatch",
                     }
 
                 # 60% means document processing finished
