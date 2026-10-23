@@ -72,6 +72,16 @@ class BackgroundJob(Base):
         index=True,
     )
 
+    dispatch_lease_token: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+
+    dispatch_lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     job_type: Mapped[BackgroundJobType] = mapped_column(
         Enum(
             BackgroundJobType,

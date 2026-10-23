@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -11,7 +11,7 @@ async def test_create_authorization_code_stores_redirect_uri_explicit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = AsyncMock()
-
+    session.add = Mock()
     monkeypatch.setattr(
         oauth,
         "generate_oauth_secret",

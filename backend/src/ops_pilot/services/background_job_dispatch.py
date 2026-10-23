@@ -16,15 +16,64 @@ from ops_pilot.schemas.background_jobs import (
     BackgroundJobEventData,
 )
 from ops_pilot.services.background_jobs import (
+    claim_background_job_send_lease,
     create_background_job,
     prepare_background_job_dispatch,
-    set_background_job_event_id,
+    record_background_job_send_success,
 )
 from ops_pilot.services.document_processing import (
     get_document,
 )
 
 MEMORY_INDEXING_EVENT = "ops_pilot/memory.indexing.requested"
+
+
+async def _send_background_job_event(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+    event_name: str,
+    organization_id: uuid.UUID,
+    resource_id: uuid.UUID,
+) -> None:
+    lease_token = await claim_background_job_send_lease(
+        session=session,
+        job=job,
+        dispatch_id=dispatch_id,
+    )
+
+    if lease_token is None:
+        # Another sender owns the unexpired lease,
+        # the job has already started or finished,
+        # or the event was already acknowledged.
+        return
+
+    event_data = BackgroundJobEventData(
+        job_id=job.id,
+        dispatch_id=dispatch_id,
+        organization_id=organization_id,
+        resource_id=resource_id,
+    )
+
+    event_ids = await inngest_client.send(
+        inngest.Event(
+            id=str(dispatch_id),
+            name=event_name,
+            data=event_data.model_dump(mode="json"),
+        )
+    )
+
+    if not event_ids:
+        raise RuntimeError("Inngest did not return an event ID")
+
+    await record_background_job_send_success(
+        session=session,
+        job=job,
+        dispatch_id=dispatch_id,
+        lease_token=lease_token,
+        event_id=event_ids[0],
+    )
 
 
 async def enqueue_document_processing(
@@ -46,11 +95,9 @@ async def enqueue_document_processing(
         created_by_user_id=user_id,
         job_type=BackgroundJobType.DOCUMENT_PROCESSING,
         resource_id=document_id,
-        idempotency_key=(f"document-processing:{document_id}"),
+        idempotency_key=f"document-processing:{document_id}",
     )
 
-    # Active/completed job already exists.
-    # Do not enqueue duplicate work.
     if job.status in {
         BackgroundJobStatus.PROCESSING,
         BackgroundJobStatus.SUCCEEDED,
@@ -61,44 +108,25 @@ async def enqueue_document_processing(
         if job.inngest_event_id is not None:
             return job
 
-        # Reuse existing dispatch ID for safe retry.
         dispatch_id = job.dispatch_id
     else:
-        claimed_dispatch_id = await prepare_background_job_dispatch(
+        claimed = await prepare_background_job_dispatch(
             session=session,
             job=job,
         )
 
-        if claimed_dispatch_id is None:
-            # Another request already claimed this dispatch.
+        if claimed is None:
             return job
 
-        dispatch_id = claimed_dispatch_id
+        dispatch_id = claimed
 
-    event_data = BackgroundJobEventData(
-        job_id=job.id,
-        dispatch_id=dispatch_id,
-        organization_id=organization_id,
-        resource_id=document_id,
-    )
-
-    event_ids = await inngest_client.send(
-        inngest.Event(
-            id=str(dispatch_id),
-            name=DOCUMENT_PROCESSING_EVENT,
-            data=event_data.model_dump(
-                mode="json",
-            ),
-        )
-    )
-
-    if not event_ids:
-        raise RuntimeError("Inngest did not return an event ID")
-
-    await set_background_job_event_id(
+    await _send_background_job_event(
         session=session,
         job=job,
-        event_id=event_ids[0],
+        dispatch_id=dispatch_id,
+        event_name=DOCUMENT_PROCESSING_EVENT,
+        organization_id=organization_id,
+        resource_id=document_id,
     )
 
     return job
@@ -116,7 +144,7 @@ async def enqueue_memory_indexing(
         created_by_user_id=None,
         job_type=BackgroundJobType.MEMORY_INDEXING,
         resource_id=incident_id,
-        idempotency_key=(f"memory-indexing:{incident_id}"),
+        idempotency_key=f"memory-indexing:{incident_id}",
     )
 
     if job.status in {
@@ -129,44 +157,25 @@ async def enqueue_memory_indexing(
         if job.inngest_event_id is not None:
             return job
 
-        # Reuse existing dispatch ID for safe retry.
         dispatch_id = job.dispatch_id
     else:
-        claimed_dispatch_id = await prepare_background_job_dispatch(
+        claimed = await prepare_background_job_dispatch(
             session=session,
             job=job,
         )
 
-        if claimed_dispatch_id is None:
-            # Another request already claimed this dispatch.
+        if claimed is None:
             return job
 
-        dispatch_id = claimed_dispatch_id
+        dispatch_id = claimed
 
-    event_data = BackgroundJobEventData(
-        job_id=job.id,
-        dispatch_id=dispatch_id,
-        organization_id=organization_id,
-        resource_id=incident_id,
-    )
-
-    event_ids = await inngest_client.send(
-        inngest.Event(
-            id=str(dispatch_id),
-            name=MEMORY_INDEXING_EVENT,
-            data=event_data.model_dump(
-                mode="json",
-            ),
-        )
-    )
-
-    if not event_ids:
-        raise RuntimeError("Inngest did not return an event ID")
-
-    await set_background_job_event_id(
+    await _send_background_job_event(
         session=session,
         job=job,
-        event_id=event_ids[0],
+        dispatch_id=dispatch_id,
+        event_name=MEMORY_INDEXING_EVENT,
+        organization_id=organization_id,
+        resource_id=incident_id,
     )
 
     return job

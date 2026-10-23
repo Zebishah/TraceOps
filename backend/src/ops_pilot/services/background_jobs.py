@@ -1,7 +1,7 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,8 @@ from ops_pilot.models.background_job import (
     BackgroundJobStatus,
     BackgroundJobType,
 )
+
+DISPATCH_LEASE_SECONDS = 60
 
 
 async def create_background_job(
@@ -62,6 +64,97 @@ async def create_background_job(
 
     await session.refresh(job)
     return job
+
+
+async def claim_background_job_send_lease(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """Allow only one active sender for a dispatch."""
+
+    lease_token = uuid.uuid4()
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(
+        seconds=DISPATCH_LEASE_SECONDS,
+    )
+
+    statement = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+            BackgroundJob.dispatch_id == dispatch_id,
+            BackgroundJob.status == BackgroundJobStatus.QUEUED,
+            BackgroundJob.inngest_event_id.is_(None),
+            or_(
+                BackgroundJob.dispatch_lease_token.is_(None),
+                BackgroundJob.dispatch_lease_expires_at.is_(None),
+                BackgroundJob.dispatch_lease_expires_at <= now,
+            ),
+        )
+        .values(
+            dispatch_lease_token=lease_token,
+            dispatch_lease_expires_at=expires_at,
+        )
+        .returning(BackgroundJob.dispatch_lease_token)
+    )
+
+    try:
+        result = await session.execute(statement)
+        claimed_token = result.scalar_one_or_none()
+
+        await session.commit()
+
+        # Refresh so the caller sees the latest database state.
+        await session.refresh(job)
+
+        return claimed_token
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def record_background_job_send_success(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+    lease_token: uuid.UUID,
+    event_id: str,
+) -> bool:
+    """Persist an acknowledgement only for the current lease owner."""
+
+    statement = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+            BackgroundJob.dispatch_id == dispatch_id,
+            BackgroundJob.dispatch_lease_token == lease_token,
+            BackgroundJob.status == BackgroundJobStatus.QUEUED,
+            BackgroundJob.inngest_event_id.is_(None),
+        )
+        .values(
+            inngest_event_id=event_id,
+            dispatch_lease_token=None,
+            dispatch_lease_expires_at=None,
+        )
+        .returning(BackgroundJob.id)
+    )
+
+    try:
+        result = await session.execute(statement)
+        recorded = result.scalar_one_or_none() is not None
+
+        await session.commit()
+        await session.refresh(job)
+
+        return recorded
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def get_background_job(
@@ -186,6 +279,8 @@ async def prepare_background_job_dispatch(
             error_message=None,
             started_at=None,
             completed_at=None,
+            dispatch_lease_token=None,
+            dispatch_lease_expires_at=None,
         )
         .returning(BackgroundJob.dispatch_id)
     )
