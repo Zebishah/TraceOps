@@ -123,17 +123,17 @@ async def retrieve_document_chunks(
             exc_info=True,
         )
 
-    ranked = [
-        (
-            candidate,
-            candidate.vector_score,
-        )
-        for candidate in sorted(
-            candidates,
-            key=lambda item: item.vector_score,
-            reverse=True,
-        )
-    ]
+        ranked = [
+            (
+                candidate,
+                candidate.vector_score,
+            )
+            for candidate in sorted(
+                candidates,
+                key=lambda item: item.vector_score,
+                reverse=True,
+            )
+        ]
 
     return [
         RetrievalResult(

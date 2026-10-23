@@ -28,6 +28,90 @@ async def test_retrieval_result_schema() -> None:
 
 
 @pytest.mark.asyncio
+async def test_successful_reranker_overrides_vector_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    first_chunk_id = uuid.uuid4()
+    second_chunk_id = uuid.uuid4()
+
+    points = [
+        SimpleNamespace(
+            id=first_chunk_id,
+            score=0.95,
+            payload={
+                "document_id": str(uuid.uuid4()),
+                "chunk_index": 0,
+                "text": "High vector score",
+                "source_filename": "first.pdf",
+                "page_number": 1,
+            },
+        ),
+        SimpleNamespace(
+            id=second_chunk_id,
+            score=0.60,
+            payload={
+                "document_id": str(uuid.uuid4()),
+                "chunk_index": 1,
+                "text": "High reranker score",
+                "source_filename": "second.pdf",
+                "page_number": 2,
+            },
+        ),
+    ]
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            qdrant_collection_name="test",
+            retrieval_candidate_limit=12,
+        ),
+    )
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "embed_query",
+        AsyncMock(return_value=[0.1, 0.2]),
+    )
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "get_qdrant_client",
+        lambda: SimpleNamespace(
+            query_points=AsyncMock(
+                return_value=SimpleNamespace(points=points),
+            ),
+        ),
+    )
+
+    rerank_mock = AsyncMock(return_value=[0.10, 0.99])
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "rerank_passages",
+        rerank_mock,
+    )
+
+    results = await retrieval_module.retrieve_document_chunks(
+        organization_id=organization_id,
+        query="high reranker score",
+        limit=2,
+    )
+
+    assert len(results) == 2
+
+    # Voyage ranking must win over vector similarity.
+    assert results[0].chunk_id == second_chunk_id
+    assert results[1].chunk_id == first_chunk_id
+
+    assert results[0].reranker_score == 0.99
+    assert results[1].reranker_score == 0.10
+
+    rerank_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_retrieval_falls_back_to_vector_scores_when_reranker_fails(
     monkeypatch,
 ) -> None:
