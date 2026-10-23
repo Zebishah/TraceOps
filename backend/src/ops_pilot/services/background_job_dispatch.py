@@ -61,12 +61,19 @@ async def enqueue_document_processing(
         if job.inngest_event_id is not None:
             return job
 
+        # Reuse existing dispatch ID for safe retry.
         dispatch_id = job.dispatch_id
     else:
-        dispatch_id = await prepare_background_job_dispatch(
+        claimed_dispatch_id = await prepare_background_job_dispatch(
             session=session,
             job=job,
         )
+
+        if claimed_dispatch_id is None:
+            # Another request already claimed this dispatch.
+            return job
+
+        dispatch_id = claimed_dispatch_id
 
     event_data = BackgroundJobEventData(
         job_id=job.id,
@@ -122,13 +129,19 @@ async def enqueue_memory_indexing(
         if job.inngest_event_id is not None:
             return job
 
+        # Reuse existing dispatch ID for safe retry.
         dispatch_id = job.dispatch_id
-
     else:
-        dispatch_id = await prepare_background_job_dispatch(
+        claimed_dispatch_id = await prepare_background_job_dispatch(
             session=session,
             job=job,
         )
+
+        if claimed_dispatch_id is None:
+            # Another request already claimed this dispatch.
+            return job
+
+        dispatch_id = claimed_dispatch_id
 
     event_data = BackgroundJobEventData(
         job_id=job.id,

@@ -192,10 +192,11 @@ def test_background_job_failure() -> None:
     asyncio.run(run())
 
 
-def test_prepare_background_job_dispatch_resets_failed_job() -> None:
-    session, _ = make_session()
+def test_prepare_background_job_dispatch_claimed() -> None:
+    session, session_mock = make_session()
 
     job = BackgroundJob(
+        id=uuid.uuid4(),
         organization_id=uuid.uuid4(),
         created_by_user_id=None,
         job_type=BackgroundJobType.DOCUMENT_PROCESSING,
@@ -204,28 +205,60 @@ def test_prepare_background_job_dispatch_resets_failed_job() -> None:
         idempotency_key="retry-job",
         progress_percent=60,
         error_message="Qdrant unavailable",
-        completed_at=datetime.now(
-            UTC,
-        ),
+        completed_at=datetime.now(UTC),
     )
 
+    dispatch_id = uuid.uuid4()
+
+    result = Mock()
+    result.scalar_one_or_none.return_value = dispatch_id
+    session_mock.execute.return_value = result
+
     async def run() -> None:
-        dispatch_id = await prepare_background_job_dispatch(
+        claimed = await prepare_background_job_dispatch(
             session=session,
             job=job,
         )
 
-        assert job.dispatch_id == dispatch_id
-
-        assert job.status == BackgroundJobStatus.QUEUED
-
-        assert job.progress_percent == 0
-        assert job.error_message is None
-        assert job.started_at is None
-        assert job.completed_at is None
-        assert job.inngest_event_id is None
+        assert claimed == dispatch_id
 
     asyncio.run(run())
+
+    session_mock.execute.assert_awaited_once()
+    session_mock.commit.assert_awaited_once()
+    session_mock.refresh.assert_awaited_once_with(job)
+
+
+def test_prepare_background_job_dispatch_loses_race() -> None:
+    session, session_mock = make_session()
+
+    job = BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        created_by_user_id=None,
+        job_type=BackgroundJobType.DOCUMENT_PROCESSING,
+        status=BackgroundJobStatus.FAILED,
+        resource_id=uuid.uuid4(),
+        idempotency_key="duplicate-retry",
+    )
+
+    result = Mock()
+    result.scalar_one_or_none.return_value = None
+    session_mock.execute.return_value = result
+
+    async def run() -> None:
+        claimed = await prepare_background_job_dispatch(
+            session=session,
+            job=job,
+        )
+
+        assert claimed is None
+
+    asyncio.run(run())
+
+    session_mock.execute.assert_awaited_once()
+    session_mock.commit.assert_awaited_once()
+    session_mock.refresh.assert_awaited_once_with(job)
 
 
 def test_concurrent_duplicate_job_returns_existing() -> None:

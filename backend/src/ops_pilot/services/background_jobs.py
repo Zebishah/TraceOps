@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -162,19 +162,42 @@ async def prepare_background_job_dispatch(
     *,
     session: AsyncSession,
     job: BackgroundJob,
-) -> uuid.UUID:
+) -> uuid.UUID | None:
     dispatch_id = uuid.uuid4()
 
-    job.dispatch_id = dispatch_id
-    job.inngest_event_id = None
+    statement = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+            (
+                (BackgroundJob.status == BackgroundJobStatus.FAILED)
+                | (
+                    (BackgroundJob.status == BackgroundJobStatus.QUEUED)
+                    & (BackgroundJob.dispatch_id.is_(None))
+                )
+            ),
+        )
+        .values(
+            dispatch_id=dispatch_id,
+            inngest_event_id=None,
+            status=BackgroundJobStatus.QUEUED,
+            progress_percent=0,
+            error_message=None,
+            started_at=None,
+            completed_at=None,
+        )
+        .returning(BackgroundJob.dispatch_id)
+    )
 
-    job.status = BackgroundJobStatus.QUEUED
-    job.progress_percent = 0
-    job.error_message = None
-    job.started_at = None
-    job.completed_at = None
+    try:
+        result = await session.execute(statement)
+        claimed_dispatch_id = result.scalar_one_or_none()
 
-    await session.commit()
-    await session.refresh(job)
+        await session.commit()
+        await session.refresh(job)
 
-    return dispatch_id
+        return claimed_dispatch_id
+    except Exception:
+        await session.rollback()
+        raise
