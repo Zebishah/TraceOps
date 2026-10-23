@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +79,84 @@ class FakeSession:
         value: object,
     ) -> None:
         return None
+
+
+@pytest.mark.parametrize(
+    "source_status, existing_results",
+    [
+        (PaymentTransactionStatus.REFUNDED, 1),
+        (PaymentTransactionStatus.SUCCEEDED, 2),
+    ],
+)
+def test_refund_recovery_rolls_back_on_commit_failure(
+    source_status: PaymentTransactionStatus,
+    existing_results: int,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+
+    approval = make_approval(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    source = make_source_transaction(
+        organization_id=organization_id,
+        status=source_status,
+    )
+
+    existing_refund = PaymentTransaction(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        order_id=source.order_id,
+        source_transaction_id=source.id,
+        external_transaction_id=f"refund-{approval.id}",
+        provider=source.provider,
+        transaction_type=PaymentTransactionType.REFUND,
+        amount=source.amount,
+        currency=source.currency,
+        status=PaymentTransactionStatus.SUCCEEDED,
+        processed_at=datetime.now(UTC),
+    )
+
+    results: list[object | None] = [
+        approval,
+        source,
+    ]
+
+    if existing_results == 2:
+        # The source is SUCCEEDED, so the service checks
+        # for an existing refund after validating the charge.
+        results.append(existing_refund)
+    else:
+        # The source is already REFUNDED.
+        results.append(existing_refund)
+
+    fake_session = FakeSession(results)
+
+    session = cast(AsyncSession, fake_session)
+
+    fake_session.commit = AsyncMock(
+        side_effect=RuntimeError("Database commit failed"),
+    )
+    fake_session.rollback = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="Database commit failed"):
+        asyncio.run(
+            execute_approved_refund(
+                session=session,
+                organization_id=organization_id,
+                incident_id=incident_id,
+                approval_request_id=approval.id,
+                customer_id=customer_id,
+            )
+        )
+
+    fake_session.commit.assert_awaited_once()
+    fake_session.rollback.assert_awaited_once()
+
+    assert fake_session.added == []
 
 
 def make_approval(

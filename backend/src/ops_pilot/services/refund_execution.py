@@ -189,7 +189,11 @@ async def execute_approved_refund(
         if approval.executed_at is None:
             approval.executed_at = datetime.now(UTC)
 
-        await session.commit()
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
         return RefundExecutionResult(
             source_transaction_id=(source_transaction.external_transaction_id),
@@ -236,7 +240,11 @@ async def execute_approved_refund(
         approval.status = ApprovalStatus.EXECUTED
         approval.executed_at = approval.executed_at or datetime.now(UTC)
 
-        await session.commit()
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
         return RefundExecutionResult(
             source_transaction_id=(source_transaction.external_transaction_id),
