@@ -26,7 +26,7 @@ async def run_dispatch_recovery() -> dict[str, int]:
     fn_id="recover-abandoned-background-dispatches",
     name="Recover Abandoned Background Dispatches",
     trigger=inngest.TriggerCron(
-        cron="* * * * *",
+        cron="*/5 * * * *",
     ),
     retries=2,
 )
