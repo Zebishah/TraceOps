@@ -32,6 +32,67 @@ def make_session() -> tuple[
     )
 
 
+def test_memory_failure_ignores_completed_job() -> None:
+    dispatch_id = uuid.uuid4()
+
+    job = BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        status=BackgroundJobStatus.SUCCEEDED,
+        resource_id=uuid.uuid4(),
+        idempotency_key="completed-memory-job",
+        dispatch_id=dispatch_id,
+        progress_percent=100,
+    )
+
+    assert module._should_ignore_memory_failure(
+        job=job,
+        dispatch_id=dispatch_id,
+    )
+
+
+def test_memory_failure_ignores_previous_dispatch() -> None:
+    job = BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        status=BackgroundJobStatus.PROCESSING,
+        resource_id=uuid.uuid4(),
+        idempotency_key="retried-memory-job",
+        dispatch_id=uuid.uuid4(),
+        progress_percent=10,
+    )
+
+    assert module._should_ignore_memory_failure(
+        job=job,
+        dispatch_id=uuid.uuid4(),
+    )
+
+
+def test_memory_failure_allows_current_active_job() -> None:
+    dispatch_id = uuid.uuid4()
+
+    job = BackgroundJob(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        created_by_user_id=None,
+        job_type=BackgroundJobType.MEMORY_INDEXING,
+        status=BackgroundJobStatus.PROCESSING,
+        resource_id=uuid.uuid4(),
+        idempotency_key="active-memory-job",
+        dispatch_id=dispatch_id,
+        progress_percent=10,
+    )
+
+    assert not module._should_ignore_memory_failure(
+        job=job,
+        dispatch_id=dispatch_id,
+    )
+
+
 def test_mark_memory_job_processing(
     monkeypatch,
 ) -> None:

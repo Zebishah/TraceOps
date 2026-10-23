@@ -83,6 +83,14 @@ async def _mark_memory_job_processing(
         }
 
 
+def _should_ignore_memory_failure(
+    *,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+) -> bool:
+    return job.dispatch_id != dispatch_id or job.status == BackgroundJobStatus.SUCCEEDED
+
+
 async def _index_memory_step(
     *,
     organization_id: uuid.UUID,
@@ -223,9 +231,13 @@ async def memory_indexing_on_failure(
 
             # Do not let an old failed execution
             # overwrite a newer retry.
-            if job.dispatch_id != event_data.dispatch_id:
+
+            if _should_ignore_memory_failure(
+                job=job,
+                dispatch_id=event_data.dispatch_id,
+            ):
                 return {
-                    "status": "stale_dispatch",
+                    "status": "ignored_stale_or_completed",
                 }
 
             await mark_background_job_failed(
