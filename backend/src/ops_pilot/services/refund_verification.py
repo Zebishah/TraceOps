@@ -123,4 +123,8 @@ async def verify_refund_execution(
 
     incident.status = IncidentStatus.RESOLVED
 
-    await session.commit()
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
