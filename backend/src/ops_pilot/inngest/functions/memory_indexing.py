@@ -19,9 +19,7 @@ from ops_pilot.services.background_job_dispatch import (
 )
 from ops_pilot.services.background_jobs import (
     get_background_job,
-    mark_background_job_failed,
-    mark_background_job_processing,
-    mark_background_job_succeeded,
+    update_job_for_dispatch,
 )
 from ops_pilot.services.incident_memory_indexing import (
     index_incident_memory,
@@ -68,19 +66,20 @@ async def _mark_memory_job_processing(
         )
 
         if job.status == BackgroundJobStatus.SUCCEEDED:
-            return {
-                "already_succeeded": True,
-            }
+            return {"already_succeeded": True}
 
-        await mark_background_job_processing(
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.PROCESSING,
             progress_percent=10,
         )
 
-        return {
-            "already_succeeded": False,
-        }
+        if not updated:
+            raise RuntimeError("Memory indexing dispatch is no longer active")
+
+        return {"already_succeeded": False}
 
 
 def _should_ignore_memory_failure(
@@ -113,7 +112,8 @@ async def _index_memory_step(
             incident_id=incident_id,
             dispatch_id=dispatch_id,
         )
-
+        if job.status != BackgroundJobStatus.PROCESSING:
+            raise RuntimeError("Memory indexing job is not processing")
     async with async_session_factory() as session:
         indexed = await index_incident_memory(
             session=session,
@@ -149,14 +149,21 @@ async def _mark_memory_job_succeeded(
             dispatch_id=dispatch_id,
         )
 
-        await mark_background_job_succeeded(
+        if job.status == BackgroundJobStatus.SUCCEEDED:
+            return {"status": BackgroundJobStatus.SUCCEEDED.value}
+
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.SUCCEEDED,
+            progress_percent=100,
         )
 
-    return {
-        "status": (BackgroundJobStatus.SUCCEEDED.value),
-    }
+        if not updated:
+            raise RuntimeError("Stale dispatch cannot complete memory indexing")
+
+    return {"status": BackgroundJobStatus.SUCCEEDED.value}
 
 
 def _extract_failure_event_data(
@@ -220,35 +227,32 @@ async def memory_indexing_on_failure(
         async with async_session_factory() as session:
             job = await get_background_job(
                 session=session,
-                organization_id=(event_data.organization_id),
+                organization_id=event_data.organization_id,
                 job_id=event_data.job_id,
             )
 
             if job is None:
-                return {
-                    "status": "job_not_found",
-                }
-
-            # Do not let an old failed execution
-            # overwrite a newer retry.
+                return {"status": "job_not_found"}
 
             if _should_ignore_memory_failure(
                 job=job,
                 dispatch_id=event_data.dispatch_id,
             ):
-                return {
-                    "status": "ignored_stale_or_completed",
-                }
+                return {"status": "ignored_stale_or_completed"}
 
-            await mark_background_job_failed(
+            updated = await update_job_for_dispatch(
                 session=session,
                 job=job,
+                dispatch_id=event_data.dispatch_id,
+                status=BackgroundJobStatus.FAILED,
+                progress_percent=job.progress_percent,
                 error_message=error_message,
             )
 
-        return {
-            "status": (BackgroundJobStatus.FAILED.value),
-        }
+            if not updated:
+                return {"status": "ignored_stale_or_completed"}
+
+        return {"status": BackgroundJobStatus.FAILED.value}
 
     await ctx.step.run(
         "mark-memory-job-failed",

@@ -302,3 +302,71 @@ async def prepare_background_job_dispatch(
     except Exception:
         await session.rollback()
         raise
+
+
+async def update_job_for_dispatch(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    dispatch_id: uuid.UUID,
+    status: BackgroundJobStatus,
+    progress_percent: int,
+    error_message: str | None = None,
+) -> bool:
+    """Atomically update the current active dispatch only."""
+
+    if status not in {
+        BackgroundJobStatus.PROCESSING,
+        BackgroundJobStatus.SUCCEEDED,
+        BackgroundJobStatus.FAILED,
+    }:
+        raise ValueError("Invalid background job transition")
+
+    if not 0 <= progress_percent <= 100:
+        raise ValueError("Background job progress must be between 0 and 100")
+
+    now = datetime.now(UTC)
+
+    values: dict[str, object] = {
+        "status": status,
+        "error_message": (error_message[:1000] if error_message is not None else None),
+    }
+
+    if status == BackgroundJobStatus.PROCESSING:
+        values["progress_percent"] = progress_percent
+        values["started_at"] = now
+    elif status == BackgroundJobStatus.SUCCEEDED:
+        values["progress_percent"] = 100
+        values["completed_at"] = now
+    else:
+        values["progress_percent"] = progress_percent
+        values["completed_at"] = now
+
+    statement = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+            BackgroundJob.dispatch_id == dispatch_id,
+            BackgroundJob.status.in_(
+                (
+                    BackgroundJobStatus.QUEUED,
+                    BackgroundJobStatus.PROCESSING,
+                )
+            ),
+        )
+        .values(**values)
+        .returning(BackgroundJob.id)
+    )
+
+    try:
+        result = await session.execute(statement)
+        updated = result.scalar_one_or_none() is not None
+
+        await session.commit()
+        await session.refresh(job)
+
+        return updated
+    except Exception:
+        await session.rollback()
+        raise

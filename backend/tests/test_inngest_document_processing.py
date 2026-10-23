@@ -78,7 +78,7 @@ def test_mark_job_processing(
     ) -> BackgroundJob:
         return job
 
-    mark_processing = AsyncMock()
+    mark_processing = AsyncMock(return_value=True)
 
     monkeypatch.setattr(
         module,
@@ -94,7 +94,7 @@ def test_mark_job_processing(
 
     monkeypatch.setattr(
         module,
-        "mark_background_job_processing",
+        "update_job_for_dispatch",
         mark_processing,
     )
 
@@ -115,6 +115,8 @@ def test_mark_job_processing(
     mark_processing.assert_awaited_once_with(
         session=session,
         job=job,
+        dispatch_id=dispatch_id,
+        status=BackgroundJobStatus.PROCESSING,
         progress_percent=10,
     )
 
@@ -199,7 +201,16 @@ def test_mark_job_succeeded(
     ) -> BackgroundJob:
         return job
 
-    mark_succeeded = AsyncMock()
+    dispatch_id = job.dispatch_id
+    assert dispatch_id is not None
+
+    mark_succeeded = AsyncMock(return_value=True)
+
+    monkeypatch.setattr(
+        module,
+        "update_job_for_dispatch",
+        mark_succeeded,
+    )
 
     monkeypatch.setattr(
         module,
@@ -213,16 +224,11 @@ def test_mark_job_succeeded(
         fake_get_background_job,
     )
 
-    monkeypatch.setattr(
-        module,
-        "mark_background_job_succeeded",
-        mark_succeeded,
-    )
-
     result = asyncio.run(
         module._mark_job_succeeded(
             organization_id=organization_id,
             job_id=job_id,
+            dispatch_id=dispatch_id,
         )
     )
 
@@ -231,6 +237,9 @@ def test_mark_job_succeeded(
     mark_succeeded.assert_awaited_once_with(
         session=session,
         job=job,
+        dispatch_id=dispatch_id,
+        status=BackgroundJobStatus.SUCCEEDED,
+        progress_percent=100,
     )
 
 

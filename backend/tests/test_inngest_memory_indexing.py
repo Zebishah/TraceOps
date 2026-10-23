@@ -124,7 +124,7 @@ def test_mark_memory_job_processing(
     ) -> BackgroundJob:
         return job
 
-    mark_processing = AsyncMock()
+    mark_processing = AsyncMock(return_value=True)
 
     monkeypatch.setattr(
         module,
@@ -140,7 +140,7 @@ def test_mark_memory_job_processing(
 
     monkeypatch.setattr(
         module,
-        "mark_background_job_processing",
+        "update_job_for_dispatch",
         mark_processing,
     )
 
@@ -160,6 +160,8 @@ def test_mark_memory_job_processing(
     mark_processing.assert_awaited_once_with(
         session=session,
         job=job,
+        dispatch_id=dispatch_id,
+        status=BackgroundJobStatus.PROCESSING,
         progress_percent=10,
     )
 

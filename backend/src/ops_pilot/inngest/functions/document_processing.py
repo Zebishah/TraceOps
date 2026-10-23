@@ -19,10 +19,7 @@ from ops_pilot.services.automation_events import (
 )
 from ops_pilot.services.background_jobs import (
     get_background_job,
-    mark_background_job_failed,
-    mark_background_job_processing,
-    mark_background_job_succeeded,
-    update_background_job_progress,
+    update_job_for_dispatch,
 )
 from ops_pilot.services.document_indexing import (
     index_document,
@@ -111,11 +108,16 @@ async def _mark_job_processing(
                 "progress_percent": 100,
             }
 
-        await mark_background_job_processing(
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.PROCESSING,
             progress_percent=10,
         )
+
+        if not updated:
+            raise RuntimeError("Background job dispatch is no longer active")
 
         return {
             "already_succeeded": False,
@@ -128,14 +130,35 @@ async def _process_document_step(
     organization_id: uuid.UUID,
     job_id: uuid.UUID,
     document_id: uuid.UUID,
+    dispatch_id: uuid.UUID,
 ) -> dict[str, object]:
+    async with async_session_factory() as session:
+        job = await get_background_job(
+            session=session,
+            organization_id=organization_id,
+            job_id=job_id,
+        )
+
+        if job is None:
+            raise RuntimeError("Background job not found")
+
+        if job.resource_id != document_id:
+            raise RuntimeError("Background job resource mismatch")
+
+        _validate_current_dispatch(
+            job=job,
+            dispatch_id=dispatch_id,
+        )
+
+        if job.status != BackgroundJobStatus.PROCESSING:
+            raise RuntimeError("Background job is not processing")
+
     async with async_session_factory() as session:
         document = await process_document(
             session=session,
             organization_id=organization_id,
             document_id=document_id,
         )
-
         document_status = document.status.value
 
     async with async_session_factory() as session:
@@ -148,11 +171,16 @@ async def _process_document_step(
         if job is None:
             raise RuntimeError("Background job not found")
 
-        await update_background_job_progress(
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.PROCESSING,
             progress_percent=60,
         )
+
+        if not updated:
+            raise RuntimeError("Document processing dispatch became stale")
 
     return {
         "document_id": str(document_id),
@@ -166,7 +194,29 @@ async def _index_document_step(
     organization_id: uuid.UUID,
     job_id: uuid.UUID,
     document_id: uuid.UUID,
+    dispatch_id: uuid.UUID,
 ) -> dict[str, object]:
+    async with async_session_factory() as session:
+        job = await get_background_job(
+            session=session,
+            organization_id=organization_id,
+            job_id=job_id,
+        )
+
+        if job is None:
+            raise RuntimeError("Background job not found")
+
+        if job.resource_id != document_id:
+            raise RuntimeError("Background job resource mismatch")
+
+        _validate_current_dispatch(
+            job=job,
+            dispatch_id=dispatch_id,
+        )
+
+        if job.status != BackgroundJobStatus.PROCESSING:
+            raise RuntimeError("Background job is not processing")
+
     async with async_session_factory() as session:
         indexed_chunks = await index_document(
             session=session,
@@ -184,11 +234,16 @@ async def _index_document_step(
         if job is None:
             raise RuntimeError("Background job not found")
 
-        await update_background_job_progress(
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.PROCESSING,
             progress_percent=90,
         )
+
+        if not updated:
+            raise RuntimeError("Document indexing dispatch became stale")
 
     return {
         "document_id": str(document_id),
@@ -201,6 +256,7 @@ async def _mark_job_succeeded(
     *,
     organization_id: uuid.UUID,
     job_id: uuid.UUID,
+    dispatch_id: uuid.UUID,
 ) -> dict[str, object]:
     async with async_session_factory() as session:
         job = await get_background_job(
@@ -212,14 +268,31 @@ async def _mark_job_succeeded(
         if job is None:
             raise RuntimeError("Background job not found")
 
-        await mark_background_job_succeeded(
+        if job.status == BackgroundJobStatus.SUCCEEDED:
+            _validate_current_dispatch(
+                job=job,
+                dispatch_id=dispatch_id,
+            )
+            return {
+                "job_id": str(job_id),
+                "status": BackgroundJobStatus.SUCCEEDED.value,
+                "progress_percent": 100,
+            }
+
+        updated = await update_job_for_dispatch(
             session=session,
             job=job,
+            dispatch_id=dispatch_id,
+            status=BackgroundJobStatus.SUCCEEDED,
+            progress_percent=100,
         )
+
+        if not updated:
+            raise RuntimeError("Stale dispatch cannot complete background job")
 
     return {
         "job_id": str(job_id),
-        "status": (BackgroundJobStatus.SUCCEEDED.value),
+        "status": BackgroundJobStatus.SUCCEEDED.value,
         "progress_percent": 100,
     }
 
@@ -287,32 +360,32 @@ async def document_processing_on_failure(
         async with async_session_factory() as session:
             job = await get_background_job(
                 session=session,
-                organization_id=(event_data.organization_id),
+                organization_id=event_data.organization_id,
                 job_id=event_data.job_id,
             )
 
             if job is None:
-                return {
-                    "status": "job_not_found",
-                }
+                return {"status": "job_not_found"}
 
             if _should_ignore_failure(
                 job=job,
                 dispatch_id=event_data.dispatch_id,
             ):
-                return {
-                    "status": "ignored_stale_failure",
-                }
+                return {"status": "ignored_stale_failure"}
 
-            await mark_background_job_failed(
+            updated = await update_job_for_dispatch(
                 session=session,
                 job=job,
+                dispatch_id=event_data.dispatch_id,
+                status=BackgroundJobStatus.FAILED,
+                progress_percent=job.progress_percent,
                 error_message=error_message,
             )
 
-        return {
-            "status": (BackgroundJobStatus.FAILED.value),
-        }
+            if not updated:
+                return {"status": "ignored_stale_failure"}
+
+        return {"status": BackgroundJobStatus.FAILED.value}
 
     await ctx.step.run(
         "mark-job-failed",
@@ -345,7 +418,7 @@ async def document_processing_on_failure(
 
                 # 60% means document processing finished
                 # and the workflow had reached indexing.
-                if job.progress_percent < 60:
+                if job.status != BackgroundJobStatus.FAILED or job.progress_percent < 60:
                     return {
                         "dispatched": False,
                         "reason": "not_indexing_failure",
@@ -428,6 +501,7 @@ async def process_document_background(
             organization_id=organization_id,
             job_id=job_id,
             document_id=document_id,
+            dispatch_id=event_data.dispatch_id,
         )
 
     await ctx.step.run(
@@ -440,6 +514,7 @@ async def process_document_background(
             organization_id=organization_id,
             job_id=job_id,
             document_id=document_id,
+            dispatch_id=event_data.dispatch_id,
         )
 
     index_result = await ctx.step.run(
@@ -451,6 +526,7 @@ async def process_document_background(
         return await _mark_job_succeeded(
             organization_id=organization_id,
             job_id=job_id,
+            dispatch_id=event_data.dispatch_id,
         )
 
     await ctx.step.run(
