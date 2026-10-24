@@ -61,12 +61,6 @@ class Settings(BaseSettings):
     groq_api_key: str
     generation_model: str = "qwen/qwen3.8-27b"
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         environment = self.environment.lower()
