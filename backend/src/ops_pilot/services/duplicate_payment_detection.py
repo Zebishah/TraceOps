@@ -96,6 +96,10 @@ def detect_duplicate_payment_candidate(
 
         duplicate, duplicate_processed_at = valid_payments[1]
 
+        # Identical transaction IDs are not evidence of two charges.
+        if original.external_transaction_id == duplicate.external_transaction_id:
+            continue
+
         if original.amount != duplicate.amount:
             continue
 
@@ -105,12 +109,12 @@ def detect_duplicate_payment_candidate(
         if original.provider != duplicate.provider:
             continue
 
-        seconds_apart = int((duplicate_processed_at - original_processed_at).total_seconds())
+        elapsed_seconds = (duplicate_processed_at - original_processed_at).total_seconds()
 
-        if seconds_apart <= 0:
+        if elapsed_seconds <= 0:
             continue
 
-        if seconds_apart > MAX_DUPLICATE_PAYMENT_WINDOW_SECONDS:
+        if elapsed_seconds > MAX_DUPLICATE_PAYMENT_WINDOW_SECONDS:
             continue
 
         candidates.append(
@@ -123,7 +127,7 @@ def detect_duplicate_payment_candidate(
                 provider=duplicate.provider,
                 original_processed_at=(original_processed_at),
                 duplicate_processed_at=(duplicate_processed_at),
-                seconds_apart=seconds_apart,
+                seconds_apart=int(elapsed_seconds),
             )
         )
 
