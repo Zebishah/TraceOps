@@ -127,3 +127,63 @@ def test_does_not_detect_payments_too_far_apart() -> None:
     )
 
     assert candidate is None
+
+
+def test_identical_transaction_ids_are_not_two_charges() -> None:
+    result = ToolExecutionResult(
+        call_id="same-id",
+        tool_name=OperationalToolName.LIST_ORDER_PAYMENTS,
+        arguments={"order_id": "ORD-123"},
+        success=True,
+        content=json.dumps([
+            {
+                "external_transaction_id": "TXN-A",
+                "provider": "stripe",
+                "transaction_type": "charge",
+                "amount": "50.00",
+                "currency": "USD",
+                "status": "succeeded",
+                "processed_at": "2026-10-08T10:00:00Z",
+            },
+            {
+                "external_transaction_id": "TXN-A",
+                "provider": "stripe",
+                "transaction_type": "charge",
+                "amount": "50.00",
+                "currency": "USD",
+                "status": "succeeded",
+                "processed_at": "2026-10-08T10:01:00Z",
+            },
+        ]),
+    )
+    assert detect_duplicate_payment_candidate(tool_results=[result]) is None
+
+
+def test_fractional_seconds_over_window_are_not_rounded_down() -> None:
+    result = ToolExecutionResult(
+        call_id="fractional",
+        tool_name=OperationalToolName.LIST_ORDER_PAYMENTS,
+        arguments={"order_id": "ORD-123"},
+        success=True,
+        content=json.dumps([
+            {
+                "external_transaction_id": "TXN-A",
+                "provider": "stripe",
+                "transaction_type": "charge",
+                "amount": "50.00",
+                "currency": "USD",
+                "status": "succeeded",
+                "processed_at": "2026-10-08T10:00:00Z",
+            },
+            {
+                "external_transaction_id": "TXN-B",
+                "provider": "stripe",
+                "transaction_type": "charge",
+                "amount": "50.00",
+                "currency": "USD",
+                "status": "succeeded",
+                "processed_at": "2026-10-08T10:05:00.001Z",
+            },
+        ]),
+    )
+    assert detect_duplicate_payment_candidate(tool_results=[result]) is None
