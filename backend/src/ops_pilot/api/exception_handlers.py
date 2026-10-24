@@ -212,10 +212,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     )
 
     app.add_exception_handler(
-        ApprovalDecisionConflictError,
-        approval_decision_conflict_handler,
-    )
-    app.add_exception_handler(
         DocumentTooLargeError,
         document_too_large_handler,
     )
