@@ -15,6 +15,7 @@ from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
 from ops_pilot.core.logging import configure_logging
 from ops_pilot.inngest.client import inngest_client
+from ops_pilot.inngest.functions.approval_resume_recovery import recover_approval_resume_jobs
 from ops_pilot.inngest.functions.dispatch_recovery import (
     recover_background_dispatches,
 )
@@ -58,16 +59,23 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(RequestContextMiddleware)
 
+    inngest_functions = [
+        background_health_check,
+        process_document_background,
+        index_incident_memory_background,
+        recover_background_dispatches,
+    ]
+
+    # Financial recovery is intentionally opt-in.
+    # Production must never register this scheduler
+    # through the staging feature switch.
+    if settings.environment.lower() == "staging" and settings.enable_approval_resume_cron:
+        inngest_functions.append(recover_approval_resume_jobs)
+
     inngest.fast_api.serve(
         application,
         inngest_client,
-        [
-            background_health_check,
-            process_document_background,
-            index_incident_memory_background,
-            recover_background_dispatches,
-            # recover_approval_resume_jobs,
-        ],
+        inngest_functions,
     )
 
     register_exception_handlers(
