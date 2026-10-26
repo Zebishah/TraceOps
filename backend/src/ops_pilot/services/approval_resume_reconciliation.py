@@ -21,9 +21,12 @@ from ops_pilot.models.payment_transaction import (
     PaymentTransactionType,
 )
 from ops_pilot.services.approval_resume_processor import (
-    verify_terminal_checkpoint,
+    verify_resume_outcome,
 )
-from ops_pilot.services.approval_resume_recovery import MAX_ATTEMPTS
+from ops_pilot.services.approval_resume_recovery import (
+    MAX_ATTEMPTS,
+    ClaimedResumeJob,
+)
 from ops_pilot.workflows.incident.checkpointing import (
     open_incident_checkpointer,
 )
@@ -45,11 +48,17 @@ async def verify_quarantined_job(
     *,
     job_id: uuid.UUID,
 ) -> bool:
-    """Return True only for a verified terminal workflow."""
+    """Verify a quarantined job without replaying the workflow.
+
+    Completion requires:
+    - Correct tenant, incident, and approval
+    - A terminal LangGraph checkpoint
+    - A matching persisted refund for executed approvals
+    """
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(ApprovalRequest)
+            select(ApprovalRequest, ApprovalResumeJob)
             .join(
                 ApprovalResumeJob,
                 ApprovalResumeJob.approval_request_id == ApprovalRequest.id,
@@ -58,19 +67,35 @@ async def verify_quarantined_job(
                 ApprovalResumeJob.id == job_id,
                 ApprovalResumeJob.organization_id == ApprovalRequest.organization_id,
                 ApprovalResumeJob.incident_id == ApprovalRequest.incident_id,
+                ApprovalResumeJob.approval_request_id == ApprovalRequest.id,
             )
         )
-        approval = result.scalar_one_or_none()
 
-        if approval is None:
+        record = result.one_or_none()
+
+        if record is None:
+            await session.rollback()
             return False
+
+        approval, persisted_job = record
 
         status = approval.status
         thread_id = approval.workflow_thread_id
-        organization_id = approval.organization_id
-        incident_id = approval.incident_id
-        approval_request_id = approval.id
-        source_external_id = approval.action_payload.get("external_transaction_id")
+
+        source_value = approval.action_payload.get("external_transaction_id")
+
+        source_external_id = source_value if isinstance(source_value, str) else None
+
+        # The reconciliation path only reads these
+        # identifiers. It does not claim or renew a lease.
+        checkpoint_identity = ClaimedResumeJob(
+            id=persisted_job.id,
+            organization_id=persisted_job.organization_id,
+            incident_id=persisted_job.incident_id,
+            approval_request_id=persisted_job.approval_request_id,
+            lease_token=(persisted_job.lease_token or uuid.UUID(int=0)),
+            attempts=persisted_job.attempts,
+        )
 
         await session.rollback()
 
@@ -88,27 +113,22 @@ async def verify_quarantined_job(
         )
 
         try:
-            await verify_terminal_checkpoint(
+            await verify_resume_outcome(
                 graph=graph,
                 config=config,
+                job=checkpoint_identity,
                 approval_status=status,
+                source_external_id=source_external_id,
             )
+
         except (RuntimeError, ValueError):
+            logger.warning(
+                "approval_reconciliation_not_verified",
+                extra={"job_id": str(job_id)},
+            )
             return False
 
-    # A rejected approval has no refund to verify.
-    if status == ApprovalStatus.REJECTED:
-        return True
-
-    if not isinstance(source_external_id, str):
-        return False
-
-    return await verify_persisted_refund(
-        organization_id=organization_id,
-        incident_id=incident_id,
-        approval_request_id=approval_request_id,
-        source_external_id=source_external_id,
-    )
+    return True
 
 
 async def verify_persisted_refund(
