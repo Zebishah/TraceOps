@@ -80,17 +80,34 @@ async def execute_approved_refund(
 
     if approval.status == ApprovalStatus.EXECUTED:
         payload = approval.action_payload
-
         source_external_id = payload.get("external_transaction_id")
 
-        if not isinstance(
-            source_external_id,
-            str,
-        ):
-            raise ApprovalExecutionError(
-                "Executed approval has invalid payload",
-            )
+        if not isinstance(source_external_id, str):
+            raise ApprovalExecutionError("Executed approval has invalid payload")
 
+        # Find the original charge for this customer and tenant.
+        source_result = await session.execute(
+            select(PaymentTransaction)
+            .join(
+                OperationalOrder,
+                PaymentTransaction.order_id == OperationalOrder.id,
+            )
+            .where(
+                PaymentTransaction.organization_id == organization_id,
+                OperationalOrder.organization_id == organization_id,
+                OperationalOrder.customer_id == customer_id,
+                PaymentTransaction.external_transaction_id == source_external_id,
+                PaymentTransaction.transaction_type == PaymentTransactionType.CHARGE,
+            )
+        )
+
+        source = source_result.scalar_one_or_none()
+
+        if source is None:
+            raise ApprovalExecutionError("Executed approval source charge is missing")
+
+        # Find the refund using the ORIGINAL charge ID,
+        # not the current approval's ID.
         existing_result = await session.execute(
             select(PaymentTransaction)
             .join(
@@ -101,25 +118,55 @@ async def execute_approved_refund(
                 PaymentTransaction.organization_id == organization_id,
                 OperationalOrder.organization_id == organization_id,
                 OperationalOrder.customer_id == customer_id,
+                PaymentTransaction.source_transaction_id == source.id,
                 PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
-                PaymentTransaction.external_transaction_id == f"refund-{approval.id}",
             )
         )
 
         existing_refund = existing_result.scalar_one_or_none()
 
         if existing_refund is None:
-            raise ApprovalExecutionError(
-                "Executed approval is missing its refund transaction",
-            )
+            raise ApprovalExecutionError("Executed approval is missing its refund transaction")
 
-        return RefundExecutionResult(
-            source_transaction_id=source_external_id,
-            refund_transaction_id=(existing_refund.external_transaction_id),
+        if (
+            source.status != PaymentTransactionStatus.REFUNDED
+            or existing_refund.status != PaymentTransactionStatus.SUCCEEDED
+            or existing_refund.amount != source.amount
+            or existing_refund.currency != source.currency
+        ):
+            raise ApprovalExecutionError("Executed approval refund records are inconsistent")
+
+        # Capture every required ORM value while the
+        # database session is still active.
+        response = RefundExecutionResult(
+            source_transaction_id=source.external_transaction_id,
+            refund_transaction_id=existing_refund.external_transaction_id,
             amount=existing_refund.amount,
             currency=existing_refund.currency,
             already_executed=True,
         )
+
+        # Close the read transaction only after
+        # constructing the response.
+        await session.rollback()
+
+        return response
+
+        # Capture every required ORM value while the
+        # database session is still active.
+        response = RefundExecutionResult(
+            source_transaction_id=source.external_transaction_id,
+            refund_transaction_id=existing_refund.external_transaction_id,
+            amount=existing_refund.amount,
+            currency=existing_refund.currency,
+            already_executed=True,
+        )
+
+        # Close the read transaction only after
+        # constructing the response.
+        await session.rollback()
+
+        return response
 
     # Preserve existing idempotent EXECUTED behavior.
     # That branch has already returned above.

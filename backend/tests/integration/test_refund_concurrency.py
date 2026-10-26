@@ -237,8 +237,36 @@ async def _run_concurrency_test(database_url: str) -> None:
             assert approval_b.status == ApprovalStatus.EXECUTED
 
         # A further retry must still create no extra refund.
+
+        # Crash-window simulation:
+        # The refund has already been committed, but we pretend
+        # the surrounding workflow lost its completion response.
+        #
+        # Retry the same approved action with a fresh DB session.
+        # The refund service must recover its persisted result
+        # instead of creating another refund.
         retry_result = await execute_one(approval_a_id)
+
         assert retry_result.already_executed is True
+        assert retry_result.refund_transaction_id == result_a.refund_transaction_id
+
+        # Try the competing approval again as well.
+        competing_retry = await execute_one(approval_b_id)
+
+        assert competing_retry.already_executed is True
+        assert competing_retry.refund_transaction_id == result_a.refund_transaction_id
+
+        async with session_factory() as session:
+            retry_refund_count = await session.scalar(
+                select(func.count())
+                .select_from(PaymentTransaction)
+                .where(
+                    PaymentTransaction.source_transaction_id == source_id,
+                    PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
+                )
+            )
+
+            assert retry_refund_count == 1
 
         async with session_factory() as session:
             final_count = await session.scalar(

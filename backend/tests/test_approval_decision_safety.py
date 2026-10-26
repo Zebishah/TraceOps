@@ -16,7 +16,7 @@ from ops_pilot.services.incident_resolution import (
 
 def make_session(incident, approval):
     session = AsyncMock()
-
+    session.scalar.return_value = None
     incident_result = Mock()
     incident_result.scalar_one_or_none.return_value = incident
 
@@ -68,6 +68,9 @@ def test_rejection_returns_incident_to_investigating():
     incident = SimpleNamespace(status=IncidentStatus.AWAITING_APPROVAL)
 
     approval = SimpleNamespace(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        incident_id=uuid.uuid4(),
         status=ApprovalStatus.PENDING,
         decided_by_user_id=None,
         decision_comment=None,
@@ -82,12 +85,16 @@ def test_rejection_returns_incident_to_investigating():
     assert incident.status == IncidentStatus.INVESTIGATING
     assert approval.decided_at is not None
     session.commit.assert_awaited_once()
+    session.add.assert_called_once()
 
 
 def test_approved_decision_preserves_awaiting_approval():
     incident = SimpleNamespace(status=IncidentStatus.AWAITING_APPROVAL)
 
     approval = SimpleNamespace(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        incident_id=uuid.uuid4(),
         status=ApprovalStatus.PENDING,
         decided_by_user_id=None,
         decision_comment=None,
@@ -101,3 +108,4 @@ def test_approved_decision_preserves_awaiting_approval():
     assert result.status == ApprovalStatus.APPROVED
     assert incident.status == IncidentStatus.AWAITING_APPROVAL
     session.commit.assert_awaited_once()
+    session.add.assert_called_once()

@@ -12,6 +12,10 @@ from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from ops_pilot.models.approval_resume_job import (
+    ApprovalResumeJob,
+    ApprovalResumeJobStatus,
+)
 from ops_pilot.models.incident import (
     Incident,
     IncidentStatus,
@@ -198,12 +202,26 @@ async def record_approval_decision(
     desired_status = ApprovalStatus.APPROVED if payload.approved else ApprovalStatus.REJECTED
 
     # Idempotent retries should not modify database state.
+
     if approval.status == desired_status or (
         approval.status == ApprovalStatus.EXECUTED and payload.approved
     ):
-        await session.commit()
-        await session.refresh(approval)
-        return approval
+        # Backfill a missing resume job for an older,
+        # already-decided approval that still needs processing.
+        if approval.status in {
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.REJECTED,
+        }:
+            await ensure_approval_resume_job(
+                session=session,
+                approval=approval,
+            )
+
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
     # Final decisions cannot be reversed.
     if approval.status != ApprovalStatus.PENDING:
@@ -227,8 +245,16 @@ async def record_approval_decision(
     if not payload.approved:
         incident.status = IncidentStatus.INVESTIGATING
 
+    # Phase 20B: The approval decision and its
+    # durable resume job must commit together.
     try:
+        await ensure_approval_resume_job(
+            session=session,
+            approval=approval,
+        )
+
         await session.commit()
+
     except Exception:
         await session.rollback()
         raise
@@ -236,3 +262,28 @@ async def record_approval_decision(
     await session.refresh(approval)
 
     return approval
+
+
+async def ensure_approval_resume_job(
+    *,
+    session: AsyncSession,
+    approval: ApprovalRequest,
+) -> None:
+    existing = await session.scalar(
+        select(ApprovalResumeJob.id).where(
+            ApprovalResumeJob.approval_request_id == approval.id,
+        )
+    )
+
+    if existing is not None:
+        return
+
+    session.add(
+        ApprovalResumeJob(
+            organization_id=approval.organization_id,
+            incident_id=approval.incident_id,
+            approval_request_id=approval.id,
+            status=ApprovalResumeJobStatus.PENDING.value,
+            attempts=0,
+        )
+    )

@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
             process_document_background,
             index_incident_memory_background,
             recover_background_dispatches,
+            # recover_approval_resume_jobs,
         ],
     )
 
