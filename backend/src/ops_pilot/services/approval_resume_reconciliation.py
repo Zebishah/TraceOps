@@ -17,7 +17,6 @@ from ops_pilot.models.approval_resume_job import (
 from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.models.payment_transaction import (
     PaymentTransaction,
-    PaymentTransactionStatus,
     PaymentTransactionType,
 )
 from ops_pilot.services.approval_resume_processor import (
@@ -178,12 +177,9 @@ async def verify_persisted_refund(
                 .where(
                     PaymentTransaction.organization_id == organization_id,
                     OperationalOrder.organization_id == organization_id,
-                    OperationalOrder.customer_id
-                    == incident.subject_customer_id,
-                    PaymentTransaction.external_transaction_id
-                    == source_external_id,
-                    PaymentTransaction.transaction_type
-                    == PaymentTransactionType.CHARGE,
+                    OperationalOrder.customer_id == incident.subject_customer_id,
+                    PaymentTransaction.external_transaction_id == source_external_id,
+                    PaymentTransaction.transaction_type == PaymentTransactionType.CHARGE,
                 )
             )
 
@@ -194,8 +190,7 @@ async def verify_persisted_refund(
                 select(PaymentTransaction).where(
                     PaymentTransaction.organization_id == organization_id,
                     PaymentTransaction.source_transaction_id == source.id,
-                    PaymentTransaction.transaction_type
-                    == PaymentTransactionType.REFUND,
+                    PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
                 )
             )
 
@@ -251,6 +246,25 @@ async def reconcile_quarantined_jobs(
                 continue
 
             async with async_session_factory() as session:
+                # Only complete a quarantined job if its
+                # approval still belongs to the same tenant
+                # and remains in a terminal decision state.
+                matching_approval = (
+                    select(ApprovalRequest.id)
+                    .where(
+                        ApprovalRequest.id == ApprovalResumeJob.approval_request_id,
+                        ApprovalRequest.organization_id == ApprovalResumeJob.organization_id,
+                        ApprovalRequest.incident_id == ApprovalResumeJob.incident_id,
+                        ApprovalRequest.status.in_(
+                            [
+                                ApprovalStatus.EXECUTED,
+                                ApprovalStatus.REJECTED,
+                            ]
+                        ),
+                    )
+                    .exists()
+                )
+
                 result = await session.execute(
                     update(ApprovalResumeJob)
                     .where(
@@ -258,6 +272,7 @@ async def reconcile_quarantined_jobs(
                         ApprovalResumeJob.status == ApprovalResumeJobStatus.FAILED.value,
                         ApprovalResumeJob.attempts >= MAX_ATTEMPTS,
                         ApprovalResumeJob.last_error.is_not(None),
+                        matching_approval,
                     )
                     .values(
                         status=ApprovalResumeJobStatus.COMPLETED.value,
@@ -268,6 +283,7 @@ async def reconcile_quarantined_jobs(
                     )
                     .returning(ApprovalResumeJob.id)
                 )
+
                 updated_id = result.scalar_one_or_none()
                 await session.commit()
 
