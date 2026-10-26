@@ -138,49 +138,82 @@ async def verify_persisted_refund(
     approval_request_id: uuid.UUID,
     source_external_id: str,
 ) -> bool:
-    if not isinstance(source_external_id, str):
+    """Verify the exact executed approval, charge, refund, and incident."""
+
+    from ops_pilot.core.exceptions import ApprovalExecutionError
+    from ops_pilot.models.order import OperationalOrder
+    from ops_pilot.services.refund_execution import validate_existing_refund
+
+    if not source_external_id:
         return False
 
     async with async_session_factory() as session:
-        source = await session.scalar(
-            select(PaymentTransaction).where(
-                PaymentTransaction.organization_id == organization_id,
-                PaymentTransaction.external_transaction_id == source_external_id,
-                PaymentTransaction.transaction_type == PaymentTransactionType.CHARGE,
+        try:
+            approval = await session.scalar(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.id == approval_request_id,
+                    ApprovalRequest.organization_id == organization_id,
+                    ApprovalRequest.incident_id == incident_id,
+                    ApprovalRequest.status == ApprovalStatus.EXECUTED,
+                )
             )
-        )
 
-        if source is None:
+            incident = await session.scalar(
+                select(Incident).where(
+                    Incident.id == incident_id,
+                    Incident.organization_id == organization_id,
+                    Incident.status == IncidentStatus.RESOLVED,
+                )
+            )
+
+            if approval is None or incident is None:
+                return False
+
+            source = await session.scalar(
+                select(PaymentTransaction)
+                .join(
+                    OperationalOrder,
+                    PaymentTransaction.order_id == OperationalOrder.id,
+                )
+                .where(
+                    PaymentTransaction.organization_id == organization_id,
+                    OperationalOrder.organization_id == organization_id,
+                    OperationalOrder.customer_id
+                    == incident.subject_customer_id,
+                    PaymentTransaction.external_transaction_id
+                    == source_external_id,
+                    PaymentTransaction.transaction_type
+                    == PaymentTransactionType.CHARGE,
+                )
+            )
+
+            if source is None:
+                return False
+
+            refund = await session.scalar(
+                select(PaymentTransaction).where(
+                    PaymentTransaction.organization_id == organization_id,
+                    PaymentTransaction.source_transaction_id == source.id,
+                    PaymentTransaction.transaction_type
+                    == PaymentTransactionType.REFUND,
+                )
+            )
+
+            if refund is None:
+                return False
+
+            validate_existing_refund(
+                approval=approval,
+                source=source,
+                refund=refund,
+            )
+
+            return True
+
+        except ApprovalExecutionError:
             return False
-
-        refund = await session.scalar(
-            select(PaymentTransaction).where(
-                PaymentTransaction.organization_id == organization_id,
-                PaymentTransaction.source_transaction_id == source.id,
-                PaymentTransaction.transaction_type == PaymentTransactionType.REFUND,
-                PaymentTransaction.status == PaymentTransactionStatus.SUCCEEDED,
-            )
-        )
-
-        incident = await session.scalar(
-            select(Incident).where(
-                Incident.id == incident_id,
-                Incident.organization_id == organization_id,
-            )
-        )
-
-        valid = (
-            refund is not None
-            and incident is not None
-            and incident.status == IncidentStatus.RESOLVED
-            and source.status == PaymentTransactionStatus.REFUNDED
-            and refund.amount == source.amount
-            and refund.currency == source.currency
-            and refund.order_id == source.order_id
-        )
-
-        await session.rollback()
-        return valid
+        finally:
+            await session.rollback()
 
 
 async def reconcile_quarantined_jobs(

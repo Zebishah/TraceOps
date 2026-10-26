@@ -25,6 +25,64 @@ from ops_pilot.schemas.action_execution import (
 )
 
 
+def validate_existing_refund(
+    *,
+    approval: ApprovalRequest,
+    source: PaymentTransaction,
+    refund: PaymentTransaction,
+) -> None:
+    """Fail closed unless an existing refund matches its approval."""
+
+    payload = approval.action_payload
+    source_id = payload.get("external_transaction_id")
+    amount_text = payload.get("amount")
+    currency = payload.get("currency")
+
+    if (
+        not isinstance(source_id, str)
+        or not isinstance(amount_text, str)
+        or not isinstance(currency, str)
+    ):
+        raise ApprovalExecutionError("Approval refund payload is invalid")
+
+    try:
+        amount = Decimal(amount_text)
+    except (ValueError, ArithmeticError) as exc:
+        raise ApprovalExecutionError(
+            "Approval refund amount is invalid"
+        ) from exc
+
+    if not amount.is_finite() or amount <= 0:
+        raise ApprovalExecutionError(
+            "Approval refund amount must be positive and finite"
+        )
+
+    if (
+        source.transaction_type != PaymentTransactionType.CHARGE
+        or source.external_transaction_id != source_id
+        or source.amount != amount
+        or source.currency != currency
+    ):
+        raise ApprovalExecutionError(
+            "Approval does not match the original charge"
+        )
+
+    if (
+        source.status != PaymentTransactionStatus.REFUNDED
+        or refund.transaction_type != PaymentTransactionType.REFUND
+        or refund.status != PaymentTransactionStatus.SUCCEEDED
+        or refund.source_transaction_id != source.id
+        or refund.organization_id != source.organization_id
+        or refund.order_id != source.order_id
+        or refund.provider != source.provider
+        or refund.amount != source.amount
+        or refund.currency != source.currency
+    ):
+        raise ApprovalExecutionError(
+            "Existing refund records are inconsistent"
+        )
+
+
 async def execute_approved_refund(
     *,
     session: AsyncSession,
@@ -128,13 +186,11 @@ async def execute_approved_refund(
         if existing_refund is None:
             raise ApprovalExecutionError("Executed approval is missing its refund transaction")
 
-        if (
-            source.status != PaymentTransactionStatus.REFUNDED
-            or existing_refund.status != PaymentTransactionStatus.SUCCEEDED
-            or existing_refund.amount != source.amount
-            or existing_refund.currency != source.currency
-        ):
-            raise ApprovalExecutionError("Executed approval refund records are inconsistent")
+        validate_existing_refund(
+            approval=approval,
+            source=source,
+            refund=existing_refund,
+        )
 
         # Capture every required ORM value while the
         # database session is still active.
@@ -247,6 +303,12 @@ async def execute_approved_refund(
                 "Source charge is marked refunded but no refund record exists",
             )
 
+        validate_existing_refund(
+            approval=approval,
+            source=source_transaction,
+            refund=existing_refund,
+        )
+
         approval.status = ApprovalStatus.EXECUTED
 
         if approval.executed_at is None:
@@ -298,7 +360,21 @@ async def execute_approved_refund(
     existing_refund = existing_refund_result.scalar_one_or_none()
 
     if existing_refund is not None:
+        # Validate the persisted refund before changing any state.
+        # Its source may still be marked SUCCEEDED in this legacy
+        # reconciliation path, so require every other invariant.
+        original_status = source_transaction.status
         source_transaction.status = PaymentTransactionStatus.REFUNDED
+
+        try:
+            validate_existing_refund(
+                approval=approval,
+                source=source_transaction,
+                refund=existing_refund,
+            )
+        except ApprovalExecutionError:
+            source_transaction.status = original_status
+            raise
 
         approval.status = ApprovalStatus.EXECUTED
         approval.executed_at = approval.executed_at or datetime.now(UTC)
