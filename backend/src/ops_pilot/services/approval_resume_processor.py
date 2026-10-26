@@ -108,7 +108,9 @@ async def process_claimed_resume_job(
         reviewer_id = approval.decided_by_user_id
         decision_comment = approval.decision_comment
         thread_id = approval.workflow_thread_id
+        source_value = approval.action_payload.get("external_transaction_id")
 
+        source_external_id = source_value if isinstance(source_value, str) else None
         if approval_status not in {
             ApprovalStatus.APPROVED,
             ApprovalStatus.REJECTED,
@@ -154,13 +156,14 @@ async def process_claimed_resume_job(
         # A prior execution may have completed but failed
         # to mark its durable job as completed.
         if not paused_at_gate:
-            await verify_terminal_checkpoint(
+            await verify_resume_outcome(
                 graph=graph,
                 config=config,
+                job=job,
                 approval_status=approval_status,
+                source_external_id=source_external_id,
             )
             return
-
         # If a refund was already recorded, an approval-gate
         # replay is unexpected and must be investigated.
         if approval_status == ApprovalStatus.EXECUTED:
@@ -202,11 +205,66 @@ async def process_claimed_resume_job(
             final_status = fresh.status
             await session.rollback()
 
-        await verify_terminal_checkpoint(
+        await verify_resume_outcome(
             graph=graph,
             config=config,
+            job=job,
             approval_status=final_status,
+            source_external_id=source_external_id,
         )
+
+
+async def verify_resume_outcome(
+    *,
+    graph: object,
+    config: RunnableConfig,
+    job: ClaimedResumeJob,
+    approval_status: ApprovalStatus,
+    source_external_id: str | None,
+) -> None:
+    """Verify checkpoint identity, terminal state, and financial outcome."""
+
+    from typing import Any, cast
+
+    # Imported here to avoid the existing module import cycle:
+    # reconciliation imports verify_terminal_checkpoint.
+    from ops_pilot.services.approval_resume_reconciliation import (
+        verify_persisted_refund,
+    )
+
+    runnable = cast(Any, graph)
+    snapshot = await runnable.aget_state(config)
+
+    validate_resume_checkpoint(
+        snapshot=snapshot,
+        job=job,
+    )
+
+    await verify_terminal_checkpoint(
+        graph=graph,
+        config=config,
+        approval_status=approval_status,
+    )
+
+    # Rejection is terminal without financial execution.
+    if approval_status == ApprovalStatus.REJECTED:
+        return
+
+    if approval_status != ApprovalStatus.EXECUTED:
+        raise RuntimeError("Approval is not in an executed or rejected terminal state")
+
+    if not source_external_id:
+        raise RuntimeError("Executed approval is missing its source transaction ID")
+
+    verified = await verify_persisted_refund(
+        organization_id=job.organization_id,
+        incident_id=job.incident_id,
+        approval_request_id=job.approval_request_id,
+        source_external_id=source_external_id,
+    )
+
+    if not verified:
+        raise RuntimeError("Refund ledger verification failed; approval job cannot be completed")
 
 
 async def verify_terminal_checkpoint(
