@@ -12,6 +12,9 @@ from ops_pilot.api.dependencies import (
     DbSession,
 )
 from ops_pilot.models.membership import MembershipRole
+from ops_pilot.schemas.approval_resume_status import (
+    ApprovalResumeStatusResponse,
+)
 from ops_pilot.schemas.approvals import (
     ApprovalDecisionRequest,
     ApprovalResponse,
@@ -23,6 +26,9 @@ from ops_pilot.schemas.incidents import (
     IncidentInvestigationResponse,
     IncidentNoActionResolutionRequest,
     IncidentResponse,
+)
+from ops_pilot.services.approval_resume_status import (
+    get_approval_resume_status,
 )
 from ops_pilot.services.approval_workflow import (
     decide_and_resume_approval,
@@ -307,3 +313,32 @@ async def resolve_no_action_endpoint(
     )
 
     return IncidentResponse.model_validate(incident)
+
+
+@router.get(
+    "/{incident_id}/approvals/{approval_request_id}/resume-status",
+    response_model=ApprovalResumeStatusResponse,
+)
+async def get_approval_resume_status_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    approval_request_id: uuid.UUID,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> ApprovalResumeStatusResponse:
+    """Read durable recovery status without changing the job."""
+
+    result = await get_approval_resume_status(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+        approval_request_id=approval_request_id,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Approval recovery job not found",
+        )
+
+    return result
