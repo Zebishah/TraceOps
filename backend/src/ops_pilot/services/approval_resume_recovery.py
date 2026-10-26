@@ -135,6 +135,8 @@ async def complete_resume_job(
             update(ApprovalResumeJob)
             .where(
                 ApprovalResumeJob.id == job.id,
+                ApprovalResumeJob.lease_expires_at > now,
+                ApprovalResumeJob.organization_id == job.organization_id,
                 ApprovalResumeJob.lease_token == job.lease_token,
                 ApprovalResumeJob.status == ApprovalResumeJobStatus.PROCESSING.value,
             )
@@ -172,6 +174,8 @@ async def fail_resume_job(
             .where(
                 ApprovalResumeJob.id == job.id,
                 ApprovalResumeJob.lease_token == job.lease_token,
+                ApprovalResumeJob.lease_expires_at > now,
+                ApprovalResumeJob.organization_id == job.organization_id,
                 ApprovalResumeJob.status == ApprovalResumeJobStatus.PROCESSING.value,
             )
             .values(

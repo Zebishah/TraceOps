@@ -40,6 +40,42 @@ class ResumeSweepResult:
     failed: int
 
 
+def validate_resume_checkpoint(
+    *,
+    snapshot: object,
+    job: ClaimedResumeJob,
+) -> None:
+    """Prevent resuming a checkpoint belonging to another incident."""
+
+    import uuid
+    from collections.abc import Mapping
+    from typing import Any, cast
+
+    values = getattr(snapshot, "values", None)
+
+    if not isinstance(values, Mapping):
+        raise RuntimeError("Approval checkpoint has no valid persisted state")
+
+    state = cast(Mapping[str, Any], values)
+
+    expected = {
+        "organization_id": job.organization_id,
+        "incident_id": job.incident_id,
+        "approval_request_id": job.approval_request_id,
+    }
+
+    for field, expected_id in expected.items():
+        stored = state.get(field)
+
+        try:
+            actual_id = uuid.UUID(str(stored))
+        except (ValueError, TypeError, AttributeError):
+            raise RuntimeError(f"Approval checkpoint missing valid {field}") from None
+
+        if actual_id != expected_id:
+            raise RuntimeError(f"Approval checkpoint {field} mismatch")
+
+
 async def process_claimed_resume_job(
     job: ClaimedResumeJob,
 ) -> None:
@@ -107,7 +143,10 @@ async def process_claimed_resume_job(
         )
 
         snapshot = await graph.aget_state(config)
-
+        validate_resume_checkpoint(
+            snapshot=snapshot,
+            job=job,
+        )
         paused_at_gate = any(
             task.name == "approval_gate" and bool(task.interrupts) for task in snapshot.tasks
         )
