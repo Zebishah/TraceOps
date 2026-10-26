@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     mistral_api_key: str
     embedding_model: str = "mistral-embed"
     embedding_dimension: int = 1024
-
+    enable_approval_resume_cron: bool = False
     mistral_timeout_seconds: float = 30.0
     voyage_timeout_seconds: float = 30.0
     groq_timeout_seconds: float = 30.0

@@ -1,6 +1,8 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
+import inngest
 import inngest.fast_api
 from fastapi import FastAPI
 
@@ -59,7 +61,7 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(RequestContextMiddleware)
 
-    inngest_functions = [
+    inngest_functions: list[inngest.Function[Any]] = [
         background_health_check,
         process_document_background,
         index_incident_memory_background,
