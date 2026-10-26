@@ -106,7 +106,14 @@ def detect_duplicate_payment_candidate(
         if original.currency.upper() != duplicate.currency.upper():
             continue
 
-        if original.provider != duplicate.provider:
+        # Missing payment identity means the candidate is ambiguous.
+        original_fingerprint = original.payment_instrument_fingerprint
+        duplicate_fingerprint = duplicate.payment_instrument_fingerprint
+
+        if not original_fingerprint or not duplicate_fingerprint:
+            continue
+
+        if original_fingerprint != duplicate_fingerprint:
             continue
 
         elapsed_seconds = (duplicate_processed_at - original_processed_at).total_seconds()

@@ -16,6 +16,7 @@ from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.models.payment_transaction import (
     PaymentTransaction,
     PaymentTransactionStatus,
@@ -121,20 +122,20 @@ def test_refund_recovery_rolls_back_on_commit_failure(
     )
 
     results: list[object | None] = [
+        make_incident(
+            organization_id=organization_id,
+            incident_id=incident_id,
+        ),
         approval,
         source,
     ]
 
     if existing_results == 2:
-        # The source is SUCCEEDED, so the service checks
-        # for an existing refund after validating the charge.
         results.append(existing_refund)
     else:
-        # The source is already REFUNDED.
         results.append(existing_refund)
 
     fake_session = FakeSession(results)
-
     session = cast(AsyncSession, fake_session)
 
     fake_session.commit = AsyncMock(
@@ -230,6 +231,10 @@ def test_execute_approved_refund_creates_refund() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
             source,
             None,
@@ -302,6 +307,10 @@ def test_execute_refund_blocks_amount_mismatch() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
             source,
         ]
@@ -349,6 +358,10 @@ def test_execute_refund_blocks_currency_mismatch() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
             source,
         ]
@@ -389,6 +402,10 @@ def test_execute_refund_requires_approved_request() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
         ]
     )
@@ -444,6 +461,10 @@ def test_execute_refund_retry_returns_existing_refund() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
             existing_refund,
         ]
@@ -484,6 +505,10 @@ def test_execute_refund_blocks_transaction_from_other_customer() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
             None,
         ]
@@ -526,6 +551,10 @@ def test_execute_refund_rejects_approval_without_human_identity() -> None:
 
     fake_session = FakeSession(
         [
+            make_incident(
+                organization_id=organization_id,
+                incident_id=incident_id,
+            ),
             approval,
         ]
     )
@@ -551,3 +580,18 @@ def test_execute_refund_rejects_approval_without_human_identity() -> None:
 
     assert fake_session.added == []
     assert fake_session.commit_count == 0
+
+
+def make_incident(
+    *,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    status: IncidentStatus = IncidentStatus.AWAITING_APPROVAL,
+) -> Incident:
+    return Incident(
+        id=incident_id,
+        organization_id=organization_id,
+        title="Duplicate payment investigation",
+        description="Customer reported a duplicate charge.",
+        status=status,
+    )

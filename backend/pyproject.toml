@@ -67,7 +67,9 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
-
+markers = [
+    "integration: tests requiring external infrastructure",
+]
 [tool.mypy]
 python_version = "3.12"
 strict = true

@@ -22,6 +22,9 @@ from ops_pilot.schemas.approvals import (
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
+from ops_pilot.services.incident_resolution import (
+    IncidentResolutionConflict,
+)
 
 
 async def create_or_get_pending_approval(
@@ -40,10 +43,46 @@ async def create_or_get_pending_approval(
         or proposal.currency is None
         or not proposal.reason
     ):
-        raise ValueError(
-            "Approval requires a complete action proposal",
-        )
+        raise ValueError("Approval requires a complete action proposal")
 
+    # IMPORTANT:
+    # Lock the incident FIRST, before looking for or
+    # creating an approval.
+    #
+    # Manual resolution also locks this same incident.
+    # This prevents approval creation and manual closure
+    # from overwriting each other's state.
+    incident_result = await session.execute(
+        select(Incident)
+        .where(
+            Incident.id == incident_id,
+            Incident.organization_id == organization_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+    incident = incident_result.scalar_one_or_none()
+
+    if incident is None:
+        await session.rollback()
+        raise RuntimeError("Incident not found while creating approval")
+
+    # Never reopen a manually resolved incident.
+    if incident.status == IncidentStatus.RESOLVED:
+        await session.rollback()
+        raise IncidentResolutionConflict("Cannot create approval for a resolved incident")
+
+    # Only incidents actively being investigated or
+    # awaiting approval are eligible.
+    if incident.status not in {
+        IncidentStatus.INVESTIGATING,
+        IncidentStatus.AWAITING_APPROVAL,
+    }:
+        await session.rollback()
+        raise IncidentResolutionConflict("Incident is not eligible for approval creation")
+
+    # Reuse an existing pending approval for this workflow.
     existing_result = await session.execute(
         select(ApprovalRequest).where(
             ApprovalRequest.organization_id == organization_id,
@@ -56,21 +95,9 @@ async def create_or_get_pending_approval(
     existing = existing_result.scalar_one_or_none()
 
     if existing is not None:
+        # Release the incident lock after the read.
+        await session.rollback()
         return existing
-
-    incident_result = await session.execute(
-        select(Incident).where(
-            Incident.id == incident_id,
-            Incident.organization_id == organization_id,
-        )
-    )
-
-    incident = incident_result.scalar_one_or_none()
-
-    if incident is None:
-        raise RuntimeError(
-            "Incident not found while creating approval",
-        )
 
     approval = ApprovalRequest(
         organization_id=organization_id,
@@ -78,7 +105,7 @@ async def create_or_get_pending_approval(
         workflow_thread_id=workflow_thread_id,
         action_type=proposal.action_type,
         action_payload={
-            "external_transaction_id": (proposal.external_transaction_id),
+            "external_transaction_id": proposal.external_transaction_id,
             "amount": str(proposal.amount),
             "currency": proposal.currency,
         },
@@ -133,7 +160,25 @@ async def record_approval_decision(
     decided_by_user_id: uuid.UUID,
     payload: ApprovalDecisionRequest,
 ) -> ApprovalRequest:
-    result = await session.execute(
+    # Lock order: INCIDENT -> APPROVAL.
+    # Matches manual incident closure and approval creation.
+    incident_result = await session.execute(
+        select(Incident)
+        .where(
+            Incident.id == incident_id,
+            Incident.organization_id == organization_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+    incident = incident_result.scalar_one_or_none()
+
+    if incident is None:
+        await session.rollback()
+        raise ApprovalNotFoundError
+
+    approval_result = await session.execute(
         select(ApprovalRequest)
         .where(
             ApprovalRequest.id == approval_request_id,
@@ -141,48 +186,38 @@ async def record_approval_decision(
             ApprovalRequest.incident_id == incident_id,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
-    approval = result.scalar_one_or_none()
+    approval = approval_result.scalar_one_or_none()
 
     if approval is None:
+        await session.rollback()
         raise ApprovalNotFoundError
 
     desired_status = ApprovalStatus.APPROVED if payload.approved else ApprovalStatus.REJECTED
 
-    # Idempotent retry:
-    # if the same decision was already recorded,
-    # return it instead of changing it again.
-    # Idempotent retry:
-
-    # the same human decision may be submitted again.
-
-    if approval.status == desired_status:
+    # Idempotent retries should not modify database state.
+    if approval.status == desired_status or (
+        approval.status == ApprovalStatus.EXECUTED and payload.approved
+    ):
+        await session.commit()
+        await session.refresh(approval)
         return approval
 
-    # EXECUTED means the request was previously approved
-    # and its action has already completed.
-    if approval.status == ApprovalStatus.EXECUTED and payload.approved:
-        return approval
-
-    # Any attempt to change an already-final decision
-    # is a conflict.
+    # Final decisions cannot be reversed.
     if approval.status != ApprovalStatus.PENDING:
+        await session.rollback()
         raise ApprovalDecisionConflictError
 
-    incident_result = await session.execute(
-        select(Incident).where(
-            Incident.id == incident_id,
-            Incident.organization_id == organization_id,
-        )
-    )
+    # A closed incident must never receive a new decision.
+    if incident.status == IncidentStatus.RESOLVED:
+        await session.rollback()
+        raise IncidentResolutionConflict("Cannot decide approval for a resolved incident")
 
-    incident = incident_result.scalar_one_or_none()
-
-    if incident is None:
-        raise RuntimeError(
-            "Incident not found while recording approval",
-        )
+    if incident.status != IncidentStatus.AWAITING_APPROVAL:
+        await session.rollback()
+        raise IncidentResolutionConflict("Incident is not awaiting approval")
 
     approval.status = desired_status
     approval.decided_by_user_id = decided_by_user_id

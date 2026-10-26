@@ -69,6 +69,7 @@ class PaymentTransactionData(BaseModel):
     currency: str
     status: PaymentTransactionStatus
     processed_at: datetime | None
+    payment_instrument_fingerprint: str | None = None
 
 
 class ToolCallRequest(BaseModel):

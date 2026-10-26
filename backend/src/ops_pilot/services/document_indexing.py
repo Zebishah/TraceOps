@@ -15,6 +15,31 @@ from ops_pilot.vectorstore.qdrant import (
 
 logger = logging.getLogger(__name__)
 
+SCROLL_PAGE_SIZE = 256
+
+
+def _document_filter(
+    *,
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> models.Filter:
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="organization_id",
+                match=models.MatchValue(
+                    value=str(organization_id),
+                ),
+            ),
+            models.FieldCondition(
+                key="document_id",
+                match=models.MatchValue(
+                    value=str(document_id),
+                ),
+            ),
+        ]
+    )
+
 
 async def index_document(
     *,
@@ -38,31 +63,38 @@ async def index_document(
 
         settings = get_settings()
         client = get_qdrant_client()
+        collection = settings.qdrant_collection_name
 
-        # Remove old vectors for this document first.
-        # This prevents stale/duplicate chunks after re-indexing.
-        await client.delete(
-            collection_name=settings.qdrant_collection_name,
-            points_selector=models.FilterSelector(
-                filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="organization_id",
-                            match=models.MatchValue(
-                                value=str(organization_id),
-                            ),
-                        ),
-                        models.FieldCondition(
-                            key="document_id",
-                            match=models.MatchValue(
-                                value=str(document_id),
-                            ),
-                        ),
-                    ]
-                )
-            ),
-            wait=True,
+        document_filter = _document_filter(
+            organization_id=organization_id,
+            document_id=document_id,
         )
+
+        # Snapshot the IDs belonging to the document.
+        # Do not delete anything yet.
+        previous_point_ids: set[str] = set()
+        offset: models.ExtendedPointId | None = None
+
+        while True:
+            records, next_offset = await client.scroll(
+                collection_name=collection,
+                scroll_filter=document_filter,
+                limit=SCROLL_PAGE_SIZE,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+
+            for record in records:
+                previous_point_ids.add(str(record.id))
+
+            if next_offset is None:
+                break
+
+            if next_offset == offset:
+                raise RuntimeError("Qdrant scroll offset did not advance")
+
+            offset = next_offset
 
         points: list[models.PointStruct] = []
 
@@ -81,17 +113,47 @@ async def index_document(
                         "chunk_index": chunk.chunk_index,
                         "page_number": chunk.page_number,
                         "text": chunk.text,
-                        "source_filename": chunk.source_filename,
+                        "source_filename": (chunk.source_filename),
                         "document_checksum": (chunk.document_checksum),
                         "embedding_model": (settings.embedding_model),
                     },
                 )
             )
 
-        await client.upsert(
-            collection_name=settings.qdrant_collection_name,
-            points=points,
-            wait=True,
+        # Upload first. If this fails, the old points
+        # have not been deliberately deleted.
+        if points:
+            await client.upsert(
+                collection_name=collection,
+                points=points,
+                wait=True,
+            )
+
+        current_ids: set[str] = {str(point.id) for point in points}
+
+        stale_ids = previous_point_ids - current_ids
+
+        # Delete only obsolete IDs from the snapshot.
+        # Never delete by document filter after upsert:
+        # that could also delete the newly uploaded points.
+
+        if stale_ids:
+            await client.delete(
+                collection_name=collection,
+                points_selector=models.PointIdsList(
+                    points=list(stale_ids),
+                ),
+                wait=True,
+            )
+
+        logger.info(
+            "document_indexed",
+            extra={
+                "organization_id": str(organization_id),
+                "document_id": str(document_id),
+                "point_count": len(points),
+                "stale_points_removed": len(stale_ids),
+            },
         )
 
         return len(points)

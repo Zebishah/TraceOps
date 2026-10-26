@@ -31,20 +31,28 @@ class IncidentResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
-
     id: uuid.UUID
     organization_id: uuid.UUID
     created_by_user_id: uuid.UUID
     subject_customer_id: uuid.UUID | None
     title: str
     description: str
-
     status: IncidentStatus
     category: str | None
     priority: IncidentPriority | None
-
+    resolved_by_user_id: uuid.UUID | None = None
+    resolution_reason: str | None = None
+    resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class IncidentNoActionResolutionRequest(BaseModel):
+    reason: str = Field(
+        min_length=10,
+        max_length=1000,
+        description="Explain why no operational action is required.",
+    )
 
 
 class IncidentClassificationResponse(BaseModel):

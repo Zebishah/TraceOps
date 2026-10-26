@@ -45,6 +45,7 @@ def _cases() -> list[DuplicatePaymentEvaluationCase]:
                 {
                     "external_transaction_id": "TXN-A",
                     "provider": "stripe",
+                    "payment_instrument_fingerprint": "test-instrument-42",
                     "transaction_type": "charge",
                     "amount": "12000.00",
                     "currency": "PKR",
@@ -54,6 +55,7 @@ def _cases() -> list[DuplicatePaymentEvaluationCase]:
                 {
                     "external_transaction_id": "TXN-B",
                     "provider": "stripe",
+                    "payment_instrument_fingerprint": "test-instrument-42",
                     "transaction_type": "charge",
                     "amount": "12000.00",
                     "currency": "PKR",

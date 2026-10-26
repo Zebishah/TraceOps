@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -65,6 +65,12 @@ def test_classify_stored_incident_updates_incident(
     )
 
     session = AsyncMock()
+
+    # Simulate PostgreSQL returning the locked incident.
+    db_result = Mock()
+    db_result.scalar_one_or_none.return_value = incident
+
+    session.execute.return_value = db_result
 
     saved_incident, result = asyncio.run(
         service_module.classify_stored_incident(
@@ -144,3 +150,70 @@ def test_classification_failure_does_not_commit(
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
     session.refresh.assert_not_awaited()
+
+
+def test_classification_cannot_reopen_resolved_incident(
+    monkeypatch,
+) -> None:
+    organization_id = uuid.uuid4()
+    incident_id = uuid.uuid4()
+
+    incident = SimpleNamespace(
+        id=incident_id,
+        title="Customer charged twice",
+        description="Two payments were reported.",
+        category=None,
+        priority=None,
+        status=IncidentStatus.NEW,
+    )
+
+    async def fake_get_incident(**kwargs):
+        return incident
+
+    async def fake_classify_incident(**kwargs):
+        # Simulate another request resolving the incident
+        # while the AI classification was running.
+        incident.status = IncidentStatus.RESOLVED
+
+        return IncidentClassification(
+            category=IncidentCategory.PAYMENT,
+            priority=IncidentPriority.HIGH,
+            confidence=0.98,
+        )
+
+    monkeypatch.setattr(
+        service_module,
+        "get_incident",
+        fake_get_incident,
+    )
+
+    monkeypatch.setattr(
+        service_module,
+        "classify_incident",
+        fake_classify_incident,
+    )
+
+    session = AsyncMock()
+
+    db_result = Mock()
+    db_result.scalar_one_or_none.return_value = incident
+    session.execute.return_value = db_result
+
+    from ops_pilot.services.incident_resolution import (
+        IncidentResolutionConflict,
+    )
+
+    with pytest.raises(
+        IncidentResolutionConflict,
+        match="resolved during classification",
+    ):
+        asyncio.run(
+            service_module.classify_stored_incident(
+                session=session,
+                organization_id=organization_id,
+                incident_id=incident_id,
+            )
+        )
+
+    session.commit.assert_not_awaited()
+    assert incident.status == IncidentStatus.RESOLVED

@@ -371,6 +371,15 @@ async def propose_action_node(
         "duplicate_payment_candidate",
     )
 
+    # Security rule:
+    # A payment refund must never be proposed through
+    # the AI fallback when deterministic verification fails.
+    if state["category"].value == "payment" and duplicate_payment is None:
+        return {
+            "proposed_action": None,
+            "approval_required": False,
+        }
+
     # Deterministic payment path:
     # if OpsPilot safely identified the exact
     # duplicate transaction, propose that refund.

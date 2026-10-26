@@ -326,9 +326,9 @@ def test_incident_investigation_graph_runs_in_order(
         "detect_duplicate_payment",
         "analyze",
         "recommend",
-        "propose_action",
     ]
-
+    assert result["proposed_action"] is None
+    assert result["approval_required"] is False
     assert result["organization_id"] == organization_id
 
     assert result["incident_id"] == incident_id

@@ -13,6 +13,7 @@ from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.models.order import OperationalOrder
 from ops_pilot.models.payment_transaction import (
     PaymentTransaction,
@@ -32,6 +33,28 @@ async def execute_approved_refund(
     approval_request_id: uuid.UUID,
     customer_id: uuid.UUID,
 ) -> RefundExecutionResult:
+
+    # Consistent lock order:
+    # incident -> approval -> source transaction.
+    #
+    # This serializes refund execution with manual
+    # incident closure and approval decisions.
+    incident_result = await session.execute(
+        select(Incident)
+        .where(
+            Incident.id == incident_id,
+            Incident.organization_id == organization_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+    incident = incident_result.scalar_one_or_none()
+
+    if incident is None:
+        await session.rollback()
+        raise ApprovalExecutionError("Incident not found")
+
     approval_result = await session.execute(
         select(ApprovalRequest)
         .where(
@@ -40,6 +63,7 @@ async def execute_approved_refund(
             ApprovalRequest.incident_id == incident_id,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
     approval = approval_result.scalar_one_or_none()
@@ -96,6 +120,18 @@ async def execute_approved_refund(
             currency=existing_refund.currency,
             already_executed=True,
         )
+
+    # Preserve existing idempotent EXECUTED behavior.
+    # That branch has already returned above.
+    #
+    # No new refund is permitted after resolution.
+    if incident.status == IncidentStatus.RESOLVED:
+        await session.rollback()
+        raise ApprovalExecutionError("Cannot execute refund for a resolved incident")
+
+    if incident.status != IncidentStatus.AWAITING_APPROVAL:
+        await session.rollback()
+        raise ApprovalExecutionError("Incident is not awaiting approved action")
 
     if approval.status != ApprovalStatus.APPROVED:
         raise ApprovalExecutionError(

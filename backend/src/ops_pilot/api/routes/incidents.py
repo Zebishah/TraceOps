@@ -21,6 +21,7 @@ from ops_pilot.schemas.incidents import (
     IncidentCreateRequest,
     IncidentEvidenceResponse,
     IncidentInvestigationResponse,
+    IncidentNoActionResolutionRequest,
     IncidentResponse,
 )
 from ops_pilot.services.approval_workflow import (
@@ -36,6 +37,11 @@ from ops_pilot.services.incident_evidence import (
     retrieve_incident_evidence,
 )
 from ops_pilot.services.incident_investigation import investigate_incident
+from ops_pilot.services.incident_resolution import (
+    IncidentResolutionConflict,
+    IncidentResolutionNotFound,
+    resolve_incident_without_action,
+)
 from ops_pilot.services.incidents import (
     create_incident,
     get_incident_response_cached,
@@ -114,11 +120,19 @@ async def classify_incident_endpoint(
     membership: CurrentMembership,
     session: DbSession,
 ) -> IncidentClassificationResponse:
-    incident, classification = await classify_stored_incident(
-        session=session,
-        organization_id=organization_id,
-        incident_id=incident_id,
-    )
+
+    try:
+        incident, classification = await classify_stored_incident(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+        )
+    except IncidentResolutionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
     await invalidate_incident_cache(
         organization_id=organization_id,
         incident_id=incident_id,
@@ -242,3 +256,54 @@ async def decide_approval_endpoint(
     return ApprovalResponse.model_validate(
         approval,
     )
+
+
+@router.post(
+    "/{incident_id}/resolve-no-action",
+    response_model=IncidentResponse,
+)
+async def resolve_no_action_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    payload: IncidentNoActionResolutionRequest,
+    current_user: CurrentUser,
+    membership: CurrentMembership,
+    session: DbSession,
+) -> IncidentResponse:
+    allowed_roles = {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.REVIEWER,
+    }
+
+    if membership.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reviewer, admin, or owner role required",
+        )
+
+    try:
+        incident = await resolve_incident_without_action(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+            resolved_by_user_id=current_user.id,
+            reason=payload.reason,
+        )
+    except IncidentResolutionNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except IncidentResolutionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    await invalidate_incident_cache(
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    return IncidentResponse.model_validate(incident)

@@ -15,7 +15,19 @@ from ops_pilot.integrations.retry import (
 )
 
 logger = logging.getLogger(__name__)
-MAX_EMBEDDING_ATTEMPTS = 4
+
+MAX_CONCURRENT_EMBEDDING_REQUESTS = 3
+
+_embedding_semaphore: asyncio.Semaphore | None = None
+
+
+def get_embedding_semaphore() -> asyncio.Semaphore:
+    global _embedding_semaphore
+
+    if _embedding_semaphore is None:
+        _embedding_semaphore = asyncio.Semaphore(MAX_CONCURRENT_EMBEDDING_REQUESTS)
+
+    return _embedding_semaphore
 
 
 @lru_cache
@@ -55,17 +67,20 @@ async def embed_texts(
     response: httpx.Response | None = None
 
     for attempt in range(
-        MAX_EMBEDDING_ATTEMPTS,
+        MAX_CONCURRENT_EMBEDDING_REQUESTS,
     ):
 
         async def send_request() -> httpx.Response:
-            return await client.post(
-                "/v1/embeddings",
-                json={
-                    "model": settings.embedding_model,
-                    "input": texts,
-                },
-            )
+            semaphore = get_embedding_semaphore()
+
+            async with semaphore:
+                return await client.post(
+                    "/v1/embeddings",
+                    json={
+                        "model": settings.embedding_model,
+                        "input": texts,
+                    },
+                )
 
         response = await observe_external_call(
             provider="mistral",
@@ -89,7 +104,7 @@ async def embed_texts(
         if not should_retry_response(response):
             break
 
-        if attempt == MAX_EMBEDDING_ATTEMPTS - 1:
+        if attempt == MAX_CONCURRENT_EMBEDDING_REQUESTS - 1:
             break
 
         await asyncio.sleep(

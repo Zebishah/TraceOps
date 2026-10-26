@@ -88,6 +88,10 @@ class PaymentTransaction(Base):
         nullable=True,
         index=True,
     )
+    payment_instrument_fingerprint: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
     external_transaction_id: Mapped[str] = mapped_column(
         String(160),
         nullable=False,
