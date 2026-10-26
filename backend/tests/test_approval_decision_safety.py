@@ -16,6 +16,8 @@ from ops_pilot.services.incident_resolution import (
 
 def make_session(incident, approval):
     session = AsyncMock()
+
+    session.add = Mock()
     session.scalar.return_value = None
     incident_result = Mock()
     incident_result.scalar_one_or_none.return_value = incident

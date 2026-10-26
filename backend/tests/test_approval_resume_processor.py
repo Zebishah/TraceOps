@@ -27,7 +27,23 @@ def test_successful_job_completes(monkeypatch):
 
     process = AsyncMock()
     complete = AsyncMock(return_value=True)
-    fail = AsyncMock()
+
+    # If the worker unexpectedly enters its failure path,
+    # show the real error instead of hiding it behind
+    # a failed completed-count assertion.
+    async def unexpected_failure(**kwargs):
+        raise AssertionError(f"Successful job unexpectedly failed: {kwargs}")
+
+    fail = AsyncMock(side_effect=unexpected_failure)
+
+    async def fake_heartbeat(
+        *,
+        job,
+        stop,
+        owner,
+        interval_seconds=30,
+    ):
+        await stop.wait()
 
     monkeypatch.setattr(
         processor,
@@ -54,6 +70,12 @@ def test_successful_job_completes(monkeypatch):
         "renew_resume_job_lease",
         AsyncMock(return_value=True),
     )
+    monkeypatch.setattr(
+        processor,
+        "keep_resume_job_lease_alive",
+        fake_heartbeat,
+    )
+
     result = asyncio.run(processor.run_approval_resume_sweep())
 
     assert result.claimed == 1

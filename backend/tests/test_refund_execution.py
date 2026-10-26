@@ -442,20 +442,24 @@ def test_execute_refund_retry_returns_existing_refund() -> None:
         incident_id=incident_id,
         status=ApprovalStatus.EXECUTED,
     )
-
     approval.executed_at = datetime.now(UTC)
+
+    source = make_source_transaction(
+        organization_id=organization_id,
+        status=PaymentTransactionStatus.REFUNDED,
+    )
 
     existing_refund = PaymentTransaction(
         id=uuid.uuid4(),
         organization_id=organization_id,
-        order_id=uuid.uuid4(),
-        source_transaction_id=uuid.uuid4(),
-        external_transaction_id=(f"refund-{approval.id}"),
-        provider="stripe",
-        transaction_type=(PaymentTransactionType.REFUND),
-        amount=Decimal("12000.00"),
-        currency="PKR",
-        status=(PaymentTransactionStatus.SUCCEEDED),
+        order_id=source.order_id,
+        source_transaction_id=source.id,
+        external_transaction_id=f"refund-{approval.id}",
+        provider=source.provider,
+        transaction_type=PaymentTransactionType.REFUND,
+        amount=source.amount,
+        currency=source.currency,
+        status=PaymentTransactionStatus.SUCCEEDED,
         processed_at=datetime.now(UTC),
     )
 
@@ -466,18 +470,14 @@ def test_execute_refund_retry_returns_existing_refund() -> None:
                 incident_id=incident_id,
             ),
             approval,
+            source,
             existing_refund,
         ]
     )
 
-    session = cast(
-        AsyncSession,
-        fake_session,
-    )
-
     result = asyncio.run(
         execute_approved_refund(
-            session=session,
+            session=cast(AsyncSession, fake_session),
             organization_id=organization_id,
             incident_id=incident_id,
             approval_request_id=approval.id,
@@ -486,11 +486,14 @@ def test_execute_refund_retry_returns_existing_refund() -> None:
     )
 
     assert result.already_executed is True
-
-    assert result.refund_transaction_id == (existing_refund.external_transaction_id)
+    assert result.source_transaction_id == source.external_transaction_id
+    assert result.refund_transaction_id == existing_refund.external_transaction_id
+    assert result.amount == source.amount
+    assert result.currency == source.currency
 
     assert fake_session.added == []
     assert fake_session.commit_count == 0
+    assert fake_session.rollback_count == 1
 
 
 def test_execute_refund_blocks_transaction_from_other_customer() -> None:
