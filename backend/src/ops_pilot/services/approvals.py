@@ -203,32 +203,35 @@ async def record_approval_decision(
 
     # Idempotent retries should not modify database state.
 
+    # Identical retries are idempotent.
     if approval.status == desired_status or (
         approval.status == ApprovalStatus.EXECUTED and payload.approved
     ):
-        # Backfill a missing resume job for an older,
-        # already-decided approval that still needs processing.
-        if approval.status in {
-            ApprovalStatus.APPROVED,
-            ApprovalStatus.REJECTED,
-        }:
-            await ensure_approval_resume_job(
-                session=session,
-                approval=approval,
-            )
-
         try:
+            if approval.status in {
+                ApprovalStatus.APPROVED,
+                ApprovalStatus.REJECTED,
+            }:
+                await ensure_approval_resume_job(
+                    session=session,
+                    approval=approval,
+                )
+
             await session.commit()
+
         except Exception:
             await session.rollback()
             raise
 
-    # Final decisions cannot be reversed.
+        await session.refresh(approval)
+        return approval
+
+    # A final decision cannot be reversed.
     if approval.status != ApprovalStatus.PENDING:
         await session.rollback()
         raise ApprovalDecisionConflictError
 
-    # A closed incident must never receive a new decision.
+    # Do not decide approvals for closed incidents.
     if incident.status == IncidentStatus.RESOLVED:
         await session.rollback()
         raise IncidentResolutionConflict("Cannot decide approval for a resolved incident")
@@ -237,6 +240,7 @@ async def record_approval_decision(
         await session.rollback()
         raise IncidentResolutionConflict("Incident is not awaiting approval")
 
+    # Record the actual human decision.
     approval.status = desired_status
     approval.decided_by_user_id = decided_by_user_id
     approval.decision_comment = payload.comment
@@ -245,8 +249,7 @@ async def record_approval_decision(
     if not payload.approved:
         incident.status = IncidentStatus.INVESTIGATING
 
-    # Phase 20B: The approval decision and its
-    # durable resume job must commit together.
+    # Decision and durable resume job commit together.
     try:
         await ensure_approval_resume_job(
             session=session,
@@ -260,7 +263,6 @@ async def record_approval_decision(
         raise
 
     await session.refresh(approval)
-
     return approval
 
 

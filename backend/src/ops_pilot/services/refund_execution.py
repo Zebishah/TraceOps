@@ -152,26 +152,6 @@ async def execute_approved_refund(
 
         return response
 
-        # Capture every required ORM value while the
-        # database session is still active.
-        response = RefundExecutionResult(
-            source_transaction_id=source.external_transaction_id,
-            refund_transaction_id=existing_refund.external_transaction_id,
-            amount=existing_refund.amount,
-            currency=existing_refund.currency,
-            already_executed=True,
-        )
-
-        # Close the read transaction only after
-        # constructing the response.
-        await session.rollback()
-
-        return response
-
-    # Preserve existing idempotent EXECUTED behavior.
-    # That branch has already returned above.
-    #
-    # No new refund is permitted after resolution.
     if incident.status == IncidentStatus.RESOLVED:
         await session.rollback()
         raise ApprovalExecutionError("Cannot execute refund for a resolved incident")
