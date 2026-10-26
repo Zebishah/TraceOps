@@ -37,6 +37,36 @@ class ClaimedResumeJob:
     attempts: int
 
 
+async def renew_resume_job_lease(
+    *,
+    job: ClaimedResumeJob,
+) -> bool:
+    """Renew the lease only while the current owner holds it."""
+
+    now = datetime.now(UTC)
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            update(ApprovalResumeJob)
+            .where(
+                ApprovalResumeJob.id == job.id,
+                ApprovalResumeJob.organization_id == job.organization_id,
+                ApprovalResumeJob.status == ApprovalResumeJobStatus.PROCESSING.value,
+                ApprovalResumeJob.lease_token == job.lease_token,
+                ApprovalResumeJob.lease_expires_at > now,
+            )
+            .values(
+                lease_expires_at=now + timedelta(seconds=LEASE_SECONDS),
+            )
+            .returning(ApprovalResumeJob.id)
+        )
+
+        renewed = result.scalar_one_or_none() is not None
+        await session.commit()
+
+    return renewed
+
+
 async def claim_resume_jobs(
     *,
     limit: int = BATCH_SIZE,

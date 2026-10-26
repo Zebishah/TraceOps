@@ -49,7 +49,11 @@ def test_successful_job_completes(monkeypatch):
         "fail_resume_job",
         fail,
     )
-
+    monkeypatch.setattr(
+        processor,
+        "renew_resume_job_lease",
+        AsyncMock(return_value=True),
+    )
     result = asyncio.run(processor.run_approval_resume_sweep())
 
     assert result.claimed == 1

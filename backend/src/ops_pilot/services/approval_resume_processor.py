@@ -256,7 +256,7 @@ async def keep_resume_job_lease_alive(
 
 
 async def run_approval_resume_sweep() -> ResumeSweepResult:
-    """Run a bounded batch of durable approval jobs."""
+    """Process one durable approval job with lease renewal."""
 
     claimed_jobs = await claim_resume_jobs(limit=1)
 
@@ -264,15 +264,44 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
     failed = 0
 
     for job in claimed_jobs:
+        owner = asyncio.current_task()
+
+        if owner is None:
+            raise RuntimeError("Approval worker requires an asyncio task")
+
+        stop = asyncio.Event()
+
+        heartbeat = asyncio.create_task(
+            keep_resume_job_lease_alive(
+                job=job,
+                stop=stop,
+                owner=owner,
+            )
+        )
+
         try:
             await process_claimed_resume_job(job)
 
-            marked = await complete_resume_job(job=job)
+            # Check ownership again before completion.
+            owns_lease = await renew_resume_job_lease(job=job)
 
-            if not marked:
-                raise RuntimeError("Approval job lease was lost before completion")
+            if not owns_lease:
+                raise RuntimeError("Approval worker lost its lease")
+
+            completed_ok = await complete_resume_job(job=job)
+
+            if not completed_ok:
+                raise RuntimeError("Unable to complete approval resume job")
 
             completed += 1
+
+        except asyncio.CancelledError:
+            # Never retry an uncertain financial operation blindly.
+            logger.warning(
+                "approval_resume_worker_cancelled",
+                extra={"job_id": str(job.id)},
+            )
+            raise
 
         except Exception as exc:
             failed += 1
@@ -282,7 +311,6 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
                 extra={
                     "job_id": str(job.id),
                     "approval_id": str(job.approval_request_id),
-                    "attempt": job.attempts,
                 },
             )
 
@@ -291,6 +319,16 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
                 error=f"{type(exc).__name__}: {exc}",
                 terminal=True,
             )
+
+        finally:
+            stop.set()
+
+            heartbeat.cancel()
+
+            try:
+                await heartbeat
+            except asyncio.CancelledError:
+                pass
 
     return ResumeSweepResult(
         claimed=len(claimed_jobs),

@@ -100,11 +100,6 @@ async def verify_quarantined_job(
     if status == ApprovalStatus.REJECTED:
         return True
 
-    # An executed approval must also have a consistent
-    # persisted refund and resolved incident.
-    if status == ApprovalStatus.REJECTED:
-        return True
-
     if not isinstance(source_external_id, str):
         return False
 
