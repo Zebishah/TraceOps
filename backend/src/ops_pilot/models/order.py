@@ -59,10 +59,7 @@ class OperationalOrder(Base):
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "customers.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("customers.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )

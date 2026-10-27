@@ -193,14 +193,16 @@ async def dispatch_customer_recovery_automation(
     customer = customer_result.scalar_one_or_none()
 
     if customer is None:
-        raise RuntimeError(
-            "Customer not found for recovery automation",
-        )
+        raise RuntimeError("Customer not found for recovery automation")
 
+    # OpsPilot demonstrates an internal, simulated refund.
+    # No external payment provider is contacted.
     resolution = (
-        f"Refund of {execution.amount} "
-        f"{execution.currency} completed for "
-        f"transaction {execution.source_transaction_id}."
+        f"Simulated refund of {execution.amount} "
+        f"{execution.currency} recorded successfully "
+        f"in OpsPilot's internal ledger for transaction "
+        f"{execution.source_transaction_id}. "
+        "No external payment provider was contacted."
     )
 
     event = AutomationEvent(
@@ -222,8 +224,8 @@ async def dispatch_customer_recovery_automation(
             customer_email=customer.email,
             resolution=resolution,
             action_type="refund_transaction",
-            source_transaction_id=(execution.source_transaction_id),
-            refund_transaction_id=(execution.refund_transaction_id),
+            source_transaction_id=execution.source_transaction_id,
+            refund_transaction_id=execution.refund_transaction_id,
             refund_amount=execution.amount,
             currency=execution.currency,
         ),

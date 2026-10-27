@@ -51,5 +51,9 @@ class ApprovalResponse(BaseModel):
     decided_at: datetime | None
     executed_at: datetime | None
 
+    superseded_by_approval_id: uuid.UUID | None = None
+    superseded_at: datetime | None = None
+    supersession_reason: str | None = None
+
     created_at: datetime
     updated_at: datetime

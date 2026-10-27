@@ -205,7 +205,7 @@ def test_classification_cannot_reopen_resolved_incident(
 
     with pytest.raises(
         IncidentResolutionConflict,
-        match="resolved during classification",
+        match="Incident state changed during classification",
     ):
         asyncio.run(
             service_module.classify_stored_incident(

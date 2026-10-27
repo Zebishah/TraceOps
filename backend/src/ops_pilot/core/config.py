@@ -105,6 +105,16 @@ class Settings(BaseSettings):
         if "*" in allowed_origins:
             raise ValueError("MCP_ALLOWED_ORIGINS must not contain wildcard '*'")
 
+        # The approval recovery cron is currently staging-only.
+        # Do not silently accept a production setting that
+        # cannot actually register the scheduler.
+        if environment == "production" and self.enable_approval_resume_cron:
+            raise ValueError(
+                "ENABLE_APPROVAL_RESUME_CRON cannot be enabled "
+                "in production until production scheduler "
+                "registration is explicitly implemented"
+            )
+
         if environment == "production":
             authorization_url = str(self.mcp_authorization_server_url)
 

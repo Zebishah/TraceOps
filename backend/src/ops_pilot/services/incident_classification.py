@@ -22,8 +22,11 @@ async def classify_stored_incident(
         incident_id=incident_id,
     )
 
-    if incident.status == IncidentStatus.RESOLVED:
-        raise IncidentResolutionConflict("Resolved incidents cannot be reclassified")
+    if incident.status not in {
+        IncidentStatus.NEW,
+        IncidentStatus.INVESTIGATING,
+    }:
+        raise IncidentResolutionConflict("Incident cannot be classified in its current state")
 
     title = incident.title
     description = incident.description
@@ -57,13 +60,16 @@ async def classify_stored_incident(
     # have resolved the incident while AI was running.
     current_status: IncidentStatus = IncidentStatus(locked_incident.status.value)
 
-    if current_status is IncidentStatus.RESOLVED:
+    if current_status not in {
+        IncidentStatus.NEW,
+        IncidentStatus.INVESTIGATING,
+    }:
         await session.rollback()
-        raise IncidentResolutionConflict("Incident was resolved during classification")
+        raise IncidentResolutionConflict("Incident state changed during classification")
 
-    incident.category = classification.category.value
-    incident.priority = classification.priority
-    incident.status = IncidentStatus.INVESTIGATING
+    locked_incident.category = classification.category.value
+    locked_incident.priority = classification.priority
+    locked_incident.status = IncidentStatus.INVESTIGATING
 
     try:
         await session.commit()
@@ -71,6 +77,6 @@ async def classify_stored_incident(
         await session.rollback()
         raise
 
-    await session.refresh(incident)
+    await session.refresh(locked_incident)
 
-    return incident, classification
+    return locked_incident, classification

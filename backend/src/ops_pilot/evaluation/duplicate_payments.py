@@ -173,12 +173,35 @@ def _cases() -> list[DuplicatePaymentEvaluationCase]:
     ]
 
 
+def _order_tool_result() -> ToolExecutionResult:
+    """Supply the synthetic paid order used by evaluation cases."""
+    return ToolExecutionResult(
+        call_id="evaluation-order",
+        tool_name=OperationalToolName.LIST_CUSTOMER_ORDERS,
+        arguments={"limit": 10},
+        success=True,
+        content=json.dumps(
+            [
+                {
+                    "external_order_id": "ORD-EVAL",
+                    "product_name": "Synthetic evaluation product",
+                    "total_amount": "12000.00",
+                    "currency": "PKR",
+                    "status": "paid",
+                    "ordered_at": "2026-10-15T09:00:00Z",
+                }
+            ]
+        ),
+    )
+
+
 def evaluate_duplicate_payment_detection() -> EvaluationSuiteResult:
     results: list[EvaluationCaseResult] = []
 
     for case in _cases():
         candidate = detect_duplicate_payment_candidate(
             tool_results=[
+                _order_tool_result(),
                 _tool_result(case.payments),
             ],
         )

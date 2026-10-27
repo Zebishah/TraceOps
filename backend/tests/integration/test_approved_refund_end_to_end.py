@@ -293,9 +293,24 @@ async def test_approved_refund_completes_through_real_worker(
             assert job is not None
             assert source is not None
 
+            # Human approval was executed.
             assert approval.status == ApprovalStatus.EXECUTED
             assert approval.executed_at is not None
+
+            # Incident was resolved after simulated refund verification.
             assert incident.status == IncidentStatus.RESOLVED
+
+            # F08: Verify complete resolution audit metadata.
+            assert incident.resolved_at is not None
+            assert incident.resolved_by_user_id == user_id
+            assert incident.resolution_reason is not None
+
+            # The resolution must clearly describe an internal
+            # simulated refund, not a real provider refund.
+            assert "internal refund ledger" in incident.resolution_reason.lower()
+            assert "no external payment provider refund" in incident.resolution_reason.lower()
+
+            # Original synthetic charge was updated.
             assert source.status == PaymentTransactionStatus.REFUNDED
 
             assert job.status == ApprovalResumeJobStatus.COMPLETED.value

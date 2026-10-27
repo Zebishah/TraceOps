@@ -23,6 +23,7 @@ class ApprovalStatus(StrEnum):
     REJECTED = "rejected"
     EXECUTED = "executed"
     FAILED = "failed"
+    SUPERSEDED = "superseded"
 
 
 class ApprovalActionType(StrEnum):
@@ -34,7 +35,7 @@ class ApprovalRequest(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected', 'executed', 'failed')",
+            "status IN ('pending', 'approved', 'rejected', 'executed', 'failed', 'superseded')",
             name="ck_approval_requests_status",
         ),
         CheckConstraint(
@@ -58,7 +59,19 @@ class ApprovalRequest(Base):
         nullable=False,
         index=True,
     )
-
+    superseded_by_approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("approval_requests.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    supersession_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     incident_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(

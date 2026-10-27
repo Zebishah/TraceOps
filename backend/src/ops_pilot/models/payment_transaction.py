@@ -52,6 +52,10 @@ class PaymentTransaction(Base):
             "source_transaction_id",
             name="uq_payment_transactions_source_transaction",
         ),
+        CheckConstraint(
+            "amount > 0",
+            name="ck_payment_transactions_amount_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -72,10 +76,7 @@ class PaymentTransaction(Base):
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "operational_orders.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("operational_orders.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )

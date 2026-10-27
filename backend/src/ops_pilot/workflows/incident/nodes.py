@@ -1,9 +1,6 @@
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from ops_pilot.ai.incident_action_proposer import (
-    propose_incident_action,
-)
 from ops_pilot.ai.incident_analyzer import analyze_incident
 from ops_pilot.ai.incident_recommender import (
     recommend_incident_action,
@@ -336,28 +333,21 @@ async def recommend_action_node(
 async def propose_action_node(
     state: IncidentInvestigationState,
 ) -> dict[str, object]:
-    if (
-        "title" not in state
-        or "description" not in state
-        or "category" not in state
-        or "priority" not in state
-        or "evidence" not in state
-        or "analysis" not in state
-        or "recommended_action" not in state
-    ):
-        raise RuntimeError(
-            "Action proposal node received incomplete incident state",
-        )
-
-    tool_results = state.get(
-        "tool_results",
-        [],
+    required_fields = (
+        "title",
+        "description",
+        "category",
+        "priority",
+        "evidence",
+        "analysis",
+        "recommended_action",
     )
 
-    # Safety gate:
-    # payment actions cannot be proposed
-    # until required operational data
-    # has been collected.
+    if any(field not in state for field in required_fields):
+        raise RuntimeError("Action proposal node received incomplete incident state")
+
+    tool_results = state.get("tool_results", [])
+
     if not has_required_operational_evidence(
         category=state["category"],
         tool_results=tool_results,
@@ -367,60 +357,59 @@ async def propose_action_node(
             "approval_required": False,
         }
 
-    duplicate_payment = state.get(
-        "duplicate_payment_candidate",
-    )
+    duplicate_payment = state.get("duplicate_payment_candidate")
 
-    # Security rule:
-    # A payment refund must never be proposed through
-    # the AI fallback when deterministic verification fails.
-    if state["category"].value == "payment" and duplicate_payment is None:
+    if duplicate_payment is None:
         return {
             "proposed_action": None,
             "approval_required": False,
         }
 
-    # Deterministic payment path:
-    # if OpsPilot safely identified the exact
-    # duplicate transaction, propose that refund.
-    if state["category"].value == "payment" and duplicate_payment is not None:
-        proposal = IncidentActionProposal(
-            requires_approval=True,
-            action_type=(ApprovalActionType.REFUND_TRANSACTION),
-            external_transaction_id=(duplicate_payment.duplicate_transaction_id),
-            amount=duplicate_payment.amount,
-            currency=duplicate_payment.currency,
-            reason=(
-                "OpsPilot deterministically identified "
-                f"{duplicate_payment.duplicate_transaction_id} "
-                "as the later matching successful charge "
-                f"for order {duplicate_payment.order_id}. "
-                "Human approval is required before refund."
-            ),
-        )
-
+    # A deterministic payment candidate is the only
+    # authorized source of executable refund proposals.
+    # No LLM fallback may create a financial action.
+    if state["category"].value != "payment":
         return {
-            "proposed_action": proposal,
-            "approval_required": True,
+            "proposed_action": None,
+            "approval_required": False,
         }
 
-    # Normal AI proposal path for cases where
-    # there is no deterministic duplicate payment.
-    proposal = await propose_incident_action(
-        title=state["title"],
-        description=state["description"],
-        category=state["category"],
-        priority=state["priority"],
-        evidence=state["evidence"],
-        tool_results=tool_results,
-        analysis=state["analysis"],
-        recommendation=state["recommended_action"],
+    proposal = IncidentActionProposal(
+        requires_approval=True,
+        action_type=ApprovalActionType.REFUND_TRANSACTION,
+        external_transaction_id=(duplicate_payment.duplicate_transaction_id),
+        amount=duplicate_payment.amount,
+        currency=duplicate_payment.currency,
+        reason=(
+            "OpsPilot deterministically identified "
+            f"{duplicate_payment.duplicate_transaction_id} "
+            "as the later matching successful charge "
+            f"for order {duplicate_payment.order_id}. "
+            "Human approval is required before recording "
+            "a simulated refund in the internal ledger."
+        ),
     )
 
     return {
         "proposed_action": proposal,
-        "approval_required": proposal.requires_approval,
+        "approval_required": True,
     }
+
+    # proposal = await propose_incident_action(
+    #     title=state["title"],
+    #     description=state["description"],
+    #     category=state["category"],
+    #     priority=state["priority"],
+    #     evidence=state["evidence"],
+    #     tool_results=tool_results,
+    #     analysis=state["analysis"],
+    #     recommendation=state["recommended_action"],
+    # )
+
+    # return {
+    #     "proposed_action": proposal,
+    #     "approval_required": proposal.requires_approval,
+    # }
 
 
 def route_after_action_proposal(
@@ -929,25 +918,11 @@ async def dispatch_customer_recovery_automation_node(
     state: IncidentInvestigationState,
     runtime: Runtime[IncidentGraphContext],
 ) -> dict[str, object]:
-    customer_id = state.get(
-        "subject_customer_id",
-    )
-
-    execution = state.get(
-        "refund_execution",
-    )
-
-    title = state.get(
-        "title",
-    )
-
-    category = state.get(
-        "category",
-    )
-
-    priority = state.get(
-        "priority",
-    )
+    customer_id = state.get("subject_customer_id")
+    execution = state.get("refund_execution")
+    title = state.get("title")
+    category = state.get("category")
+    priority = state.get("priority")
 
     if (
         customer_id is None

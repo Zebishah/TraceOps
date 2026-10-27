@@ -122,3 +122,38 @@ def test_valid_production_security_config() -> None:
     )
 
     assert settings.environment == "production"
+
+
+def test_production_rejects_staging_only_approval_cron() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="ENABLE_APPROVAL_RESUME_CRON",
+    ):
+        make_settings(
+            environment="production",
+            mcp_authorization_server_url="https://ops.example.com",
+            mcp_resource_url="https://ops.example.com/mcp",
+            inngest_dev=False,
+            enable_approval_resume_cron=True,
+        )
+
+
+def test_staging_can_enable_approval_cron() -> None:
+    settings = make_settings(
+        environment="staging",
+        enable_approval_resume_cron=True,
+    )
+
+    assert settings.enable_approval_resume_cron is True
+
+
+def test_production_keeps_approval_cron_disabled() -> None:
+    settings = make_settings(
+        environment="production",
+        mcp_authorization_server_url="https://ops.example.com",
+        mcp_resource_url="https://ops.example.com/mcp",
+        inngest_dev=False,
+        enable_approval_resume_cron=False,
+    )
+
+    assert settings.enable_approval_resume_cron is False

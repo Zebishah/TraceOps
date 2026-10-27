@@ -12,9 +12,6 @@ from ops_pilot.models.incident import (
     IncidentPriority,
     IncidentStatus,
 )
-from ops_pilot.schemas.incident_actions import (
-    IncidentActionProposal,
-)
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
@@ -221,28 +218,6 @@ def test_incident_investigation_graph_runs_in_order(
 
         return "Verify the transactions before issuing a refund [SOURCE 1]."
 
-    async def fake_propose_incident_action(
-        *,
-        title,
-        description,
-        category,
-        priority,
-        evidence,
-        tool_results,
-        analysis,
-        recommendation,
-    ):
-        call_order.append("propose_action")
-
-        return IncidentActionProposal(
-            requires_approval=False,
-            action_type=None,
-            external_transaction_id=None,
-            amount=None,
-            currency=None,
-            reason=("More verification is required."),
-        )
-
     monkeypatch.setattr(
         nodes_module,
         "classify_stored_incident",
@@ -290,12 +265,6 @@ def test_incident_investigation_graph_runs_in_order(
         nodes_module,
         "recommend_incident_action",
         fake_recommend_incident_action,
-    )
-
-    monkeypatch.setattr(
-        nodes_module,
-        "propose_incident_action",
-        fake_propose_incident_action,
     )
 
     session = cast(

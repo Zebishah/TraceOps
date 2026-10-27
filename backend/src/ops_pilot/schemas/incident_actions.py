@@ -21,12 +21,19 @@ class IncidentActionProposal(BaseModel):
         max_length=160,
     )
 
-    amount: Decimal | None = None
+    amount: Decimal | None = Field(
+        default=None,
+        gt=Decimal("0"),
+        max_digits=12,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
 
     currency: str | None = Field(
         default=None,
         min_length=3,
         max_length=3,
+        pattern=r"^[A-Z]{3}$",
     )
 
     reason: str = Field(

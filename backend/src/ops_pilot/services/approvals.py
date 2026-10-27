@@ -49,87 +49,100 @@ async def create_or_get_pending_approval(
     ):
         raise ValueError("Approval requires a complete action proposal")
 
-    # IMPORTANT:
-    # Lock the incident FIRST, before looking for or
-    # creating an approval.
-    #
-    # Manual resolution also locks this same incident.
-    # This prevents approval creation and manual closure
-    # from overwriting each other's state.
-    incident_result = await session.execute(
-        select(Incident)
-        .where(
-            Incident.id == incident_id,
-            Incident.organization_id == organization_id,
+    try:
+        # Lock incident first to serialize approval creation
+        # with other workflows and manual incident updates.
+        incident_result = await session.execute(
+            select(Incident)
+            .where(
+                Incident.id == incident_id,
+                Incident.organization_id == organization_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
 
-    incident = incident_result.scalar_one_or_none()
+        incident = incident_result.scalar_one_or_none()
 
-    if incident is None:
-        await session.rollback()
-        raise RuntimeError("Incident not found while creating approval")
+        if incident is None:
+            raise RuntimeError("Incident not found while creating approval")
 
-    # Never reopen a manually resolved incident.
-    if incident.status == IncidentStatus.RESOLVED:
-        await session.rollback()
-        raise IncidentResolutionConflict("Cannot create approval for a resolved incident")
+        if incident.status == IncidentStatus.RESOLVED:
+            raise IncidentResolutionConflict("Cannot create approval for a resolved incident")
 
-    # Only incidents actively being investigated or
-    # awaiting approval are eligible.
-    if incident.status not in {
-        IncidentStatus.INVESTIGATING,
-        IncidentStatus.AWAITING_APPROVAL,
-    }:
-        await session.rollback()
-        raise IncidentResolutionConflict("Incident is not eligible for approval creation")
+        if incident.status not in {
+            IncidentStatus.INVESTIGATING,
+            IncidentStatus.AWAITING_APPROVAL,
+        }:
+            raise IncidentResolutionConflict("Incident is not eligible for approval creation")
 
-    # Reuse an existing pending approval for this workflow.
-    existing_result = await session.execute(
-        select(ApprovalRequest).where(
-            ApprovalRequest.organization_id == organization_id,
-            ApprovalRequest.incident_id == incident_id,
-            ApprovalRequest.workflow_thread_id == workflow_thread_id,
-            ApprovalRequest.status == ApprovalStatus.PENDING,
-        )
-    )
-
-    existing = existing_result.scalar_one_or_none()
-
-    if existing is not None:
-        # Release the incident lock after the read.
-        await session.rollback()
-        return existing
-
-    approval = ApprovalRequest(
-        organization_id=organization_id,
-        incident_id=incident_id,
-        workflow_thread_id=workflow_thread_id,
-        action_type=proposal.action_type,
-        action_payload={
-            "external_transaction_id": proposal.external_transaction_id,
+        expected_payload = {
+            "external_transaction_id": (proposal.external_transaction_id),
             "amount": str(proposal.amount),
             "currency": proposal.currency,
-        },
-        reason=proposal.reason,
-        status=ApprovalStatus.PENDING,
-    )
+        }
 
-    incident.status = IncidentStatus.AWAITING_APPROVAL
+        # Search for every ACTIVE approval, regardless
+        # of which workflow originally created it.
+        active_result = await session.execute(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.organization_id == organization_id,
+                ApprovalRequest.incident_id == incident_id,
+                ApprovalRequest.status.in_(
+                    [
+                        ApprovalStatus.PENDING,
+                        ApprovalStatus.APPROVED,
+                    ]
+                ),
+            )
+            .with_for_update()
+        )
 
-    session.add(approval)
+        active = active_result.scalars().all()
 
-    try:
+        if len(active) > 1:
+            raise ApprovalDecisionConflictError("Incident has conflicting active approvals")
+
+        if active:
+            existing = active[0]
+
+            # Only an identical retry from the same
+            # workflow can reuse the pending approval.
+            if (
+                existing.status != ApprovalStatus.PENDING
+                or existing.workflow_thread_id != workflow_thread_id
+                or existing.action_type != proposal.action_type
+                or existing.action_payload != expected_payload
+            ):
+                raise ApprovalDecisionConflictError(
+                    "Another active approval already exists for this incident"
+                )
+
+            await session.rollback()
+            return existing
+
+        approval = ApprovalRequest(
+            organization_id=organization_id,
+            incident_id=incident_id,
+            workflow_thread_id=workflow_thread_id,
+            action_type=proposal.action_type,
+            action_payload=expected_payload,
+            reason=proposal.reason,
+            status=ApprovalStatus.PENDING,
+        )
+
+        incident.status = IncidentStatus.AWAITING_APPROVAL
+        session.add(approval)
+
         await session.commit()
+        await session.refresh(approval)
+
+        return approval
+
     except Exception:
         await session.rollback()
         raise
-
-    await session.refresh(approval)
-
-    return approval
 
 
 async def get_approval_request(
