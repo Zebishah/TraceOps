@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from ops_pilot.api.dependencies import CurrentUser, DbSession
@@ -19,8 +19,32 @@ from ops_pilot.services.auth import (
     authenticate_user,
     register_user,
 )
+from ops_pilot.services.auth_rate_limit import (
+    AuthRateLimitExceeded,
+    AuthRateLimitUnavailable,
+    enforce_login_rate_limit,
+    enforce_registration_rate_limit,
+)
 
 router = APIRouter(prefix="/auth")
+
+
+def _raise_rate_limit_error(
+    exc: AuthRateLimitExceeded | AuthRateLimitUnavailable,
+) -> None:
+    if isinstance(exc, AuthRateLimitExceeded):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+            headers={
+                "Retry-After": str(exc.retry_after_seconds),
+            },
+        ) from exc
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Authentication temporarily unavailable",
+    ) from exc
 
 
 @router.post(
@@ -31,7 +55,14 @@ router = APIRouter(prefix="/auth")
 async def register(
     payload: RegisterRequest,
     session: DbSession,
+    request: Request,
 ) -> UserResponse:
+    try:
+        await enforce_registration_rate_limit(
+            request=request,
+        )
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
 
     user = await register_user(
         session,
@@ -53,7 +84,16 @@ async def register(
 async def login(
     payload: LoginRequest,
     session: DbSession,
+    request: Request,
 ) -> TokenResponse:
+    try:
+        await enforce_login_rate_limit(
+            request=request,
+            email=payload.email,
+        )
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+
     user = await authenticate_user(
         session,
         payload.email,
@@ -83,9 +123,7 @@ async def create_mcp_token(
     current_user: CurrentUser,
 ) -> TokenResponse:
     token = create_mcp_access_token(
-        subject=str(
-            current_user.id,
-        ),
+        subject=str(current_user.id),
     )
 
     return TokenResponse(
@@ -101,7 +139,11 @@ async def me(
     current_user: CurrentUser,
     session: DbSession,
 ) -> MeResponse:
-    result = await session.execute(select(Membership).where(Membership.user_id == current_user.id))
+    result = await session.execute(
+        select(Membership).where(
+            Membership.user_id == current_user.id,
+        )
+    )
 
     memberships = result.scalars().all()
 

@@ -2,7 +2,16 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,6 +44,11 @@ class Incident(Base):
         CheckConstraint(
             "priority IS NULL OR priority IN ('low', 'medium', 'high', 'critical')",
             name="ck_incidents_priority",
+        ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            name="uq_incidents_id_organization",
         ),
     )
 

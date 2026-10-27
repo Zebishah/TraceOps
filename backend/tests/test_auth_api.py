@@ -2,6 +2,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ops_pilot.api.dependencies import get_current_user
@@ -14,6 +15,38 @@ from ops_pilot.services.auth import (
 )
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def bypass_rate_limits_for_existing_auth_api_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Isolate unrelated API tests from Redis.
+
+    Dedicated rate-limiter tests verify the security behavior.
+    """
+
+    async def allow_registration(*, request: object) -> None:
+        return None
+
+    async def allow_login(
+        *,
+        request: object,
+        email: str,
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(
+        auth_routes,
+        "enforce_registration_rate_limit",
+        allow_registration,
+    )
+
+    monkeypatch.setattr(
+        auth_routes,
+        "enforce_login_rate_limit",
+        allow_login,
+    )
 
 
 async def fake_db_session() -> AsyncMock:

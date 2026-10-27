@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ops_pilot.core.security import decode_access_token
 from ops_pilot.db.session import get_db_session
-from ops_pilot.models.membership import Membership
+from ops_pilot.models.membership import Membership, MembershipRole
 from ops_pilot.models.user import User
 
 bearer_scheme = HTTPBearer()
@@ -53,10 +53,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 async def get_current_membership(
-    organization_id: Annotated[
-        uuid.UUID,
-        Path(),
-    ],
+    organization_id: Annotated[uuid.UUID, Path()],
     current_user: CurrentUser,
     session: DbSession,
 ) -> Membership:
@@ -81,4 +78,113 @@ async def get_current_membership(
 CurrentMembership = Annotated[
     Membership,
     Depends(get_current_membership),
+]
+
+
+INCIDENT_CREATE_ROLES = frozenset(
+    {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.OPERATOR,
+    }
+)
+
+INCIDENT_INVESTIGATION_ROLES = frozenset(
+    {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.OPERATOR,
+        MembershipRole.REVIEWER,
+    }
+)
+
+DOCUMENT_WRITE_ROLES = frozenset(
+    {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.OPERATOR,
+    }
+)
+
+APPROVAL_DECISION_ROLES = frozenset(
+    {
+        MembershipRole.OWNER,
+        MembershipRole.ADMIN,
+        MembershipRole.REVIEWER,
+    }
+)
+
+
+def enforce_membership_role(
+    membership: Membership,
+    allowed_roles: frozenset[MembershipRole],
+) -> Membership:
+    """Enforce organization role before entering an endpoint."""
+
+    if membership.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient organization permissions",
+        )
+
+    return membership
+
+
+async def require_incident_creator(
+    membership: CurrentMembership,
+) -> Membership:
+    return enforce_membership_role(
+        membership,
+        INCIDENT_CREATE_ROLES,
+    )
+
+
+async def require_incident_investigator(
+    membership: CurrentMembership,
+) -> Membership:
+    return enforce_membership_role(
+        membership,
+        INCIDENT_INVESTIGATION_ROLES,
+    )
+
+
+async def require_document_writer(
+    membership: CurrentMembership,
+) -> Membership:
+    return enforce_membership_role(
+        membership,
+        DOCUMENT_WRITE_ROLES,
+    )
+
+
+async def require_approval_reviewer(
+    membership: CurrentMembership,
+) -> Membership:
+    if membership.role not in APPROVAL_DECISION_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Approval decisions require reviewer, admin, or owner role",
+        )
+
+    return membership
+
+
+IncidentCreatorMembership = Annotated[
+    Membership,
+    Depends(require_incident_creator),
+]
+
+IncidentInvestigatorMembership = Annotated[
+    Membership,
+    Depends(require_incident_investigator),
+]
+
+DocumentWriterMembership = Annotated[
+    Membership,
+    Depends(require_document_writer),
+]
+
+ApprovalReviewerMembership = Annotated[
+    Membership,
+    Depends(require_approval_reviewer),
 ]

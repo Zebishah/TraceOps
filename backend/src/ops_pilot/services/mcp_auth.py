@@ -17,6 +17,9 @@ from ops_pilot.schemas.mcp_auth import (
     MCPAuthenticatedContext,
     MCPOrganizationSummary,
 )
+from ops_pilot.services.mcp_token_revocation import (
+    is_mcp_access_token_revoked,
+)
 
 
 class MCPAuthenticationError(Exception):
@@ -32,30 +35,36 @@ async def _get_authenticated_mcp_user(
     session: AsyncSession,
     access_token: str,
 ) -> User:
+    """Authenticate a live, non-revoked MCP access token."""
+
     try:
-        payload = decode_mcp_access_token(
-            access_token,
-        )
+        payload = decode_mcp_access_token(access_token)
 
         subject = payload.get("sub")
+        jti = payload.get("jti")
 
         if subject is None:
             raise MCPAuthenticationError("Access token does not contain a subject")
 
-        user_id = uuid.UUID(
-            str(subject),
-        )
+        if not isinstance(jti, str) or not jti.strip():
+            raise MCPAuthenticationError("Access token does not contain a valid token ID")
 
-    except (
-        jwt.PyJWTError,
-        ValueError,
-    ) as exc:
+        user_id = uuid.UUID(str(subject))
+
+    except (jwt.PyJWTError, ValueError, TypeError) as exc:
         raise MCPAuthenticationError("Invalid or expired access token") from exc
 
-    user = await session.get(
-        User,
-        user_id,
-    )
+    try:
+        revoked = await is_mcp_access_token_revoked(jti=jti)
+    except Exception as exc:
+        # If the revocation store cannot be checked,
+        # do not accept an unverified access token.
+        raise MCPAuthenticationError("Unable to verify access token revocation") from exc
+
+    if revoked:
+        raise MCPAuthenticationError("Access token has been revoked")
+
+    user = await session.get(User, user_id)
 
     if user is None or not user.is_active:
         raise MCPAuthenticationError("Authenticated user is not available")

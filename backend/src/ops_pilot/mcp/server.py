@@ -9,6 +9,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.core.mcp_scopes import WRITE_SCOPE
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.mcp.auth import OpsPilotMCPTokenVerifier
 from ops_pilot.schemas.incidents import (
@@ -87,6 +88,29 @@ def get_mcp_bearer_token() -> str:
     return access_token.token
 
 
+def require_mcp_write_scope(
+    access_token: str,
+) -> None:
+    """Verify write permission from the signed MCP JWT."""
+
+    import jwt
+
+    from ops_pilot.core.security import decode_mcp_access_token
+
+    try:
+        claims = decode_mcp_access_token(access_token)
+    except (jwt.PyJWTError, ValueError) as exc:
+        raise MCPAuthenticationError("Invalid MCP access token") from exc
+
+    scope_value = claims.get("scope")
+
+    if not isinstance(scope_value, str):
+        raise MCPAuthenticationError("MCP access token has no valid scope claim")
+
+    if WRITE_SCOPE not in scope_value.split():
+        raise MCPAuthenticationError("MCP investigation requires ops-pilot:write scope")
+
+
 settings = get_settings()
 
 mcp = MCPServer(
@@ -128,7 +152,7 @@ async def list_my_organizations() -> MCPOrganizationsResponse:
     """List organizations available to the authenticated OpsPilot user."""
 
     access_token = get_mcp_bearer_token()
-
+    require_mcp_write_scope(access_token)
     async with async_session_factory() as session:
         organizations = await list_mcp_organizations(
             session=session,
@@ -142,9 +166,28 @@ async def list_my_organizations() -> MCPOrganizationsResponse:
 
 @mcp.tool()
 async def search_project_knowledge(
-    query: str,
-    limit: int = 5,
+    query: Annotated[
+        str,
+        Field(min_length=1, max_length=500),
+    ],
+    limit: Annotated[
+        int,
+        Field(ge=1, le=20),
+    ] = 5,
 ) -> ProjectKnowledgeSearchResponse:
+    """Search shared project knowledge for an authenticated member."""
+
+    access_token = get_mcp_bearer_token()
+
+    async with async_session_factory() as session:
+        organizations = await list_mcp_organizations(
+            session=session,
+            access_token=access_token,
+        )
+
+        if not organizations:
+            raise MCPAuthenticationError("An active organization membership is required")
+
     results = await search_project_knowledge_service(
         query=query,
         limit=limit,
@@ -457,18 +500,27 @@ async def investigate_incident(
     incident_id: uuid.UUID,
     organization_id: uuid.UUID | None = None,
 ) -> IncidentInvestigationResponse | None:
+    """Investigate an incident with both OAuth and organization authorization."""
 
+    # 1. Retrieve the bearer token from the MCP request.
     access_token = get_mcp_bearer_token()
 
+    # 2. Verify the signed JWT explicitly grants write access.
+    # This MUST happen before opening a database session.
+    require_mcp_write_scope(access_token)
+
+    # 3. Verify user identity and organization membership.
     async with async_session_factory() as session:
         auth_context = await authenticate_mcp_access(
             session=session,
             access_token=access_token,
             organization_id=organization_id,
         )
-        require_mcp_investigation_role(
-            auth_context,
-        )
+
+        # 4. Verify the user's organization role permits investigation.
+        require_mcp_investigation_role(auth_context)
+
+        # 5. Only now perform the state-changing investigation.
         investigation = await investigate_incident_service(
             session=session,
             organization_id=auth_context.organization_id,

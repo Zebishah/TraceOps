@@ -1,17 +1,15 @@
 import uuid
 
-from fastapi import (
-    APIRouter,
-    HTTPException,
-    status,
-)
+from fastapi import APIRouter, HTTPException, status
 
 from ops_pilot.api.dependencies import (
+    ApprovalReviewerMembership,
     CurrentMembership,
     CurrentUser,
     DbSession,
+    IncidentCreatorMembership,
+    IncidentInvestigatorMembership,
 )
-from ops_pilot.models.membership import MembershipRole
 from ops_pilot.schemas.approval_resume_status import (
     ApprovalResumeStatusResponse,
 )
@@ -33,9 +31,7 @@ from ops_pilot.services.approval_resume_status import (
 from ops_pilot.services.approval_workflow import (
     decide_and_resume_approval,
 )
-from ops_pilot.services.approvals import (
-    get_approval_request,
-)
+from ops_pilot.services.approvals import get_approval_request
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
@@ -69,7 +65,7 @@ async def create_incident_endpoint(
     organization_id: uuid.UUID,
     payload: IncidentCreateRequest,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: IncidentCreatorMembership,
     session: DbSession,
 ) -> IncidentResponse:
     incident = await create_incident(
@@ -123,10 +119,9 @@ async def get_incident_endpoint(
 async def classify_incident_endpoint(
     organization_id: uuid.UUID,
     incident_id: uuid.UUID,
-    membership: CurrentMembership,
+    membership: IncidentInvestigatorMembership,
     session: DbSession,
 ) -> IncidentClassificationResponse:
-
     try:
         incident, classification = await classify_stored_incident(
             session=session,
@@ -143,6 +138,7 @@ async def classify_incident_endpoint(
         organization_id=organization_id,
         incident_id=incident_id,
     )
+
     return IncidentClassificationResponse(
         incident_id=incident.id,
         status=incident.status,
@@ -159,7 +155,7 @@ async def classify_incident_endpoint(
 async def retrieve_incident_evidence_endpoint(
     organization_id: uuid.UUID,
     incident_id: uuid.UUID,
-    membership: CurrentMembership,
+    membership: IncidentInvestigatorMembership,
     session: DbSession,
 ) -> IncidentEvidenceResponse:
     query, evidence = await retrieve_incident_evidence(
@@ -182,7 +178,7 @@ async def retrieve_incident_evidence_endpoint(
 async def investigate_incident_endpoint(
     organization_id: uuid.UUID,
     incident_id: uuid.UUID,
-    membership: CurrentMembership,
+    membership: IncidentInvestigatorMembership,
     session: DbSession,
 ) -> IncidentInvestigationResponse:
     result = await investigate_incident(
@@ -217,9 +213,7 @@ async def get_approval_request_endpoint(
         approval_request_id=approval_request_id,
     )
 
-    return ApprovalResponse.model_validate(
-        approval,
-    )
+    return ApprovalResponse.model_validate(approval)
 
 
 @router.post(
@@ -232,21 +226,9 @@ async def decide_approval_endpoint(
     approval_request_id: uuid.UUID,
     payload: ApprovalDecisionRequest,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: ApprovalReviewerMembership,
     session: DbSession,
 ) -> ApprovalResponse:
-    allowed_roles = {
-        MembershipRole.OWNER,
-        MembershipRole.ADMIN,
-        MembershipRole.REVIEWER,
-    }
-
-    if membership.role not in allowed_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=("Approval decisions require reviewer, admin, or owner role"),
-        )
-
     approval = await decide_and_resume_approval(
         session=session,
         organization_id=organization_id,
@@ -255,13 +237,13 @@ async def decide_approval_endpoint(
         decided_by_user_id=current_user.id,
         payload=payload,
     )
+
     await invalidate_incident_cache(
         organization_id=organization_id,
         incident_id=incident_id,
     )
-    return ApprovalResponse.model_validate(
-        approval,
-    )
+
+    return ApprovalResponse.model_validate(approval)
 
 
 @router.post(
@@ -273,21 +255,9 @@ async def resolve_no_action_endpoint(
     incident_id: uuid.UUID,
     payload: IncidentNoActionResolutionRequest,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: ApprovalReviewerMembership,
     session: DbSession,
 ) -> IncidentResponse:
-    allowed_roles = {
-        MembershipRole.OWNER,
-        MembershipRole.ADMIN,
-        MembershipRole.REVIEWER,
-    }
-
-    if membership.role not in allowed_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Reviewer, admin, or owner role required",
-        )
-
     try:
         incident = await resolve_incident_without_action(
             session=session,
@@ -326,8 +296,6 @@ async def get_approval_resume_status_endpoint(
     membership: CurrentMembership,
     session: DbSession,
 ) -> ApprovalResumeStatusResponse:
-    """Read durable recovery status without changing the job."""
-
     result = await get_approval_resume_status(
         session=session,
         organization_id=organization_id,

@@ -7,10 +7,9 @@ from ops_pilot.api.dependencies import (
     CurrentMembership,
     CurrentUser,
     DbSession,
+    DocumentWriterMembership,
 )
-from ops_pilot.schemas.background_jobs import (
-    BackgroundJobResponse,
-)
+from ops_pilot.schemas.background_jobs import BackgroundJobResponse
 from ops_pilot.schemas.chunks import DocumentChunk
 from ops_pilot.schemas.documents import (
     DocumentIndexResponse,
@@ -22,9 +21,7 @@ from ops_pilot.services.background_job_dispatch import (
 from ops_pilot.services.document_chunking import (
     prepare_document_chunks,
 )
-from ops_pilot.services.document_indexing import (
-    index_document,
-)
+from ops_pilot.services.document_indexing import index_document
 from ops_pilot.services.documents import create_document
 
 router = APIRouter(prefix="/organizations/{organization_id}/documents")
@@ -38,7 +35,7 @@ router = APIRouter(prefix="/organizations/{organization_id}/documents")
 async def upload_document(
     organization_id: uuid.UUID,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: DocumentWriterMembership,
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
@@ -72,7 +69,7 @@ async def process_uploaded_document(
     organization_id: uuid.UUID,
     document_id: uuid.UUID,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: DocumentWriterMembership,
     session: DbSession,
 ) -> BackgroundJobResponse:
     job = await enqueue_document_processing(
@@ -82,9 +79,7 @@ async def process_uploaded_document(
         document_id=document_id,
     )
 
-    return BackgroundJobResponse.model_validate(
-        job,
-    )
+    return BackgroundJobResponse.model_validate(job)
 
 
 @router.get(
@@ -113,7 +108,7 @@ async def index_uploaded_document(
     organization_id: uuid.UUID,
     document_id: uuid.UUID,
     current_user: CurrentUser,
-    membership: CurrentMembership,
+    membership: DocumentWriterMembership,
     session: DbSession,
 ) -> DocumentIndexResponse:
     indexed_chunks = await index_document(

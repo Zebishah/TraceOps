@@ -21,6 +21,20 @@ USER_ID = uuid.uuid4()
 ORGANIZATION_ID = uuid.uuid4()
 
 
+@pytest.fixture(autouse=True)
+def mock_mcp_revocation_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def not_revoked(*, jti: str) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        mcp_auth,
+        "is_mcp_access_token_revoked",
+        not_revoked,
+    )
+
+
 @pytest.mark.anyio
 async def test_authenticate_mcp_access_returns_trusted_context(
     monkeypatch: pytest.MonkeyPatch,
@@ -32,6 +46,7 @@ async def test_authenticate_mcp_access_returns_trusted_context(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -136,6 +151,7 @@ async def test_authenticate_mcp_access_rejects_inactive_user(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -168,6 +184,7 @@ async def test_authenticate_mcp_access_rejects_foreign_organization(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -234,6 +251,7 @@ async def test_authenticate_mcp_access_auto_resolves_single_membership(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -274,6 +292,7 @@ async def test_authenticate_mcp_access_requires_selection_for_multiple_membershi
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 

@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ops_pilot.core.config import get_settings
@@ -162,10 +162,27 @@ async def consume_authorization_code(
     *,
     session: AsyncSession,
     code: OAuthAuthorizationCode,
-) -> None:
-    code.consumed_at = datetime.now(UTC)
+) -> bool:
+    """Claim an authorization code exactly once.
 
-    await session.commit()
+    The caller must commit the claim and token issuance in
+    the same transaction. False means another request won
+    or the code is no longer valid.
+    """
+    result = await session.execute(
+        update(OAuthAuthorizationCode)
+        .where(
+            OAuthAuthorizationCode.id == code.id,
+            OAuthAuthorizationCode.client_id == code.client_id,
+            OAuthAuthorizationCode.code_hash == code.code_hash,
+            OAuthAuthorizationCode.consumed_at.is_(None),
+            OAuthAuthorizationCode.expires_at > datetime.now(UTC),
+        )
+        .values(consumed_at=datetime.now(UTC))
+        .returning(OAuthAuthorizationCode.id)
+    )
+
+    return result.scalar_one_or_none() is not None
 
 
 async def create_refresh_token(
@@ -175,6 +192,7 @@ async def create_refresh_token(
     user_id: uuid.UUID,
     scopes: list[str],
     resource: str,
+    commit: bool = True,
 ) -> str:
     settings = get_settings()
 
@@ -189,11 +207,12 @@ async def create_refresh_token(
         expires_at=(datetime.now(UTC) + timedelta(days=(settings.mcp_refresh_token_expire_days))),
     )
 
-    session.add(
-        refresh_token,
-    )
+    session.add(refresh_token)
 
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
 
     return raw_token
 
@@ -229,7 +248,27 @@ async def revoke_refresh_token(
     *,
     session: AsyncSession,
     token: OAuthRefreshToken,
-) -> None:
-    token.revoked_at = datetime.now(UTC)
+    commit: bool = True,
+) -> bool:
+    """Atomically revoke one refresh token if still valid."""
+    now = datetime.now(UTC)
 
-    await session.commit()
+    result = await session.execute(
+        update(OAuthRefreshToken)
+        .where(
+            OAuthRefreshToken.id == token.id,
+            OAuthRefreshToken.client_id == token.client_id,
+            OAuthRefreshToken.token_hash == token.token_hash,
+            OAuthRefreshToken.revoked_at.is_(None),
+            OAuthRefreshToken.expires_at > now,
+        )
+        .values(revoked_at=now)
+        .returning(OAuthRefreshToken.id)
+    )
+
+    revoked = result.scalar_one_or_none() is not None
+
+    if commit:
+        await session.commit()
+
+    return revoked

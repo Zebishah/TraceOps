@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Numeric,
     String,
     UniqueConstraint,
@@ -38,6 +39,17 @@ class OperationalOrder(Base):
         CheckConstraint(
             "status IN ('pending', 'paid', 'cancelled', 'refunded')",
             name="ck_operational_orders_status",
+        ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            name="uq_operational_orders_id_organization",
+        ),
+        ForeignKeyConstraint(
+            ["customer_id", "organization_id"],
+            ["customers.id", "customers.organization_id"],
+            name="fk_operational_orders_customer_tenant",
+            ondelete="RESTRICT",
         ),
     )
 

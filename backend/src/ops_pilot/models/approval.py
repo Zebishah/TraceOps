@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     String,
     Text,
     func,
@@ -41,6 +42,12 @@ class ApprovalRequest(Base):
         CheckConstraint(
             "action_type IN ('refund_transaction')",
             name="ck_approval_requests_action_type",
+        ),
+        ForeignKeyConstraint(
+            ["incident_id", "organization_id"],
+            ["incidents.id", "incidents.organization_id"],
+            name="fk_approval_requests_incident_tenant",
+            ondelete="CASCADE",
         ),
     )
 

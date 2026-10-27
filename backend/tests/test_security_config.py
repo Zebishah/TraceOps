@@ -12,6 +12,7 @@ def make_settings(
     values: dict[str, Any] = {
         "environment": "development",
         "database_url": "postgresql+asyncpg://user:pass@localhost/db",
+        "test_database_url": "postgresql+asyncpg://user:pass@localhost/test_db",
         "redis_url": "redis://localhost:6379/0",
         "jwt_secret_key": "a" * 32,
         "aws_access_key_id": "test-access-key",
@@ -23,11 +24,16 @@ def make_settings(
         "mistral_api_key": "test-mistral-key",
         "voyage_api_key": "test-voyage-key",
         "groq_api_key": "test-groq-key",
+        "inngest_event_key": "test-event-key",
+        "inngest_signing_key": "test-signing-key",
+        "n8n_webhook_base_url": None,
+        "n8n_webhook_secret": None,
     }
 
     values.update(overrides)
 
     return Settings(
+        _env_file=None,
         **values,
     )
 
@@ -157,3 +163,58 @@ def test_production_keeps_approval_cron_disabled() -> None:
     )
 
     assert settings.enable_approval_resume_cron is False
+
+
+def production_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "environment": "production",
+        "mcp_authorization_server_url": "https://ops.example.com",
+        "mcp_resource_url": "https://ops.example.com/mcp",
+        "mcp_allowed_hosts": "ops.example.com",
+        "mcp_allowed_origins": "https://chatgpt.com",
+        "inngest_dev": False,
+    }
+    values.update(overrides)
+    return make_settings(**values)
+
+
+def test_production_requires_inngest_event_key() -> None:
+    with pytest.raises(ValidationError, match="INNGEST_EVENT_KEY"):
+        production_settings(inngest_event_key=None)
+
+
+def test_production_requires_inngest_signing_key() -> None:
+    with pytest.raises(ValidationError, match="INNGEST_SIGNING_KEY"):
+        production_settings(inngest_signing_key=None)
+
+
+def test_production_rejects_http_n8n_webhook() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="n8n webhook URL must use HTTPS",
+    ):
+        production_settings(
+            n8n_webhook_base_url="http://n8n.example.com",
+            n8n_webhook_secret="test-secret",
+        )
+
+
+def test_production_requires_secret_for_configured_n8n() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="N8N_WEBHOOK_SECRET",
+    ):
+        production_settings(
+            n8n_webhook_base_url="https://n8n.example.com",
+            n8n_webhook_secret=None,
+        )
+
+
+def test_production_accepts_secure_n8n_config() -> None:
+    settings = production_settings(
+        n8n_webhook_base_url="https://n8n.example.com",
+        n8n_webhook_secret="test-secret",
+    )
+
+    assert settings.inngest_dev is False
+    assert settings.n8n_webhook_secret == "test-secret"

@@ -17,6 +17,11 @@ class Customer(Base):
             "external_customer_id",
             name="uq_customers_organization_external_customer",
         ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            name="uq_customers_id_organization",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

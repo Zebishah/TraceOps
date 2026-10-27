@@ -14,6 +14,7 @@ from ops_pilot.core.exceptions import IncidentNotFoundError
 from ops_pilot.db.session import get_db_session
 from ops_pilot.main import app
 from ops_pilot.models.incident import IncidentPriority, IncidentStatus
+from ops_pilot.models.membership import MembershipRole
 from ops_pilot.schemas.incident_classification import (
     IncidentCategory,
     IncidentClassification,
@@ -64,6 +65,7 @@ async def fake_membership():
     return SimpleNamespace(
         organization_id=ORGANIZATION_ID,
         user_id=USER_ID,
+        role=MembershipRole.ADMIN,
     )
 
 

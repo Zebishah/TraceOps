@@ -17,6 +17,10 @@ from mcp.shared.auth import (
 from pydantic import AnyUrl
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.core.mcp_scopes import (
+    READ_SCOPE,
+    validate_mcp_scope_grant,
+)
 from ops_pilot.core.security import (
     create_mcp_access_token,
     decode_mcp_access_token,
@@ -100,13 +104,19 @@ class OpsPilotOAuthProvider(
 
         requested_scope = client_info.scope or settings.mcp_required_scope
 
-        requested_scopes = set(requested_scope.split())
-
-        if requested_scopes != {settings.mcp_required_scope}:
+        try:
+            validated_scopes = validate_mcp_scope_grant(
+                requested=requested_scope,
+                registered=requested_scope,
+            )
+        except ValueError as exc:
             raise RegistrationError(
                 error="invalid_client_metadata",
-                error_description=("Unsupported OAuth scope."),
-            )
+                error_description=str(exc),
+            ) from exc
+
+        # Preserve canonical scopes in the registration.
+        requested_scope = " ".join(validated_scopes)
 
         async with async_session_factory() as session:
             existing = await get_oauth_client(
@@ -154,17 +164,27 @@ class OpsPilotOAuthProvider(
                 error_description=("OAuth client ID is required."),
             )
 
+        requested_scopes = params.scopes or [READ_SCOPE]
+
+        try:
+            validated_scopes = validate_mcp_scope_grant(
+                requested=" ".join(requested_scopes),
+                registered=client.scope or READ_SCOPE,
+            )
+        except ValueError as exc:
+            from mcp.server.auth.provider import AuthorizeError
+
+            raise AuthorizeError(
+                error="invalid_scope",
+                error_description=str(exc),
+            ) from exc
+
         query = urlencode(
             {
                 "client_id": client.client_id,
                 "redirect_uri": str(params.redirect_uri),
                 "state": params.state or "",
-                "scope": " ".join(
-                    params.scopes
-                    or [
-                        settings.mcp_required_scope,
-                    ]
-                ),
+                "scope": " ".join(validated_scopes),
                 "code_challenge": (params.code_challenge),
                 "resource": (params.resource or str(settings.mcp_resource_url)),
                 "redirect_uri_explicit": (
@@ -209,49 +229,69 @@ class OpsPilotOAuthProvider(
     ) -> OAuthToken:
         settings = get_settings()
 
-        if authorization_code.subject is None:
+        if not client.client_id:
             raise TokenError(
-                error="invalid_grant",
-                error_description=("Authorization code has no user."),
+                error="invalid_client",
+                error_description="OAuth client ID is required.",
             )
 
         async with async_session_factory() as session:
-            stored_code = await load_authorization_code(
-                session=session,
-                raw_code=authorization_code.code,
-                client_id=client.client_id,
-            )
-
-            if stored_code is None:
-                raise TokenError(
-                    error="invalid_grant",
-                    error_description=("Authorization code is invalid."),
+            try:
+                stored_code = await load_authorization_code(
+                    session=session,
+                    raw_code=authorization_code.code,
+                    client_id=client.client_id,
                 )
 
-            await consume_authorization_code(
-                session=session,
-                code=stored_code,
-            )
+                if stored_code is None:
+                    raise TokenError(
+                        error="invalid_grant",
+                        error_description="Authorization code is invalid.",
+                    )
 
-            refresh_token = await create_refresh_token(
-                session=session,
-                client_id=client.client_id,
-                user_id=stored_code.user_id,
-                scopes=stored_code.scopes.split(),
-                resource=stored_code.resource,
-            )
+                # The server-side record is authoritative.
+                # Never trust subject/scopes supplied in the
+                # AuthorizationCode object passed by the caller.
+                user_id = stored_code.user_id
+                trusted_scopes = stored_code.scopes.split()
+
+                claimed = await consume_authorization_code(
+                    session=session,
+                    code=stored_code,
+                )
+
+                if not claimed:
+                    raise TokenError(
+                        error="invalid_grant",
+                        error_description="Authorization code was already used.",
+                    )
+
+                refresh_token = await create_refresh_token(
+                    session=session,
+                    client_id=client.client_id,
+                    user_id=user_id,
+                    scopes=trusted_scopes,
+                    resource=stored_code.resource,
+                    commit=False,
+                )
+
+                await session.commit()
+
+            except Exception:
+                await session.rollback()
+                raise
 
         access_token = create_mcp_access_token(
-            subject=authorization_code.subject,
+            subject=str(user_id),
             client_id=client.client_id,
-            scopes=authorization_code.scopes,
+            scopes=trusted_scopes,
         )
 
         return OAuthToken(
             access_token=access_token,
             token_type="Bearer",
-            expires_in=(settings.mcp_access_token_expire_minutes * 60),
-            scope=" ".join(authorization_code.scopes),
+            expires_in=settings.mcp_access_token_expire_minutes * 60,
+            scope=" ".join(trusted_scopes),
             refresh_token=refresh_token,
         )
 
@@ -287,49 +327,81 @@ class OpsPilotOAuthProvider(
     ) -> OAuthToken:
         settings = get_settings()
 
-        if refresh_token.subject is None:
+        if not client.client_id:
             raise TokenError(
-                error="invalid_grant",
-                error_description=("Refresh token has no user."),
+                error="invalid_client",
+                error_description="OAuth client ID is required.",
             )
 
         async with async_session_factory() as session:
-            stored = await load_refresh_token(
-                session=session,
-                raw_token=refresh_token.token,
-                client_id=client.client_id,
-            )
-
-            if stored is None:
-                raise TokenError(
-                    error="invalid_grant",
-                    error_description=("Refresh token is invalid."),
+            try:
+                stored = await load_refresh_token(
+                    session=session,
+                    raw_token=refresh_token.token,
+                    client_id=client.client_id,
                 )
 
-            await revoke_refresh_token(
-                session=session,
-                token=stored,
-            )
+                if stored is None:
+                    raise TokenError(
+                        error="invalid_grant",
+                        error_description="Refresh token is invalid.",
+                    )
 
-            new_refresh_token = await create_refresh_token(
-                session=session,
-                client_id=client.client_id,
-                user_id=stored.user_id,
-                scopes=scopes,
-                resource=stored.resource,
-            )
+                # Grant persisted by the authorization server.
+                granted_scopes = set(stored.scopes.split())
+
+                # An empty request preserves the original grant.
+                requested_scopes = list(dict.fromkeys(scopes)) if scopes else stored.scopes.split()
+
+                if not requested_scopes or not set(requested_scopes).issubset(granted_scopes):
+                    raise TokenError(
+                        error="invalid_scope",
+                        error_description=("Requested scopes exceed the original grant."),
+                    )
+
+                # Never trust a caller-supplied token object's
+                # subject, resource or scopes.
+                trusted_user_id = stored.user_id
+                trusted_resource = stored.resource
+
+                revoked = await revoke_refresh_token(
+                    session=session,
+                    token=stored,
+                    commit=False,
+                )
+
+                if not revoked:
+                    raise TokenError(
+                        error="invalid_grant",
+                        error_description="Refresh token already used.",
+                    )
+
+                new_refresh_token = await create_refresh_token(
+                    session=session,
+                    client_id=client.client_id,
+                    user_id=trusted_user_id,
+                    scopes=requested_scopes,
+                    resource=trusted_resource,
+                    commit=False,
+                )
+
+                await session.commit()
+
+            except Exception:
+                await session.rollback()
+                raise
 
         access_token = create_mcp_access_token(
-            subject=refresh_token.subject,
+            subject=str(trusted_user_id),
             client_id=client.client_id,
-            scopes=scopes,
+            scopes=requested_scopes,
         )
 
         return OAuthToken(
             access_token=access_token,
             token_type="Bearer",
-            expires_in=(settings.mcp_access_token_expire_minutes * 60),
-            scope=" ".join(scopes),
+            expires_in=settings.mcp_access_token_expire_minutes * 60,
+            scope=" ".join(requested_scopes),
             refresh_token=new_refresh_token,
         )
 

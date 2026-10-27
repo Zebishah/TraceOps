@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from mcp import Client
 
+from ops_pilot.core.security import create_mcp_access_token
 from ops_pilot.mcp.server import mcp
 from ops_pilot.models.incident import (
     IncidentPriority,
@@ -89,6 +90,40 @@ async def test_mcp_health_tool() -> None:
 async def test_search_project_knowledge_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Authenticated organization members can search project knowledge."""
+
+    fake_access_token = SimpleNamespace(
+        token="valid-token",
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.get_access_token",
+        lambda: fake_access_token,
+    )
+
+    fake_organizations = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id=ORGANIZATION_ID,
+                name="Test Organization",
+                slug="test-organization",
+                role=MembershipRole.OPERATOR,
+            )
+        ]
+    )
+
+    fake_session_context = FakeSessionContext()
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.async_session_factory",
+        lambda: fake_session_context,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.list_mcp_organizations",
+        fake_organizations,
+    )
+
     async def fake_search_project_knowledge(
         *,
         query: str,
@@ -124,18 +159,110 @@ async def test_search_project_knowledge_tool(
             },
         )
 
-        assert result.structured_content == {
-            "query": "How does HITL work?",
-            "results": [
-                {
-                    "source": "hitl-and-refunds.md",
-                    "section": "Human Approval",
-                    "text": ("OpsPilot pauses sensitive actions until a human approves them."),
-                    "vector_score": 0.81,
-                    "reranker_score": 0.96,
-                }
-            ],
-        }
+    assert result.is_error is False
+
+    fake_organizations.assert_awaited_once_with(
+        session=fake_session_context.session,
+        access_token="valid-token",
+    )
+
+    assert result.structured_content == {
+        "query": "How does HITL work?",
+        "results": [
+            {
+                "source": "hitl-and-refunds.md",
+                "section": "Human Approval",
+                "text": ("OpsPilot pauses sensitive actions until a human approves them."),
+                "vector_score": 0.81,
+                "reranker_score": 0.96,
+            }
+        ],
+    }
+
+
+@pytest.mark.anyio
+async def test_search_project_knowledge_rejects_missing_authentication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unauthenticated requests cannot reach knowledge retrieval."""
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.get_access_token",
+        lambda: None,
+    )
+
+    fake_search = AsyncMock()
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.search_project_knowledge_service",
+        fake_search,
+    )
+
+    async with Client(
+        mcp,
+        raise_exceptions=True,
+    ) as client:
+        result = await client.call_tool(
+            "search_project_knowledge",
+            {
+                "query": "Internal operations",
+                "limit": 3,
+            },
+        )
+
+    assert result.is_error is True
+    assert result.structured_content is None
+
+    fake_search.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_search_project_knowledge_rejects_user_without_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authenticated users without organizations cannot search knowledge."""
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.get_access_token",
+        lambda: SimpleNamespace(token="valid-token"),
+    )
+
+    fake_session_context = FakeSessionContext()
+    fake_organizations = AsyncMock(return_value=[])
+    fake_search = AsyncMock()
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.async_session_factory",
+        lambda: fake_session_context,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.list_mcp_organizations",
+        fake_organizations,
+    )
+
+    monkeypatch.setattr(
+        "ops_pilot.mcp.server.search_project_knowledge_service",
+        fake_search,
+    )
+
+    async with Client(
+        mcp,
+        raise_exceptions=True,
+    ) as client:
+        result = await client.call_tool(
+            "search_project_knowledge",
+            {
+                "query": "Internal operations",
+                "limit": 3,
+            },
+        )
+
+    assert result.is_error is True
+    assert result.structured_content is None
+
+    fake_organizations.assert_awaited_once()
+    fake_search.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -489,9 +616,12 @@ async def test_investigate_incident_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_access_token = SimpleNamespace(
-        token="valid-token",
+        token=create_mcp_access_token(
+            subject=str(USER_ID),
+            scopes=["ops-pilot:read", "ops-pilot:write"],
+        ),
+        scopes=["ops-pilot:read", "ops-pilot:write"],
     )
-
     monkeypatch.setattr(
         "ops_pilot.mcp.server.get_access_token",
         lambda: fake_access_token,
@@ -564,7 +694,7 @@ async def test_investigate_incident_tool(
 
     fake_authenticate.assert_awaited_once_with(
         session=fake_session_context.session,
-        access_token="valid-token",
+        access_token=fake_access_token.token,
         organization_id=ORGANIZATION_ID,
     )
 

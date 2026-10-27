@@ -129,6 +129,24 @@ class Settings(BaseSettings):
             if self.inngest_dev:
                 raise ValueError("INNGEST_DEV must be false in production")
 
+            if not self.inngest_event_key or not self.inngest_event_key.strip():
+                raise ValueError("INNGEST_EVENT_KEY is required in production")
+
+            if not self.inngest_signing_key or not self.inngest_signing_key.strip():
+                raise ValueError("INNGEST_SIGNING_KEY is required in production")
+
+            if self.n8n_webhook_base_url is not None:
+                n8n_url = self.n8n_webhook_base_url.strip()
+
+                if not n8n_url.startswith("https://"):
+                    raise ValueError("Production n8n webhook URL must use HTTPS")
+
+                if not self.n8n_webhook_secret or not self.n8n_webhook_secret.strip():
+                    raise ValueError(
+                        "N8N_WEBHOOK_SECRET is required when "
+                        "production n8n integration is configured"
+                    )
+
         return self
 
     model_config = SettingsConfigDict(

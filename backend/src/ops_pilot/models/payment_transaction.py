@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Numeric,
     String,
     UniqueConstraint,
@@ -55,6 +56,26 @@ class PaymentTransaction(Base):
         CheckConstraint(
             "amount > 0",
             name="ck_payment_transactions_amount_positive",
+        ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            name="uq_payment_transactions_id_organization",
+        ),
+        ForeignKeyConstraint(
+            ["order_id", "organization_id"],
+            ["operational_orders.id", "operational_orders.organization_id"],
+            name="fk_payment_transactions_order_tenant",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_transaction_id", "organization_id"],
+            [
+                "operational_payment_transactions.id",
+                "operational_payment_transactions.organization_id",
+            ],
+            name="fk_payment_transactions_source_tenant",
+            ondelete="RESTRICT",
         ),
     )
 

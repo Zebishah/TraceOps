@@ -11,13 +11,37 @@ from starlette.responses import (
 )
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.core.mcp_scopes import validate_mcp_scope_grant
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.services.auth import authenticate_user
+from ops_pilot.services.auth_rate_limit import (
+    AuthRateLimitExceeded,
+    AuthRateLimitUnavailable,
+    enforce_login_rate_limit,
+)
 from ops_pilot.services.oauth import (
     create_authorization_code,
     get_oauth_client,
     oauth_client_redirect_uris,
 )
+
+
+def _oauth_rate_limit_response(
+    exc: AuthRateLimitExceeded | AuthRateLimitUnavailable,
+) -> HTMLResponse:
+    if isinstance(exc, AuthRateLimitExceeded):
+        return HTMLResponse(
+            "Too many requests. Please try again later.",
+            status_code=429,
+            headers={
+                "Retry-After": str(exc.retry_after_seconds),
+            },
+        )
+
+    return HTMLResponse(
+        "Authentication temporarily unavailable.",
+        status_code=503,
+    )
 
 
 async def oauth_login_page(
@@ -61,21 +85,29 @@ async def oauth_login_page(
         )
 
     client_name = client.client_name or "Unknown application"
-    settings = get_settings()
 
-    requested_scopes = scope.split()
-
-    if requested_scopes != [
-        settings.mcp_required_scope,
-    ]:
+    try:
+        validate_mcp_scope_grant(
+            requested=scope,
+            registered=client.scope,
+        )
+    except ValueError:
         return HTMLResponse(
             "Invalid OAuth scope.",
             status_code=400,
         )
-    # state = params.get(
-    #     "state",
-    #     "",
-    # )
+    client_name = client.client_name or "Unknown application"
+
+    try:
+        validate_mcp_scope_grant(
+            requested=scope,
+            registered=client.scope,
+        )
+    except ValueError:
+        return HTMLResponse(
+            "Invalid OAuth scope.",
+            status_code=400,
+        )
 
     hidden_inputs = ""
 
@@ -223,14 +255,6 @@ async def oauth_login_submit(
             status_code=400,
         )
 
-    scopes = scope.split()
-
-    if scopes != [settings.mcp_required_scope]:
-        return HTMLResponse(
-            "Invalid OAuth scope.",
-            status_code=400,
-        )
-
     async with async_session_factory() as session:
         client = await get_oauth_client(
             session=session,
@@ -248,6 +272,28 @@ async def oauth_login_submit(
                 "Invalid redirect URI.",
                 status_code=400,
             )
+
+        try:
+            scopes = validate_mcp_scope_grant(
+                requested=scope,
+                registered=client.scope,
+            )
+        except ValueError:
+            return HTMLResponse(
+                "Invalid OAuth scope.",
+                status_code=400,
+            )
+
+        try:
+            await enforce_login_rate_limit(
+                request=request,
+                email=str(values["email"]),
+            )
+        except (
+            AuthRateLimitExceeded,
+            AuthRateLimitUnavailable,
+        ) as exc:
+            return _oauth_rate_limit_response(exc)
 
         user = await authenticate_user(
             session,

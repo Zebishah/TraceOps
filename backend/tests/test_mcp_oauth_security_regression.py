@@ -19,6 +19,20 @@ ORGANIZATION_A = uuid.uuid4()
 ORGANIZATION_B = uuid.uuid4()
 
 
+@pytest.fixture(autouse=True)
+def mock_mcp_revocation_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def not_revoked(*, jti: str) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        mcp_auth,
+        "is_mcp_access_token_revoked",
+        not_revoked,
+    )
+
+
 @pytest.mark.anyio
 async def test_mcp_rejects_foreign_organization(
     monkeypatch: pytest.MonkeyPatch,
@@ -30,6 +44,7 @@ async def test_mcp_rejects_foreign_organization(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -74,6 +89,7 @@ async def test_mcp_returns_membership_organization_as_trusted_context(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
@@ -117,6 +133,7 @@ async def test_mcp_requires_explicit_organization_when_user_has_multiple_orgs(
         "decode_mcp_access_token",
         lambda token: {
             "sub": str(USER_ID),
+            "jti": "unit-test-token-id",
         },
     )
 
