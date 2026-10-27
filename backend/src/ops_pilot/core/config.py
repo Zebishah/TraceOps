@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     embedding_model: str = "mistral-embed"
     embedding_dimension: int = 1024
     enable_approval_resume_cron: bool = False
+
+    # Financial recovery remains disabled by default.
+    enable_production_approval_recovery: bool = False
+
+    # Runtime kill switch. False blocks financial recovery
+    # even if the scheduler has been registered.
+    approval_recovery_execution_enabled: bool = False
+
+    # Operational monitoring thresholds.
+    approval_recovery_quarantine_alert_count: int = 1
+    approval_recovery_quarantine_age_alert_seconds: int = 3600
+    approval_recovery_processing_alert_count: int = 25
+
     mistral_timeout_seconds: float = 30.0
     voyage_timeout_seconds: float = 30.0
     groq_timeout_seconds: float = 30.0
@@ -122,6 +135,37 @@ class Settings(BaseSettings):
 
             if not authorization_url.startswith("https://"):
                 raise ValueError("Production MCP authorization server must use HTTPS")
+
+            if self.approval_recovery_quarantine_alert_count < 1:
+                raise ValueError("APPROVAL_RECOVERY_QUARANTINE_ALERT_COUNT must be positive")
+
+            if self.approval_recovery_quarantine_age_alert_seconds < 1:
+                raise ValueError("APPROVAL_RECOVERY_QUARANTINE_AGE_ALERT_SECONDS must be positive")
+
+            if self.approval_recovery_processing_alert_count < 1:
+                raise ValueError("APPROVAL_RECOVERY_PROCESSING_ALERT_COUNT must be positive")
+
+            # Registration and execution are distinct safety gates.
+            # Do not allow the execution flag by itself to activate
+            # financial recovery on a production deployment.
+            if (
+                environment == "production"
+                and self.approval_recovery_execution_enabled
+                and not self.enable_production_approval_recovery
+            ):
+                raise ValueError(
+                    "Production financial recovery execution requires "
+                    "ENABLE_PRODUCTION_APPROVAL_RECOVERY"
+                )
+
+            # Production registration is intentionally not yet enabled.
+            # This guard will remain until the R04 proof, staging
+            # canary and operational alert verification pass.
+            if environment == "production" and self.enable_production_approval_recovery:
+                raise ValueError(
+                    "Production financial recovery remains locked "
+                    "until recovery safety verification is complete"
+                )
 
             if not resource_url.startswith("https://"):
                 raise ValueError("Production MCP resource URL must use HTTPS")

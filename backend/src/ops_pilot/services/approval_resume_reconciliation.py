@@ -3,7 +3,7 @@
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from langchain_core.runnables import RunnableConfig
 from sqlalchemy import select, update
@@ -33,6 +33,7 @@ from ops_pilot.workflows.incident.graph import (
     build_incident_investigation_graph,
 )
 
+RECONCILIATION_RECHECK_SECONDS = 600
 logger = logging.getLogger(__name__)
 
 
@@ -215,10 +216,19 @@ async def reconcile_quarantined_jobs(
     *,
     limit: int = 20,
 ) -> ReconciliationResult:
-    """Mark verified jobs complete; leave uncertain jobs untouched."""
+    """Inspect quarantined jobs without unsafe automatic completion.
 
+    Until checkpoint writes and job completion share a proven
+    synchronization mechanism, a verified result is evidence
+    for operator review, not permission to complete the job.
+
+    Quarantined jobs stay FAILED and cannot be claimed for
+    automatic financial execution.
+    """
     if limit < 1:
         raise ValueError("limit must be positive")
+
+    now = datetime.now(UTC)
 
     async with async_session_factory() as session:
         result = await session.execute(
@@ -227,14 +237,18 @@ async def reconcile_quarantined_jobs(
                 ApprovalResumeJob.status == ApprovalResumeJobStatus.FAILED.value,
                 ApprovalResumeJob.attempts >= MAX_ATTEMPTS,
                 ApprovalResumeJob.last_error.is_not(None),
+                ApprovalResumeJob.next_attempt_at <= now,
             )
-            .order_by(ApprovalResumeJob.updated_at)
+            .order_by(
+                ApprovalResumeJob.next_attempt_at,
+                ApprovalResumeJob.updated_at,
+                ApprovalResumeJob.id,
+            )
             .limit(limit)
         )
+
         ids = list(result.scalars().all())
         await session.rollback()
-
-    completed = 0
 
     for job_id in ids:
         try:
@@ -242,53 +256,16 @@ async def reconcile_quarantined_jobs(
                 job_id=job_id,
             )
 
-            if not verified:
-                continue
-
-            async with async_session_factory() as session:
-                # Only complete a quarantined job if its
-                # approval still belongs to the same tenant
-                # and remains in a terminal decision state.
-                matching_approval = (
-                    select(ApprovalRequest.id)
-                    .where(
-                        ApprovalRequest.id == ApprovalResumeJob.approval_request_id,
-                        ApprovalRequest.organization_id == ApprovalResumeJob.organization_id,
-                        ApprovalRequest.incident_id == ApprovalResumeJob.incident_id,
-                        ApprovalRequest.status.in_(
-                            [
-                                ApprovalStatus.EXECUTED,
-                                ApprovalStatus.REJECTED,
-                            ]
-                        ),
-                    )
-                    .exists()
+            if verified:
+                logger.warning(
+                    "approval_reconciliation_verified_requires_review",
+                    extra={"job_id": str(job_id)},
                 )
-
-                result = await session.execute(
-                    update(ApprovalResumeJob)
-                    .where(
-                        ApprovalResumeJob.id == job_id,
-                        ApprovalResumeJob.status == ApprovalResumeJobStatus.FAILED.value,
-                        ApprovalResumeJob.attempts >= MAX_ATTEMPTS,
-                        ApprovalResumeJob.last_error.is_not(None),
-                        matching_approval,
-                    )
-                    .values(
-                        status=ApprovalResumeJobStatus.COMPLETED.value,
-                        completed_at=datetime.now(UTC),
-                        last_error=None,
-                        lease_token=None,
-                        lease_expires_at=None,
-                    )
-                    .returning(ApprovalResumeJob.id)
+            else:
+                logger.warning(
+                    "approval_reconciliation_unresolved",
+                    extra={"job_id": str(job_id)},
                 )
-
-                updated_id = result.scalar_one_or_none()
-                await session.commit()
-
-                if updated_id is not None:
-                    completed += 1
 
         except Exception:
             logger.exception(
@@ -296,8 +273,36 @@ async def reconcile_quarantined_jobs(
                 extra={"job_id": str(job_id)},
             )
 
+        # Reschedule verification regardless of the result.
+        # This update never clears quarantine or changes
+        # approval, payment, or workflow state.
+        try:
+            async with async_session_factory() as session:
+                await session.execute(
+                    update(ApprovalResumeJob)
+                    .where(
+                        ApprovalResumeJob.id == job_id,
+                        ApprovalResumeJob.status == ApprovalResumeJobStatus.FAILED.value,
+                        ApprovalResumeJob.attempts >= MAX_ATTEMPTS,
+                        ApprovalResumeJob.last_error.is_not(None),
+                    )
+                    .values(
+                        next_attempt_at=(
+                            datetime.now(UTC) + timedelta(seconds=RECONCILIATION_RECHECK_SECONDS)
+                        ),
+                    )
+                )
+
+                await session.commit()
+
+        except Exception:
+            logger.exception(
+                "approval_reconciliation_reschedule_failed",
+                extra={"job_id": str(job_id)},
+            )
+
     return ReconciliationResult(
         inspected=len(ids),
-        completed=completed,
-        unresolved=len(ids) - completed,
+        completed=0,
+        unresolved=len(ids),
     )

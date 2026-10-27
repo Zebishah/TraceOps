@@ -48,7 +48,7 @@ def test_successful_job_completes(monkeypatch):
     monkeypatch.setattr(
         processor,
         "claim_resume_jobs",
-        AsyncMock(return_value=[job]),
+        AsyncMock(side_effect=[[job], []]),
     )
     monkeypatch.setattr(
         processor,

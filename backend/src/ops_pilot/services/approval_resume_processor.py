@@ -6,10 +6,12 @@ Only this worker resumes approval-gated LangGraph workflows.
 import asyncio
 import logging
 from dataclasses import dataclass
+from time import monotonic
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.models.approval import ApprovalRequest, ApprovalStatus
@@ -31,6 +33,8 @@ from ops_pilot.workflows.incident.graph import (
 from ops_pilot.workflows.incident.state import IncidentGraphContext
 
 logger = logging.getLogger(__name__)
+RECOVERY_SWEEP_BATCH_SIZE = 3
+RECOVERY_SWEEP_BUDGET_SECONDS = 240
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,14 @@ class ResumeSweepResult:
     claimed: int
     completed: int
     failed: int
+
+
+class ResumePreflightReadError(RuntimeError):
+    """A transient failure before workflow execution begins.
+
+    Only initial read-only database failures may use this
+    exception. Never use it after graph execution starts.
+    """
 
 
 def validate_resume_checkpoint(
@@ -83,22 +95,31 @@ async def process_claimed_resume_job(
 
     # Load from DB instead of trusting potentially stale event data.
     async with async_session_factory() as session:
-        approval_result = await session.execute(
-            select(ApprovalRequest).where(
-                ApprovalRequest.id == job.approval_request_id,
-                ApprovalRequest.organization_id == job.organization_id,
-                ApprovalRequest.incident_id == job.incident_id,
+        try:
+            approval_result = await session.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.id == job.approval_request_id,
+                    ApprovalRequest.organization_id == job.organization_id,
+                    ApprovalRequest.incident_id == job.incident_id,
+                )
             )
-        )
+        except (OperationalError, DBAPIError) as exc:
+            await session.rollback()
+            raise ResumePreflightReadError("Temporary database failure loading approval") from exc
 
         approval = approval_result.scalar_one_or_none()
 
-        incident_result = await session.execute(
-            select(Incident).where(
-                Incident.id == job.incident_id,
-                Incident.organization_id == job.organization_id,
+        try:
+            incident_result = await session.execute(
+                select(Incident).where(
+                    Incident.id == job.incident_id,
+                    Incident.organization_id == job.organization_id,
+                )
             )
-        )
+        except (OperationalError, DBAPIError) as exc:
+            await session.rollback()
+            raise ResumePreflightReadError("Temporary database failure loading incident") from exc
+
         incident = incident_result.scalar_one_or_none()
 
         if approval is None or incident is None:
@@ -353,14 +374,35 @@ async def keep_resume_job_lease_alive(
 
 
 async def run_approval_resume_sweep() -> ResumeSweepResult:
-    """Process one durable approval job with lease renewal."""
+    """Process bounded recovery jobs sequentially, claiming one at a time."""
 
-    claimed_jobs = await claim_resume_jobs(limit=1)
+    sweep_started_at = monotonic()
 
+    claimed_count = 0
     completed = 0
     failed = 0
 
-    for job in claimed_jobs:
+    for _ in range(RECOVERY_SWEEP_BATCH_SIZE):
+        if monotonic() - sweep_started_at >= RECOVERY_SWEEP_BUDGET_SECONDS:
+            logger.warning(
+                "approval_resume_sweep_budget_reached",
+                extra={
+                    "claimed": claimed_count,
+                    "completed": completed,
+                    "failed": failed,
+                },
+            )
+            break
+
+        # Acquire only one lease at a time.
+        jobs = await claim_resume_jobs(limit=1)
+
+        if not jobs:
+            break
+
+        job = jobs[0]
+        claimed_count += 1
+
         owner = asyncio.current_task()
 
         if owner is None:
@@ -379,13 +421,16 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
         try:
             await process_claimed_resume_job(job)
 
-            # Check ownership again before completion.
-            owns_lease = await renew_resume_job_lease(job=job)
+            owns_lease = await renew_resume_job_lease(
+                job=job,
+            )
 
             if not owns_lease:
                 raise RuntimeError("Approval worker lost its lease")
 
-            completed_ok = await complete_resume_job(job=job)
+            completed_ok = await complete_resume_job(
+                job=job,
+            )
 
             if not completed_ok:
                 raise RuntimeError("Unable to complete approval resume job")
@@ -393,7 +438,6 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
             completed += 1
 
         except asyncio.CancelledError:
-            # Never retry an uncertain financial operation blindly.
             logger.warning(
                 "approval_resume_worker_cancelled",
                 extra={"job_id": str(job.id)},
@@ -411,15 +455,25 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
                 },
             )
 
+            # Preserve R01: only an explicitly known
+            # preflight read failure may be retried.
+            safe_to_retry = isinstance(
+                exc,
+                ResumePreflightReadError,
+            )
+
             await fail_resume_job(
                 job=job,
                 error=f"{type(exc).__name__}: {exc}",
-                terminal=True,
+                terminal=not safe_to_retry,
             )
+
+            # Stop after a failure rather than starting
+            # another financial workflow in the same sweep.
+            break
 
         finally:
             stop.set()
-
             heartbeat.cancel()
 
             try:
@@ -428,7 +482,7 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
                 pass
 
     return ResumeSweepResult(
-        claimed=len(claimed_jobs),
+        claimed=claimed_count,
         completed=completed,
         failed=failed,
     )
