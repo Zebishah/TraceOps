@@ -89,6 +89,11 @@ async def test_late_old_generation_cannot_override_active_generation(
         lambda: FakeSession(),
     )
 
+    async def fake_pages(*, organization_id: uuid.UUID):
+        return [([new_generation], [])]
+
+    monkeypatch.setattr(retrieval, "_eligible_generation_pages", fake_pages)
+
     monkeypatch.setattr(
         retrieval,
         "get_settings",

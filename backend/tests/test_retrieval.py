@@ -44,6 +44,11 @@ def mock_active_document_generations(
         filter_candidates,
     )
 
+    async def fake_pages(*, organization_id: uuid.UUID):
+        return [([uuid.uuid4()], [])]
+
+    monkeypatch.setattr(retrieval_module, "_eligible_generation_pages", fake_pages)
+
 
 @pytest.mark.asyncio
 async def test_successful_reranker_overrides_vector_order(

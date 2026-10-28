@@ -35,6 +35,14 @@ async def ensure_document_collection() -> None:
     )
 
     if exists:
+        info = await client.get_collection(collection_name=settings.qdrant_collection_name)
+        indexed = info.payload_schema or {}
+        if "index_generation" not in indexed:
+            await client.create_payload_index(
+                collection_name=settings.qdrant_collection_name,
+                field_name="index_generation",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
         return
 
     await client.create_collection(

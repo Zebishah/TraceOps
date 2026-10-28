@@ -1,6 +1,7 @@
 import logging
 import math
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -83,6 +84,78 @@ async def filter_active_document_generations(
     return verified
 
 
+# A query over every document generation can exceed Qdrant filter limits.
+# Each page is queried independently, and the best candidates are merged.
+GENERATION_PAGE_SIZE = 100
+
+
+def _generation_filter(
+    *,
+    organization_id: uuid.UUID,
+    active_generations: Sequence[uuid.UUID],
+    legacy_document_ids: Sequence[uuid.UUID],
+) -> models.Filter:
+    eligible: list[models.Condition] = []
+
+    if active_generations:
+        eligible.append(
+            models.FieldCondition(
+                key="index_generation",
+                match=models.MatchAny(any=[str(value) for value in active_generations]),
+            )
+        )
+
+    if legacy_document_ids:
+        eligible.append(
+            models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="document_id",
+                        match=models.MatchAny(any=[str(value) for value in legacy_document_ids]),
+                    ),
+                    models.IsEmptyCondition(is_empty=models.PayloadField(key="index_generation")),
+                ]
+            )
+        )
+
+    if not eligible:
+        raise ValueError("Empty eligible document generation filter")
+
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="organization_id",
+                match=models.MatchValue(value=str(organization_id)),
+            ),
+            models.Filter(should=eligible),
+        ]
+    )
+
+
+async def _eligible_generation_pages(
+    *,
+    organization_id: uuid.UUID,
+) -> list[tuple[list[uuid.UUID], list[uuid.UUID]]]:
+    async with async_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(Document.id, Document.active_index_generation).where(
+                    Document.organization_id == organization_id,
+                )
+            )
+        ).all()
+
+    active = [generation for _document_id, generation in rows if generation is not None]
+    legacy = [document_id for document_id, generation in rows if generation is None]
+
+    pages: list[tuple[list[uuid.UUID], list[uuid.UUID]]] = []
+    for offset in range(0, len(active), GENERATION_PAGE_SIZE):
+        pages.append((active[offset : offset + GENERATION_PAGE_SIZE], []))
+    for offset in range(0, len(legacy), GENERATION_PAGE_SIZE):
+        pages.append(([], legacy[offset : offset + GENERATION_PAGE_SIZE]))
+    return pages
+
+
 async def retrieve_document_chunks(
     *,
     organization_id: uuid.UUID,
@@ -95,47 +168,54 @@ async def retrieve_document_chunks(
 
     client = get_qdrant_client()
 
-    async def run_qdrant_query() -> QueryResponse:
-        return await client.query_points(
-            collection_name=settings.qdrant_collection_name,
-            query=query_vector,
-            query_filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="organization_id",
-                        match=models.MatchValue(
-                            value=str(organization_id),
-                        ),
-                    )
-                ]
-            ),
-            limit=max(
-                limit,
-                settings.retrieval_candidate_limit,
-            ),
-            with_payload=True,
-            with_vectors=False,
-        )
+    pages = await _eligible_generation_pages(organization_id=organization_id)
+    if not pages:
+        return []
 
-    response = await observe_external_call(
-        provider="qdrant",
-        operation="document_vector_search",
-        metadata={
-            "organization_id": str(organization_id),
-        },
-        call=run_qdrant_query,
-    )
+    candidate_limit = max(limit, settings.retrieval_candidate_limit)
+    candidates_by_chunk: dict[uuid.UUID, RetrievalCandidate] = {}
 
-    candidates: list[RetrievalCandidate] = []
-
-    for point in response.points:
-        candidate = parse_retrieval_candidate(
-            point=point,
+    for active_generations, legacy_document_ids in pages:
+        query_filter = _generation_filter(
             organization_id=organization_id,
+            active_generations=active_generations,
+            legacy_document_ids=legacy_document_ids,
         )
 
-        if candidate is not None:
-            candidates.append(candidate)
+        async def run_qdrant_query(
+            query_filter: models.Filter = query_filter,
+        ) -> QueryResponse:
+            return await client.query_points(
+                collection_name=settings.qdrant_collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=candidate_limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+        response = await observe_external_call(
+            provider="qdrant",
+            operation="document_vector_search",
+            metadata={"organization_id": str(organization_id)},
+            call=run_qdrant_query,
+        )
+
+        for point in response.points:
+            candidate = parse_retrieval_candidate(
+                point=point,
+                organization_id=organization_id,
+            )
+            if candidate is not None:
+                previous = candidates_by_chunk.get(candidate.chunk_id)
+                if previous is None or candidate.vector_score > previous.vector_score:
+                    candidates_by_chunk[candidate.chunk_id] = candidate
+
+    candidates = sorted(
+        candidates_by_chunk.values(),
+        key=lambda candidate: candidate.vector_score,
+        reverse=True,
+    )[:candidate_limit]
 
     # Verify Qdrant results against PostgreSQL before
     # allowing them into the reranker or API response.
