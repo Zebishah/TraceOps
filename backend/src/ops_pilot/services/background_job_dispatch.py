@@ -12,6 +12,7 @@ from ops_pilot.models.background_job import (
     BackgroundJobStatus,
     BackgroundJobType,
 )
+from ops_pilot.models.document import DocumentStatus
 from ops_pilot.schemas.background_jobs import (
     BackgroundJobEventData,
 )
@@ -19,6 +20,7 @@ from ops_pilot.services.background_jobs import (
     claim_background_job_send_lease,
     create_background_job,
     prepare_background_job_dispatch,
+    prepare_document_reindex_dispatch,
     record_background_job_send_success,
 )
 from ops_pilot.services.document_processing import (
@@ -176,6 +178,104 @@ async def enqueue_memory_indexing(
         event_name=MEMORY_INDEXING_EVENT,
         organization_id=organization_id,
         resource_id=incident_id,
+    )
+
+    return job
+
+
+async def enqueue_document_reindex(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> BackgroundJob:
+    """Request document indexing through a fenced dispatch.
+
+    Reuses the existing document job so that concurrent
+    reindex requests cannot create independent active
+    jobs for the same document.
+    """
+    document = await get_document(
+        session=session,
+        organization_id=organization_id,
+        document_id=document_id,
+    )
+
+    # A document that has never been processed must go
+    # through the normal extraction + indexing workflow.
+    if document.status != DocumentStatus.READY or document.extracted_text_key is None:
+        return await enqueue_document_processing(
+            session=session,
+            organization_id=organization_id,
+            user_id=user_id,
+            document_id=document_id,
+        )
+
+    job = await create_background_job(
+        session=session,
+        organization_id=organization_id,
+        created_by_user_id=user_id,
+        job_type=BackgroundJobType.DOCUMENT_PROCESSING,
+        resource_id=document_id,
+        idempotency_key=f"document-processing:{document_id}",
+    )
+
+    # Another execution is already active. Return it;
+    # do not replace its dispatch.
+    if job.status == BackgroundJobStatus.PROCESSING:
+        return job
+
+    if job.status == BackgroundJobStatus.QUEUED:
+        if job.dispatch_id is not None:
+            if job.inngest_event_id is not None:
+                return job
+
+            dispatch_id = job.dispatch_id
+        else:
+            claimed = await prepare_background_job_dispatch(
+                session=session,
+                job=job,
+            )
+
+            if claimed is None:
+                return job
+
+            dispatch_id = claimed
+
+    elif job.status == BackgroundJobStatus.SUCCEEDED:
+        claimed = await prepare_document_reindex_dispatch(
+            session=session,
+            job=job,
+            document_id=document_id,
+        )
+
+        if claimed is None:
+            return job
+
+        dispatch_id = claimed
+
+    elif job.status == BackgroundJobStatus.FAILED:
+        claimed = await prepare_background_job_dispatch(
+            session=session,
+            job=job,
+        )
+
+        if claimed is None:
+            return job
+
+        dispatch_id = claimed
+
+    else:
+        raise RuntimeError("Unexpected document job status")
+
+    await _send_background_job_event(
+        session=session,
+        job=job,
+        dispatch_id=dispatch_id,
+        event_name=DOCUMENT_PROCESSING_EVENT,
+        organization_id=organization_id,
+        resource_id=document_id,
     )
 
     return job

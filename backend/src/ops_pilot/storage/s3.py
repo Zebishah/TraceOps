@@ -5,6 +5,9 @@ from anyio import to_thread
 from mypy_boto3_s3.client import S3Client
 
 from ops_pilot.core.config import get_settings
+from ops_pilot.core.exceptions import DocumentTooLargeError
+
+MAX_S3_DOCUMENT_DOWNLOAD_BYTES = 10 * 1024 * 1024
 
 
 class S3Storage:
@@ -55,6 +58,8 @@ class S3Storage:
         *,
         key: str,
     ) -> bytes:
+        """Download an object without accepting oversized contents."""
+
         def download() -> bytes:
             response = self.client.get_object(
                 Bucket=self.bucket_name,
@@ -63,7 +68,31 @@ class S3Storage:
 
             body = response["Body"]
 
-            return bytes(body.read())
+            try:
+                reported_size = response.get("ContentLength")
+
+                if reported_size is not None and reported_size > MAX_S3_DOCUMENT_DOWNLOAD_BYTES:
+                    raise DocumentTooLargeError
+
+                # Read at most the allowed size plus one byte.
+                # This also catches missing or incorrect
+                # ContentLength metadata.
+                data = body.read(MAX_S3_DOCUMENT_DOWNLOAD_BYTES + 1)
+
+                if len(data) > MAX_S3_DOCUMENT_DOWNLOAD_BYTES:
+                    raise DocumentTooLargeError
+
+                # A valid short read is not guaranteed to
+                # indicate EOF for arbitrary streaming bodies.
+                # S3's ContentLength is checked as an
+                # additional integrity constraint.
+                if reported_size is not None and len(data) != reported_size:
+                    raise OSError("S3 document download size mismatch")
+
+                return bytes(data)
+
+            finally:
+                body.close()
 
         return await to_thread.run_sync(download)
 

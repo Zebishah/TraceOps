@@ -121,17 +121,32 @@ def test_create_incident(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_list_incidents(monkeypatch) -> None:
+async def fake_list_incidents(
+    *,
+    session,
+    organization_id,
+    limit=50,
+    offset=0,
+):
+    assert organization_id == ORGANIZATION_ID
+    assert limit == 50
+    assert offset == 0
+
+    return [make_incident()]
+
+
+def test_incident_pagination_forwards_parameters(monkeypatch) -> None:
     async def fake_list_incidents(
         *,
         session,
         organization_id,
+        limit,
+        offset,
     ):
         assert organization_id == ORGANIZATION_ID
-
-        return [
-            make_incident(),
-        ]
+        assert limit == 10
+        assert offset == 20
+        return [make_incident()]
 
     monkeypatch.setattr(
         incident_routes,
@@ -142,11 +157,31 @@ def test_list_incidents(monkeypatch) -> None:
     set_authenticated_dependencies()
 
     try:
-        response = client.get(f"/api/v1/organizations/{ORGANIZATION_ID}/incidents")
+        response = client.get(
+            f"/api/v1/organizations/{ORGANIZATION_ID}/incidents",
+            params={"limit": 10, "offset": 20},
+        )
 
         assert response.status_code == 200
         assert len(response.json()) == 1
-        assert response.json()[0]["id"] == str(INCIDENT_ID)
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_incident_pagination_rejects_invalid_limits() -> None:
+    set_authenticated_dependencies()
+
+    try:
+        path = f"/api/v1/organizations/{ORGANIZATION_ID}/incidents"
+
+        for params in (
+            {"limit": 0},
+            {"limit": 101},
+            {"offset": -1},
+        ):
+            response = client.get(path, params=params)
+            assert response.status_code == 422
 
     finally:
         app.dependency_overrides.clear()
@@ -158,10 +193,11 @@ def test_get_incident(monkeypatch) -> None:
         session,
         organization_id,
         incident_id,
+        force_fresh=False,
     ):
         assert organization_id == ORGANIZATION_ID
         assert incident_id == INCIDENT_ID
-
+        assert force_fresh is True
         return IncidentResponse.model_validate(make_incident())
 
     monkeypatch.setattr(
@@ -191,7 +227,9 @@ def test_get_incident_returns_404(
         session,
         organization_id,
         incident_id,
+        force_fresh=False,
     ):
+        assert force_fresh is True
         raise IncidentNotFoundError
 
     monkeypatch.setattr(

@@ -100,7 +100,13 @@ async def test_search_project_knowledge_reranks_and_limits(
         "get_settings",
         lambda: fake_settings,
     )
-
+    monkeypatch.setattr(
+        project_knowledge,
+        "get_active_project_knowledge_collection_name",
+        AsyncMock(
+            return_value="ops_pilot_project_knowledge_v1",
+        ),
+    )
     results = await project_knowledge.search_project_knowledge(
         query="How does OpsPilot use LangGraph?",
         limit=2,

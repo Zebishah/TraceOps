@@ -11,6 +11,7 @@ from ops_pilot.models.background_job import (
     BackgroundJobStatus,
     BackgroundJobType,
 )
+from ops_pilot.models.document import DocumentStatus
 from ops_pilot.schemas.background_jobs import (
     BackgroundJobEventData,
 )
@@ -26,7 +27,7 @@ from ops_pilot.services.document_indexing import (
 )
 from ops_pilot.services.document_processing import (
     get_document,
-    process_document,
+    process_document_for_dispatch,
 )
 
 DOCUMENT_PROCESSING_EVENT = "ops_pilot/document.processing.requested"
@@ -145,6 +146,9 @@ async def _process_document_step(
         if job.resource_id != document_id:
             raise RuntimeError("Background job resource mismatch")
 
+        if job.job_type != BackgroundJobType.DOCUMENT_PROCESSING:
+            raise RuntimeError("Background job type mismatch")
+
         _validate_current_dispatch(
             job=job,
             dispatch_id=dispatch_id,
@@ -153,14 +157,27 @@ async def _process_document_step(
         if job.status != BackgroundJobStatus.PROCESSING:
             raise RuntimeError("Background job is not processing")
 
-    async with async_session_factory() as session:
-        document = await process_document(
+        document = await get_document(
             session=session,
             organization_id=organization_id,
             document_id=document_id,
         )
-        document_status = document.status.value
 
+        # For a reindex (or retry after successful extraction),
+        # reuse the existing immutable extracted document.
+        reuse_extraction = (
+            document.status == DocumentStatus.READY and document.extracted_text_key is not None
+        )
+
+    if not reuse_extraction:
+        document = await process_document_for_dispatch(
+            organization_id=organization_id,
+            document_id=document_id,
+            job_id=job_id,
+            dispatch_id=dispatch_id,
+        )
+
+    # Update progress only if this dispatch still owns the job.
     async with async_session_factory() as session:
         job = await get_background_job(
             session=session,
@@ -184,7 +201,7 @@ async def _process_document_step(
 
     return {
         "document_id": str(document_id),
-        "document_status": document_status,
+        "document_status": document.status.value,
         "progress_percent": 60,
     }
 
@@ -222,6 +239,8 @@ async def _index_document_step(
             session=session,
             organization_id=organization_id,
             document_id=document_id,
+            job_id=job_id,
+            dispatch_id=dispatch_id,
         )
 
     async with async_session_factory() as session:

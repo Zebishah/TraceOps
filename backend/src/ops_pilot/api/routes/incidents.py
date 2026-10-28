@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from ops_pilot.api.dependencies import (
     ApprovalReviewerMembership,
@@ -86,10 +86,14 @@ async def list_incidents_endpoint(
     organization_id: uuid.UUID,
     membership: CurrentMembership,
     session: DbSession,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> list[IncidentResponse]:
     incidents = await list_incidents(
         session=session,
         organization_id=organization_id,
+        limit=limit,
+        offset=offset,
     )
 
     return [IncidentResponse.model_validate(incident) for incident in incidents]
@@ -109,6 +113,7 @@ async def get_incident_endpoint(
         session=session,
         organization_id=organization_id,
         incident_id=incident_id,
+        force_fresh=True,
     )
 
 

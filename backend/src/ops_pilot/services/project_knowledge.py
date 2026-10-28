@@ -7,7 +7,10 @@ from ops_pilot.core.config import get_settings
 from ops_pilot.schemas.project_knowledge import (
     ProjectKnowledgeResult,
 )
-from ops_pilot.vectorstore.qdrant import get_qdrant_client
+from ops_pilot.vectorstore.qdrant import (
+    get_active_project_knowledge_collection_name,
+    get_qdrant_client,
+)
 
 
 @dataclass
@@ -28,9 +31,9 @@ async def search_project_knowledge(
     query_vector = await embed_query(query)
 
     client = get_qdrant_client()
-
+    active_collection = await get_active_project_knowledge_collection_name()
     response = await client.query_points(
-        collection_name=(settings.qdrant_project_knowledge_collection_name),
+        collection_name=active_collection,
         query=query_vector,
         limit=max(
             limit,

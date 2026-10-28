@@ -84,7 +84,8 @@ def test_reindex_does_not_delete_before_failed_upsert(
 
     with pytest.raises(DocumentProcessingError):
         asyncio.run(
-            indexing_module.index_document(
+            indexing_module._index_document_unlocked(
+                generation_id=uuid.uuid4(),
                 session=AsyncMock(),
                 organization_id=organization_id,
                 document_id=document_id,
@@ -94,11 +95,29 @@ def test_reindex_does_not_delete_before_failed_upsert(
     client.delete.assert_not_awaited()
 
 
-def test_reindex_removes_only_obsolete_points(
+def test_indexing_without_dispatch_is_rejected():
+    organization_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    with pytest.raises(
+        DocumentProcessingError,
+        match="requires an active job and dispatch ID",
+    ):
+        asyncio.run(
+            indexing_module.index_document(
+                session=AsyncMock(),
+                organization_id=organization_id,
+                document_id=document_id,
+            )
+        )
+
+
+def test_generation_indexing_does_not_delete_other_generations(
     monkeypatch,
 ):
     organization_id = uuid.uuid4()
     document_id = uuid.uuid4()
+    generation_id = uuid.uuid4()
 
     chunk = make_chunk(organization_id, document_id)
     client = setup_indexing(monkeypatch, [chunk])
@@ -111,48 +130,34 @@ def test_reindex_removes_only_obsolete_points(
     )
 
     count = asyncio.run(
-        indexing_module.index_document(
+        indexing_module._index_document_unlocked(
             session=AsyncMock(),
             organization_id=organization_id,
             document_id=document_id,
+            generation_id=generation_id,
         )
     )
 
     assert count == 1
+
     client.upsert.assert_awaited_once()
-    client.delete.assert_awaited_once()
 
-    selector = client.delete.await_args.kwargs["points_selector"]
-
-    assert set(selector.points) == {old_id}
-    assert str(chunk.id) not in selector.points
-
-
-def test_reindex_keeps_current_point_ids(
-    monkeypatch,
-):
-    organization_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-
-    chunk = make_chunk(organization_id, document_id)
-    client = setup_indexing(monkeypatch, [chunk])
-
-    client.scroll.return_value = (
-        [SimpleNamespace(id=str(chunk.id))],
-        None,
-    )
-
-    count = asyncio.run(
-        indexing_module.index_document(
-            session=AsyncMock(),
-            organization_id=organization_id,
-            document_id=document_id,
-        )
-    )
-
-    assert count == 1
-    client.upsert.assert_awaited_once()
+    # A generation-specific write must never delete
+    # points from another generation.
     client.delete.assert_not_awaited()
+
+    uploaded_points = client.upsert.await_args.kwargs["points"]
+
+    assert len(uploaded_points) == 1
+
+    expected_point_id = uuid.uuid5(
+        chunk.id,
+        str(generation_id),
+    )
+
+    assert str(uploaded_points[0].id) == str(expected_point_id)
+
+    assert uploaded_points[0].payload["index_generation"] == str(generation_id)
 
 
 def test_embedding_concurrency_limit():

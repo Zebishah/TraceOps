@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ops_pilot.integrations.n8n import send_n8n_event
+from ops_pilot.models.automation_delivery import AutomationDelivery
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.schemas.action_execution import (
@@ -16,6 +16,10 @@ from ops_pilot.schemas.automation_events import (
     DocumentIndexingFailedPayload,
     HighRiskIncidentPayload,
     IncidentResolvedPayload,
+)
+from ops_pilot.services.automation_outbox import (
+    deliver_automation,
+    queue_and_attempt_automation,
 )
 
 
@@ -104,7 +108,7 @@ async def dispatch_incident_resolved_automation(
         incident_id=incident_id,
     )
 
-    await send_n8n_event(
+    await queue_and_attempt_automation(
         webhook_path="incident-resolved",
         event=event,
     )
@@ -135,7 +139,7 @@ async def dispatch_high_risk_incident_automation(
         ),
     )
 
-    await send_n8n_event(
+    await queue_and_attempt_automation(
         webhook_path="incident-high-risk",
         event=event,
     )
@@ -166,13 +170,13 @@ async def dispatch_document_indexing_failed_automation(
         ),
     )
 
-    await send_n8n_event(
+    await queue_and_attempt_automation(
         webhook_path="document-indexing-failed",
         event=event,
     )
 
 
-async def dispatch_customer_recovery_automation(
+async def build_customer_recovery_event(
     *,
     session: AsyncSession,
     organization_id: uuid.UUID,
@@ -182,7 +186,7 @@ async def dispatch_customer_recovery_automation(
     priority: str,
     customer_id: uuid.UUID,
     execution: RefundExecutionResult,
-) -> None:
+) -> AutomationEvent:
     customer_result = await session.execute(
         select(Customer).where(
             Customer.id == customer_id,
@@ -195,8 +199,6 @@ async def dispatch_customer_recovery_automation(
     if customer is None:
         raise RuntimeError("Customer not found for recovery automation")
 
-    # OpsPilot demonstrates an internal, simulated refund.
-    # No external payment provider is contacted.
     resolution = (
         f"Simulated refund of {execution.amount} "
         f"{execution.currency} recorded successfully "
@@ -205,7 +207,7 @@ async def dispatch_customer_recovery_automation(
         "No external payment provider was contacted."
     )
 
-    event = AutomationEvent(
+    return AutomationEvent(
         event_id=build_automation_event_id(
             organization_id=organization_id,
             event_type="incident.customer_recovery",
@@ -231,7 +233,45 @@ async def dispatch_customer_recovery_automation(
         ),
     )
 
-    await send_n8n_event(
-        webhook_path="incident-customer-recovery",
-        event=event,
+
+async def dispatch_customer_recovery_automation(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    title: str,
+    category: str,
+    priority: str,
+    customer_id: uuid.UUID,
+    execution: RefundExecutionResult,
+) -> None:
+
+    event_id = build_automation_event_id(
+        organization_id=organization_id,
+        event_type="incident.customer_recovery",
+        resource_key=execution.refund_transaction_id,
     )
+
+    # A newly committed refund must already have an outbox
+    # record created in the same database transaction.
+    existing = await session.get(
+        AutomationDelivery,
+        event_id,
+    )
+
+    if existing is None:
+        # Fail closed instead of silently creating a new
+        # post-commit notification outside the refund transaction.
+        raise RuntimeError("Customer recovery outbox event missing after refund transaction")
+
+    if (
+        existing.organization_id != organization_id
+        or existing.event_type != "incident.customer_recovery"
+        or existing.webhook_path != "incident-customer-recovery"
+    ):
+        raise RuntimeError("Customer recovery outbox event identity mismatch")
+
+    # The delivery service loads the original persisted payload.
+    # It does not rebuild the notification from workflow state.
+    # If n8n is unavailable, scheduled outbox recovery handles it.
+    await deliver_automation(delivery_id=event_id)

@@ -19,6 +19,9 @@ from ops_pilot.schemas.incidents import (
     IncidentResponse,
 )
 
+MAX_INCIDENT_PAGE_SIZE = 100
+DEFAULT_INCIDENT_PAGE_SIZE = 50
+
 
 async def create_incident(
     *,
@@ -67,16 +70,29 @@ async def list_incidents(
     *,
     session: AsyncSession,
     organization_id: uuid.UUID,
+    limit: int = DEFAULT_INCIDENT_PAGE_SIZE,
+    offset: int = 0,
 ) -> list[Incident]:
-    result = await session.execute(
+    """List one tenant's incidents in a stable, bounded order."""
+
+    if not 1 <= limit <= MAX_INCIDENT_PAGE_SIZE:
+        raise ValueError(f"limit must be between 1 and {MAX_INCIDENT_PAGE_SIZE}")
+
+    if offset < 0:
+        raise ValueError("offset must not be negative")
+
+    statement = (
         select(Incident)
-        .where(
-            Incident.organization_id == organization_id,
-        )
+        .where(Incident.organization_id == organization_id)
         .order_by(
             Incident.created_at.desc(),
+            Incident.id.desc(),
         )
+        .limit(limit)
+        .offset(offset)
     )
+
+    result = await session.execute(statement)
 
     return list(result.scalars().all())
 
@@ -106,8 +122,17 @@ async def get_incident_response_cached(
     *,
     session: AsyncSession,
     organization_id: uuid.UUID,
+    force_fresh: bool = False,
     incident_id: uuid.UUID,
 ) -> IncidentResponse:
+
+    if force_fresh:
+        incident = await get_incident(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+        )
+        return IncidentResponse.model_validate(incident)
     try:
         cached = await get_incident_cache(
             organization_id=organization_id,

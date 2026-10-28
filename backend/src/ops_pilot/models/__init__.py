@@ -7,6 +7,7 @@ from ops_pilot.models.approval_resume_job import (
     ApprovalResumeJob,
     ApprovalResumeJobStatus,
 )
+from ops_pilot.models.automation_delivery import AutomationDelivery
 from ops_pilot.models.background_job import (
     BackgroundJob,
     BackgroundJobStatus,
@@ -54,6 +55,7 @@ __all__ = [
     "ApprovalStatus",
     "PaymentTransactionStatus",
     "PaymentTransactionType",
+    "AutomationDelivery",
     "IncidentMemory",
     "BackgroundJob",
     "ApprovalResumeJob",

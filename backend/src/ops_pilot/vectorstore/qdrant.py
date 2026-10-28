@@ -132,3 +132,23 @@ async def ensure_project_knowledge_collection() -> None:
         field_name="section",
         field_schema=models.PayloadSchemaType.KEYWORD,
     )
+
+
+async def get_active_project_knowledge_collection_name() -> str:
+    """Resolve the active version, falling back to the legacy collection.
+
+    The legacy name remains readable while the first versioned
+    collection is prepared. Once published, readers use the alias.
+    """
+    settings = get_settings()
+    client = get_qdrant_client()
+
+    legacy_name = settings.qdrant_project_knowledge_collection_name
+    active_alias = f"{legacy_name}__active"
+
+    aliases = await client.get_aliases()
+
+    if any(alias.alias_name == active_alias for alias in aliases.aliases):
+        return active_alias
+
+    return legacy_name

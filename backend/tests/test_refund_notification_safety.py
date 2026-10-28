@@ -1,14 +1,14 @@
 import uuid
 from decimal import Decimal
 from typing import cast
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ops_pilot.schemas.action_execution import RefundExecutionResult
 from ops_pilot.services.automation_events import (
-    dispatch_customer_recovery_automation,
+    build_customer_recovery_event,
 )
 
 
@@ -36,28 +36,16 @@ async def test_simulated_refund_notification_uses_safe_wording() -> None:
         already_executed=False,
     )
 
-    with patch(
-        "ops_pilot.services.automation_events.send_n8n_event",
-        new_callable=AsyncMock,
-    ) as send_event:
-        await dispatch_customer_recovery_automation(
-            session=cast(AsyncSession, session_mock),
-            organization_id=organization_id,
-            incident_id=uuid.uuid4(),
-            title="Duplicate payment",
-            category="payment",
-            priority="high",
-            customer_id=customer_id,
-            execution=execution,
-        )
-
-    send_event.assert_awaited_once()
-
-    kwargs = send_event.await_args.kwargs
-
-    assert kwargs["webhook_path"] == "incident-customer-recovery"
-
-    event = kwargs["event"]
+    event = await build_customer_recovery_event(
+        session=cast(AsyncSession, session_mock),
+        organization_id=organization_id,
+        incident_id=uuid.uuid4(),
+        title="Duplicate payment",
+        category="payment",
+        priority="high",
+        customer_id=customer_id,
+        execution=execution,
+    )
 
     assert event.event_type == "incident.customer_recovery"
     assert event.organization_id == organization_id

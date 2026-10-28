@@ -23,6 +23,12 @@ from ops_pilot.models.payment_transaction import (
 from ops_pilot.schemas.action_execution import (
     RefundExecutionResult,
 )
+from ops_pilot.services.automation_events import (
+    build_customer_recovery_event,
+)
+from ops_pilot.services.automation_outbox import (
+    enqueue_automation_in_session,
+)
 
 
 def validate_existing_refund(
@@ -48,14 +54,10 @@ def validate_existing_refund(
     try:
         amount = Decimal(amount_text)
     except (ValueError, ArithmeticError) as exc:
-        raise ApprovalExecutionError(
-            "Approval refund amount is invalid"
-        ) from exc
+        raise ApprovalExecutionError("Approval refund amount is invalid") from exc
 
     if not amount.is_finite() or amount <= 0:
-        raise ApprovalExecutionError(
-            "Approval refund amount must be positive and finite"
-        )
+        raise ApprovalExecutionError("Approval refund amount must be positive and finite")
 
     if (
         source.transaction_type != PaymentTransactionType.CHARGE
@@ -63,9 +65,7 @@ def validate_existing_refund(
         or source.amount != amount
         or source.currency != currency
     ):
-        raise ApprovalExecutionError(
-            "Approval does not match the original charge"
-        )
+        raise ApprovalExecutionError("Approval does not match the original charge")
 
     if (
         source.status != PaymentTransactionStatus.REFUNDED
@@ -78,9 +78,7 @@ def validate_existing_refund(
         or refund.amount != source.amount
         or refund.currency != source.currency
     ):
-        raise ApprovalExecutionError(
-            "Existing refund records are inconsistent"
-        )
+        raise ApprovalExecutionError("Existing refund records are inconsistent")
 
 
 async def execute_approved_refund(
@@ -314,19 +312,30 @@ async def execute_approved_refund(
         if approval.executed_at is None:
             approval.executed_at = datetime.now(UTC)
 
-        try:
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-        return RefundExecutionResult(
-            source_transaction_id=(source_transaction.external_transaction_id),
-            refund_transaction_id=(existing_refund.external_transaction_id),
+        response = RefundExecutionResult(
+            source_transaction_id=source_transaction.external_transaction_id,
+            refund_transaction_id=existing_refund.external_transaction_id,
             amount=existing_refund.amount,
             currency=existing_refund.currency,
             already_executed=True,
         )
+
+        try:
+            await _enqueue_refund_recovery_in_transaction(
+                session=session,
+                incident=incident,
+                organization_id=organization_id,
+                customer_id=customer_id,
+                execution=response,
+            )
+
+            await session.commit()
+
+        except Exception:
+            await session.rollback()
+            raise
+
+        return response
 
     if source_transaction.status != PaymentTransactionStatus.SUCCEEDED:
         raise ApprovalExecutionError(
@@ -379,19 +388,30 @@ async def execute_approved_refund(
         approval.status = ApprovalStatus.EXECUTED
         approval.executed_at = approval.executed_at or datetime.now(UTC)
 
-        try:
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-        return RefundExecutionResult(
-            source_transaction_id=(source_transaction.external_transaction_id),
-            refund_transaction_id=(existing_refund.external_transaction_id),
+        response = RefundExecutionResult(
+            source_transaction_id=source_transaction.external_transaction_id,
+            refund_transaction_id=existing_refund.external_transaction_id,
             amount=existing_refund.amount,
             currency=existing_refund.currency,
             already_executed=True,
         )
+
+        try:
+            await _enqueue_refund_recovery_in_transaction(
+                session=session,
+                incident=incident,
+                organization_id=organization_id,
+                customer_id=customer_id,
+                execution=response,
+            )
+
+            await session.commit()
+
+        except Exception:
+            await session.rollback()
+            raise
+
+        return response
 
     refund = PaymentTransaction(
         organization_id=organization_id,
@@ -413,18 +433,62 @@ async def execute_approved_refund(
 
     session.add(refund)
 
+    response = RefundExecutionResult(
+        source_transaction_id=source_transaction.external_transaction_id,
+        refund_transaction_id=refund.external_transaction_id,
+        amount=refund.amount,
+        currency=refund.currency,
+        already_executed=False,
+    )
+
     try:
+        await _enqueue_refund_recovery_in_transaction(
+            session=session,
+            incident=incident,
+            organization_id=organization_id,
+            customer_id=customer_id,
+            execution=response,
+        )
+
         await session.commit()
+
     except Exception:
         await session.rollback()
         raise
 
     await session.refresh(refund)
 
-    return RefundExecutionResult(
-        source_transaction_id=(source_transaction.external_transaction_id),
-        refund_transaction_id=(refund.external_transaction_id),
-        amount=refund.amount,
-        currency=refund.currency,
-        already_executed=False,
+    return response
+
+
+async def _enqueue_refund_recovery_in_transaction(
+    *,
+    session: AsyncSession,
+    incident: Incident,
+    organization_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    execution: RefundExecutionResult,
+) -> None:
+    """Persist the recovery event before the refund transaction commits."""
+
+    if not incident.category or incident.priority is None:
+        raise ApprovalExecutionError(
+            "Incident classification is required before recording refund recovery automation"
+        )
+
+    event = await build_customer_recovery_event(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident.id,
+        title=incident.title,
+        category=incident.category,
+        priority=incident.priority.value,
+        customer_id=customer_id,
+        execution=execution,
+    )
+
+    await enqueue_automation_in_session(
+        session=session,
+        webhook_path="incident-customer-recovery",
+        event=event,
     )

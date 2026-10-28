@@ -27,6 +27,7 @@ from ops_pilot.models.approval_resume_job import (
     ApprovalResumeJob,
     ApprovalResumeJobStatus,
 )
+from ops_pilot.models.automation_delivery import AutomationDelivery
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.incident import Incident, IncidentPriority, IncidentStatus
 from ops_pilot.models.order import OperationalOrder, OrderStatus
@@ -162,6 +163,8 @@ async def test_approved_refund_completes_through_real_worker(
                     organization_id=organization_id,
                     created_by_user_id=user_id,
                     subject_customer_id=customer_id,
+                    category=IncidentCategory.PAYMENT.value,
+                    priority=IncidentPriority.MEDIUM,
                     title="Simulated crash during refund",
                     description="Isolated synthetic recovery test",
                     status=IncidentStatus.AWAITING_APPROVAL,
@@ -332,6 +335,26 @@ async def test_approved_refund_completes_through_real_worker(
             assert refunds[0].amount == Decimal("100.00")
             assert refunds[0].currency == "USD"
             assert refunds[0].order_id == order_id
+
+            # D09: The recovery notification must have been
+            # committed alongside the simulated refund.
+            outbox_event = await session.scalar(
+                select(AutomationDelivery).where(
+                    AutomationDelivery.organization_id == organization_id,
+                    AutomationDelivery.event_type == "incident.customer_recovery",
+                )
+            )
+
+            assert outbox_event is not None
+            assert outbox_event.status == "pending"
+            assert outbox_event.payload["organization_id"] == str(organization_id)
+
+            # The notification must refer to the actual
+            # persisted refund, not another transaction.
+            assert (
+                outbox_event.payload["payload"]["refund_transaction_id"]
+                == refunds[0].external_transaction_id
+            )
 
             await session.rollback()
 

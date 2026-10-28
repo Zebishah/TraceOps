@@ -27,9 +27,28 @@ async def test_retrieval_result_schema() -> None:
     assert result.reranker_score == 4.25
 
 
+@pytest.fixture
+def mock_active_document_generations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def filter_candidates(
+        *,
+        organization_id: uuid.UUID,
+        candidates: list[retrieval_module.RetrievalCandidate],
+    ) -> list[retrieval_module.RetrievalCandidate]:
+        return candidates
+
+    monkeypatch.setattr(
+        retrieval_module,
+        "filter_active_document_generations",
+        filter_candidates,
+    )
+
+
 @pytest.mark.asyncio
 async def test_successful_reranker_overrides_vector_order(
     monkeypatch: pytest.MonkeyPatch,
+    mock_active_document_generations: None,
 ) -> None:
     organization_id = uuid.uuid4()
     first_chunk_id = uuid.uuid4()
@@ -45,6 +64,7 @@ async def test_successful_reranker_overrides_vector_order(
                 "text": "High vector score",
                 "source_filename": "first.pdf",
                 "page_number": 1,
+                "organization_id": str(organization_id),
             },
         ),
         SimpleNamespace(
@@ -56,6 +76,7 @@ async def test_successful_reranker_overrides_vector_order(
                 "text": "High reranker score",
                 "source_filename": "second.pdf",
                 "page_number": 2,
+                "organization_id": str(organization_id),
             },
         ),
     ]
@@ -113,7 +134,8 @@ async def test_successful_reranker_overrides_vector_order(
 
 @pytest.mark.asyncio
 async def test_retrieval_falls_back_to_vector_scores_when_reranker_fails(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_active_document_generations: None,
 ) -> None:
     organization_id = uuid.uuid4()
 
@@ -132,6 +154,7 @@ async def test_retrieval_falls_back_to_vector_scores_when_reranker_fails(
                 "chunk_index": 0,
                 "text": "Highest vector match",
                 "source_filename": "a.pdf",
+                "organization_id": str(organization_id),
                 "page_number": 1,
             },
         ),
@@ -142,6 +165,7 @@ async def test_retrieval_falls_back_to_vector_scores_when_reranker_fails(
                 "document_id": str(second_document_id),
                 "chunk_index": 1,
                 "text": "Lower vector match",
+                "organization_id": str(organization_id),
                 "source_filename": "b.pdf",
                 "page_number": 2,
             },

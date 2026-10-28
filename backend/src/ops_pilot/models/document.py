@@ -46,7 +46,10 @@ class Document(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-
+    active_index_generation: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(

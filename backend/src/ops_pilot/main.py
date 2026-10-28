@@ -13,11 +13,15 @@ from ops_pilot.api.request_context import (
     RequestContextMiddleware,
 )
 from ops_pilot.api.router import api_router
+from ops_pilot.api.upload_limit import DocumentUploadLimitMiddleware
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
 from ops_pilot.core.logging import configure_logging
 from ops_pilot.inngest.client import inngest_client
 from ops_pilot.inngest.functions.approval_resume_recovery import recover_approval_resume_jobs
+from ops_pilot.inngest.functions.automation_delivery_recovery import (
+    recover_automation_deliveries_background,
+)
 from ops_pilot.inngest.functions.dispatch_recovery import (
     recover_background_dispatches,
 )
@@ -60,12 +64,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.add_middleware(RequestContextMiddleware)
-
+    application.add_middleware(DocumentUploadLimitMiddleware)
     inngest_functions: list[inngest.Function[Any]] = [
         background_health_check,
         process_document_background,
         index_incident_memory_background,
         recover_background_dispatches,
+        recover_automation_deliveries_background,
     ]
 
     # Financial recovery is intentionally opt-in.

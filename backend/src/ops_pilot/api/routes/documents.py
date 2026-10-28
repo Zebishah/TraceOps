@@ -12,16 +12,15 @@ from ops_pilot.api.dependencies import (
 from ops_pilot.schemas.background_jobs import BackgroundJobResponse
 from ops_pilot.schemas.chunks import DocumentChunk
 from ops_pilot.schemas.documents import (
-    DocumentIndexResponse,
     DocumentResponse,
 )
 from ops_pilot.services.background_job_dispatch import (
     enqueue_document_processing,
+    enqueue_document_reindex,
 )
 from ops_pilot.services.document_chunking import (
     prepare_document_chunks,
 )
-from ops_pilot.services.document_indexing import index_document
 from ops_pilot.services.documents import create_document
 
 router = APIRouter(prefix="/organizations/{organization_id}/documents")
@@ -102,7 +101,8 @@ async def preview_document_chunks(
 
 @router.post(
     "/{document_id}/index",
-    response_model=DocumentIndexResponse,
+    response_model=BackgroundJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def index_uploaded_document(
     organization_id: uuid.UUID,
@@ -110,14 +110,12 @@ async def index_uploaded_document(
     current_user: CurrentUser,
     membership: DocumentWriterMembership,
     session: DbSession,
-) -> DocumentIndexResponse:
-    indexed_chunks = await index_document(
+) -> BackgroundJobResponse:
+    job = await enqueue_document_reindex(
         session=session,
         organization_id=organization_id,
+        user_id=current_user.id,
         document_id=document_id,
     )
 
-    return DocumentIndexResponse(
-        document_id=document_id,
-        indexed_chunks=indexed_chunks,
-    )
+    return BackgroundJobResponse.model_validate(job)

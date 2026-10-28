@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,16 +143,25 @@ def test_refund_recovery_rolls_back_on_commit_failure(
     )
     fake_session.rollback = AsyncMock()
 
-    with pytest.raises(RuntimeError, match="Database commit failed"):
-        asyncio.run(
-            execute_approved_refund(
-                session=session,
-                organization_id=organization_id,
-                incident_id=incident_id,
-                approval_request_id=approval.id,
-                customer_id=customer_id,
+    with patch(
+        "ops_pilot.services.refund_execution._enqueue_refund_recovery_in_transaction",
+        new_callable=AsyncMock,
+    ) as enqueue_mock:
+        with pytest.raises(
+            RuntimeError,
+            match="Database commit failed",
+        ):
+            asyncio.run(
+                execute_approved_refund(
+                    session=session,
+                    organization_id=organization_id,
+                    incident_id=incident_id,
+                    approval_request_id=approval.id,
+                    customer_id=customer_id,
+                )
             )
-        )
+
+        enqueue_mock.assert_awaited_once()
 
     fake_session.commit.assert_awaited_once()
     fake_session.rollback.assert_awaited_once()
@@ -246,15 +255,27 @@ def test_execute_approved_refund_creates_refund() -> None:
         fake_session,
     )
 
-    result = asyncio.run(
-        execute_approved_refund(
-            session=session,
-            organization_id=organization_id,
-            incident_id=incident_id,
-            approval_request_id=approval.id,
-            customer_id=customer_id,
+    with patch(
+        "ops_pilot.services.refund_execution._enqueue_refund_recovery_in_transaction",
+        new_callable=AsyncMock,
+    ) as enqueue_mock:
+        result = asyncio.run(
+            execute_approved_refund(
+                session=session,
+                organization_id=organization_id,
+                incident_id=incident_id,
+                approval_request_id=approval.id,
+                customer_id=customer_id,
+            )
         )
-    )
+
+        enqueue_mock.assert_awaited_once()
+
+        kwargs = enqueue_mock.await_args.kwargs
+
+        assert kwargs["organization_id"] == organization_id
+        assert kwargs["customer_id"] == customer_id
+        assert kwargs["execution"].already_executed is False
 
     assert result.source_transaction_id == "TXN-123"
 

@@ -14,6 +14,44 @@ from ops_pilot.models.background_job import (
 DISPATCH_LEASE_SECONDS = 60
 
 
+async def _require_legacy_job_without_dispatch(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+) -> None:
+    """Lock the job row and reject legacy writes to dispatched jobs.
+
+    The row lock is held by the caller's transaction until commit
+    or rollback. This coordinates with dispatch replacement updates.
+    """
+
+    if job.id is None:
+        # New transient objects have no persisted dispatch yet.
+        # Existing unit tests also construct transient jobs.
+        if job.dispatch_id is not None:
+            raise RuntimeError("Legacy background-job helper cannot modify a dispatched job")
+        return
+
+    statement = (
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+    result = await session.execute(statement)
+    current = result.scalar_one_or_none()
+
+    if current is None:
+        raise RuntimeError("Background job no longer exists")
+
+    if current.dispatch_id is not None:
+        raise RuntimeError("Legacy background-job helper cannot modify a dispatched job")
+
+
 async def create_background_job(
     *,
     session: AsyncSession,
@@ -185,6 +223,10 @@ async def mark_background_job_processing(
     job: BackgroundJob,
     progress_percent: int = 0,
 ) -> None:
+    await _require_legacy_job_without_dispatch(
+        session=session,
+        job=job,
+    )
     job.status = BackgroundJobStatus.PROCESSING
     job.progress_percent = progress_percent
     job.error_message = None
@@ -203,6 +245,10 @@ async def mark_background_job_succeeded(
     session: AsyncSession,
     job: BackgroundJob,
 ) -> None:
+    await _require_legacy_job_without_dispatch(
+        session=session,
+        job=job,
+    )
     job.status = BackgroundJobStatus.SUCCEEDED
     job.progress_percent = 100
     job.error_message = None
@@ -220,6 +266,10 @@ async def mark_background_job_failed(
     job: BackgroundJob,
     error_message: str,
 ) -> None:
+    await _require_legacy_job_without_dispatch(
+        session=session,
+        job=job,
+    )
     job.status = BackgroundJobStatus.FAILED
     job.error_message = error_message[:1000]
     job.completed_at = datetime.now(
@@ -236,6 +286,10 @@ async def update_background_job_progress(
     job: BackgroundJob,
     progress_percent: int,
 ) -> None:
+    await _require_legacy_job_without_dispatch(
+        session=session,
+        job=job,
+    )
     if not 0 <= progress_percent <= 100:
         raise ValueError("Background job progress must be between 0 and 100")
 
@@ -251,6 +305,10 @@ async def set_background_job_event_id(
     job: BackgroundJob,
     event_id: str,
 ) -> None:
+    await _require_legacy_job_without_dispatch(
+        session=session,
+        job=job,
+    )
     job.inngest_event_id = event_id
 
     await session.commit()
@@ -367,6 +425,55 @@ async def update_job_for_dispatch(
         await session.refresh(job)
 
         return updated
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def prepare_document_reindex_dispatch(
+    *,
+    session: AsyncSession,
+    job: BackgroundJob,
+    document_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """Atomically restart a completed document-processing job.
+
+    Only a SUCCEEDED job can be restarted here. A queued or
+    processing job must never be displaced by this operation.
+    """
+    dispatch_id = uuid.uuid4()
+
+    statement = (
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.id == job.id,
+            BackgroundJob.organization_id == job.organization_id,
+            BackgroundJob.resource_id == document_id,
+            BackgroundJob.job_type == BackgroundJobType.DOCUMENT_PROCESSING,
+            BackgroundJob.status == BackgroundJobStatus.SUCCEEDED,
+        )
+        .values(
+            dispatch_id=dispatch_id,
+            inngest_event_id=None,
+            status=BackgroundJobStatus.QUEUED,
+            progress_percent=0,
+            error_message=None,
+            started_at=None,
+            completed_at=None,
+            dispatch_lease_token=None,
+            dispatch_lease_expires_at=None,
+        )
+        .returning(BackgroundJob.dispatch_id)
+    )
+
+    try:
+        result = await session.execute(statement)
+        claimed = result.scalar_one_or_none()
+
+        await session.commit()
+        await session.refresh(job)
+
+        return claimed
     except Exception:
         await session.rollback()
         raise
