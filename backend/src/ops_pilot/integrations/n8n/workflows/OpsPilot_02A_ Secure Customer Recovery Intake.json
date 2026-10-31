@@ -1,0 +1,269 @@
+{
+  "name": "Workflow 02A: Secure Customer Recovery Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-customer-recovery",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "351a5dd4-6d6e-4369-a96d-0feafce2e298",
+      "name": "01 | Receive Customer Recovery Event",
+      "webhookId": "24926a08-360e-44dd-9629-68692b38f3cb",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6Tlb49Kt9T6hRM0e",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $json.body ?? {};\nconst payload = body.payload ?? {};\n\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nconst validUuid = (value) =>\n  typeof value === \"string\" && uuid.test(value);\n\nconst validText = (value) =>\n  typeof value === \"string\" && value.trim().length > 0;\n\nconst valid =\n  body.event_type === \"incident.customer_recovery\" &&\n  validUuid(body.event_id) &&\n  validUuid(body.organization_id) &&\n  validUuid(payload.incident_id) &&\n  validUuid(payload.customer_id) &&\n  validText(body.occurred_at) &&\n  Number.isFinite(Date.parse(body.occurred_at)) &&\n  validText(payload.title) &&\n  validText(payload.resolution) &&\n  payload.action_type === \"refund_transaction\" &&\n  validText(payload.source_transaction_id) &&\n  validText(payload.refund_transaction_id) &&\n  validText(payload.currency) &&\n  /^[A-Z]{3}$/.test(payload.currency) &&\n  (\n    typeof payload.refund_amount === \"number\" ||\n    typeof payload.refund_amount === \"string\"\n  ) &&\n  /^\\d+(?:\\.\\d+)?$/.test(String(payload.refund_amount)) &&\n  Number(payload.refund_amount) > 0 &&\n  validText(payload.customer_email) &&\n  /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(payload.customer_email);\n\nreturn {\n  json: {\n    valid,\n    event_id: valid ? body.event_id : null,\n    organization_id: valid ? body.organization_id : null,\n    occurred_at: valid ? body.occurred_at : null,\n    payload: valid ? payload : null,\n    error: valid ? null : \"Invalid customer recovery event\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "ce126d9e-bd2e-4f8b-8f72-9151a8f69b4a",
+      "name": "02 | Validate Customer Recovery Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "f27338d3-a415-4aeb-b2f5-a989bdc36db1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "155a7aeb-89b0-4c59-bbe8-13f8bf420881",
+      "name": "03 | Valid Recovery Event?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"Invalid customer recovery event\"}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        96
+      ],
+      "id": "0e37b1ad-552b-4a01-a799-571f5df53a7c",
+      "name": "05 | Reject Invalid Recovery Event"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nWITH saved AS (\n    INSERT INTO automation.customer_recovery_events AS r (\n        event_id,\n        organization_id,\n        incident_id,\n        customer_id,\n        refund_transaction_id,\n        source_transaction_id,\n        refund_amount,\n        currency,\n        customer_email,\n        payload\n    )\n    VALUES (\n        $1::uuid,\n        $2::uuid,\n        $3::uuid,\n        $4::uuid,\n        $5::text,\n        $6::text,\n        $7::numeric,\n        $8::text,\n        $9::text,\n        $10::jsonb\n    )\n    ON CONFLICT (organization_id, refund_transaction_id)\n    DO UPDATE SET\n        duplicate_count = r.duplicate_count + 1,\n        last_received_at = NOW()\n    WHERE r.incident_id = EXCLUDED.incident_id\n      AND r.customer_id = EXCLUDED.customer_id\n      AND r.source_transaction_id =\n          EXCLUDED.source_transaction_id\n      AND r.refund_amount = EXCLUDED.refund_amount\n      AND r.currency = EXCLUDED.currency\n    RETURNING r.event_id, r.status, r.duplicate_count\n)\nSELECT\n    EXISTS (SELECT 1 FROM saved) AS accepted,\n    (SELECT status FROM saved) AS recovery_status,\n    (SELECT duplicate_count FROM saved) AS duplicate_count;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.event_id,\n  $json.organization_id,\n  $json.payload.incident_id,\n  $json.payload.customer_id,\n  $json.payload.refund_transaction_id,\n  $json.payload.source_transaction_id,\n  String($json.payload.refund_amount),\n  $json.payload.currency,\n  $json.payload.customer_email,\n  JSON.stringify($json.payload)\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        672,
+        -96
+      ],
+      "id": "69e38a2c-91b0-41e8-99be-46c1f61a782a",
+      "name": "04 | Persist and Deduplicate Recovery Event",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "13f87d69-4e22-4095-a3d0-fb04cf8d0cb8",
+              "leftValue": "={{ $json.accepted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "b4c03641-449b-4bd1-9c65-553edbc8e267",
+      "name": "06 | Recovery Event Accepted?"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        -192
+      ],
+      "id": "330714d7-b787-485a-bf05-a0ab083ee669",
+      "name": "07 | Acknowledge Durable Recovery Intake"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"Conflicting refund recovery event\"}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "c3377ab7-e36e-4918-aafa-59909270a058",
+      "name": "08 | Reject Conflicting Refund Event"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Receive Customer Recovery Event": {
+      "main": [
+        [
+          {
+            "node": "02 | Validate Customer Recovery Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Validate Customer Recovery Event": {
+      "main": [
+        [
+          {
+            "node": "03 | Valid Recovery Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Valid Recovery Event?": {
+      "main": [
+        [
+          {
+            "node": "04 | Persist and Deduplicate Recovery Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05 | Reject Invalid Recovery Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Persist and Deduplicate Recovery Event": {
+      "main": [
+        [
+          {
+            "node": "06 | Recovery Event Accepted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Recovery Event Accepted?": {
+      "main": [
+        [
+          {
+            "node": "07 | Acknowledge Durable Recovery Intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 | Reject Conflicting Refund Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a2f11477-a309-4dbe-9410-e82baabe8b93",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "pTbrM9NIDEldEso0",
+  "tags": []
+}

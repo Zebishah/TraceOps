@@ -1,0 +1,342 @@
+{
+  "name": "OpsPilot | 02B — Customer Recovery Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "48d8b4d2-4ad9-4c59-afa2-1593db2f5aab",
+      "name": "01 | Schedule Recovery Dispatch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.customer_recovery_events\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Recovery worker lease expired',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE status = 'processing'\n      AND lease_expires_at <= NOW()\n    RETURNING event_id\n)\nSELECT COUNT(*)::integer AS quarantined_count\nFROM quarantined;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "6fb4ef12-90c1-4100-98a8-ad1867a7459c",
+      "name": "02 | Quarantine Expired Recovery Leases",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n    SELECT event_id\n    FROM automation.customer_recovery_events\n    WHERE status = 'pending'\n      AND attempts < 5\n      AND next_attempt_at <= NOW()\n    ORDER BY created_at, event_id\n    FOR UPDATE SKIP LOCKED\n    LIMIT 10\n)\nUPDATE automation.customer_recovery_events AS r\nSET\n    status = 'processing',\n    attempts = r.attempts + 1,\n    lease_token = gen_random_uuid(),\n    lease_expires_at = NOW() + INTERVAL '5 minutes',\n    updated_at = NOW()\nFROM selected\nWHERE r.event_id = selected.event_id\nRETURNING\n    r.event_id,\n    r.organization_id,\n    r.customer_id,\n    r.customer_email,\n    r.refund_amount,\n    r.currency,\n    r.refund_transaction_id,\n    r.lease_token,\n    r.payload;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "7eff9ae3-95fe-4b3f-9eb7-a1aad374ca91",
+      "name": "03 | Claim Pending Recovery Messages",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const event = $json;\nconst payload = event.payload;\n\nif (\n  !event.event_id ||\n  !event.lease_token ||\n  !event.customer_email ||\n  !payload?.resolution\n) {\n  throw new Error(\"Incomplete claimed recovery event\");\n}\n\nconst customerName =\n  typeof payload.customer_name === \"string\" &&\n  payload.customer_name.trim()\n    ? payload.customer_name.trim()\n    : \"Customer\";\n\nconst subject = \"Update on your support case\";\n\nconst message = [\n  `Hello ${customerName},`,\n  \"\",\n  \"We have an update regarding your recent support case.\",\n  \"\",\n  payload.resolution,\n  \"\",\n  `Reference: ${event.refund_transaction_id}`,\n  \"\",\n  \"If you need assistance, please contact our support team.\",\n  \"\",\n  \"Best regards,\",\n  \"Support Team\",\n].join(\"\\n\");\n\nreturn {\n  json: {\n    event_id: event.event_id,\n    lease_token: event.lease_token,\n    recipient: event.customer_email,\n    subject,\n    message,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "fa7426d2-2af3-4a7b-a320-0e42413abfb3",
+      "name": "04 | Prepare Customer Recovery Message"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $json;\n\n// Replace with an inbox you own and control.\nconst TEST_INBOX = \"zebihaider123@gmail.com\";\n\nif (!TEST_INBOX || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(TEST_INBOX)) {\n  throw new Error(\"Configure your authorized test inbox before sending\");\n}\n\nif (!item.event_id || !item.lease_token || !item.message) {\n  throw new Error(\"Missing recovery task ownership or message\");\n}\n\nreturn {\n  json: {\n    ...item,\n    recipient: TEST_INBOX,\n    original_recipient: item.recipient,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "ca171f29-8bc8-45fb-8118-ceae9e2ccd88",
+      "name": "05 | Verify Safe Recovery Recipient"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "c33c2b6d-c666-48e2-8045-4c6813ce8ce9",
+      "name": "06 | Send Customer Recovery Email",
+      "webhookId": "aaf8ca74-be04-4a76-b4cb-58c97d471cc8",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lEVybiQxzjnBFIjE",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.customer_recovery_events AS r\n    SET\n        status = 'completed',\n        delivered_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL,\n        updated_at = NOW()\n    WHERE r.event_id = $1::uuid\n      AND r.lease_token = $2::uuid\n      AND r.status = 'processing'\n      AND r.lease_expires_at > NOW()\n      AND NULLIF($3::text, '') IS NOT NULL\n    RETURNING r.event_id\n)\nSELECT EXISTS (\n    SELECT 1 FROM finalized\n) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Verify Safe Recovery Recipient').item.json.event_id,\n  $('05 | Verify Safe Recovery Recipient').item.json.lease_token,\n  $json.id ?? ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "3bf9bde8-d995-47f1-a6e9-5b250e65e50d",
+      "name": "07 | Finalize Recovery Email Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.customer_recovery_events AS r\n    SET\n        status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE r.event_id = $1::uuid\n      AND r.lease_token = $2::uuid\n      AND r.status = 'processing'\n    RETURNING r.event_id\n)\nSELECT EXISTS (\n    SELECT 1 FROM quarantined\n) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Verify Safe Recovery Recipient').item.json.event_id,\n  $('05 | Verify Safe Recovery Recipient').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Unknown Gmail delivery failure')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1344,
+        96
+      ],
+      "id": "64937cdf-a4d7-45a7-b848-a6cbd4c122f9",
+      "name": "08 | Quarantine Uncertain Recovery Email",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "6de92e67-98cf-4383-bb13-a2a5032c03ed",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1552,
+        -96
+      ],
+      "id": "d6198519-16bd-47ab-8dee-fdcfb80aa49c",
+      "name": "09 | Recovery Delivery Finalized?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.customer_recovery_events AS r\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Gmail accepted message but database finalization was not confirmed',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE r.event_id = $1::uuid\n      AND r.lease_token = $2::uuid\n      AND r.status = 'processing'\n    RETURNING r.event_id\n)\nSELECT EXISTS (\n    SELECT 1 FROM quarantined\n) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Verify Safe Recovery Recipient').item.json.event_id,\n  $('05 | Verify Safe Recovery Recipient').item.json.lease_token\n] }}",
+          "treatQueryParametersInSingleQuotesAsText": false
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1776,
+        0
+      ],
+      "id": "a5b1d29b-6c7c-4906-adf8-4e86cbaa5e73",
+      "name": "10 | Quarantine Unconfirmed Recovery Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Recovery Dispatch": {
+      "main": [
+        [
+          {
+            "node": "02 | Quarantine Expired Recovery Leases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Quarantine Expired Recovery Leases": {
+      "main": [
+        [
+          {
+            "node": "03 | Claim Pending Recovery Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Claim Pending Recovery Messages": {
+      "main": [
+        [
+          {
+            "node": "04 | Prepare Customer Recovery Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Prepare Customer Recovery Message": {
+      "main": [
+        [
+          {
+            "node": "05 | Verify Safe Recovery Recipient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Verify Safe Recovery Recipient": {
+      "main": [
+        [
+          {
+            "node": "06 | Send Customer Recovery Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Send Customer Recovery Email": {
+      "main": [
+        [
+          {
+            "node": "07 | Finalize Recovery Email Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 | Quarantine Uncertain Recovery Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 | Finalize Recovery Email Delivery": {
+      "main": [
+        [
+          {
+            "node": "09 | Recovery Delivery Finalized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 | Recovery Delivery Finalized?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "10 | Quarantine Unconfirmed Recovery Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "13f56f98-c77d-4707-91f9-80cd22ddc26f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "bjwJ4SN7xiJeUOaP",
+  "tags": []
+}
