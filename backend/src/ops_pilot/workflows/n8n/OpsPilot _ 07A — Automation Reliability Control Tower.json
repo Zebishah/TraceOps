@@ -1,0 +1,372 @@
+{
+  "name": "OpsPilot | 07A — Automation Reliability Control Tower",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2b0b01bb-b17c-42ef-839c-00b4c0c42c21",
+      "name": "01 | Schedule Reliability Monitoring"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH expired AS (\n    UPDATE automation.reliability_alerts\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Monitoring delivery lease expired',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE status = 'processing'\n      AND lease_expires_at <= NOW()\n    RETURNING id\n)\nSELECT COUNT(*)::integer AS quarantined_count\nFROM expired;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "e6b71bc8-d346-42bc-b891-4c4707017314",
+      "name": "02 | Quarantine Expired Monitoring Leases",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH problems AS (\n    SELECT\n        'incident_notifications'::text AS source_system,\n        t.id AS source_id,\n        t.status::text AS problem_status\n    FROM automation.notification_tasks AS t\n    WHERE t.status IN ('delivery_unknown', 'dead')\n      AND COALESCE(t.last_error, '') NOT ILIKE 'Cancelled%'\n\n    UNION ALL\n\n    SELECT\n        'customer_recovery',\n        r.event_id,\n        r.status\n    FROM automation.customer_recovery_events AS r\n    WHERE r.status = 'delivery_unknown'\n\n    UNION ALL\n\n    SELECT\n        'document_indexing',\n        d.event_id,\n        d.alert_status\n    FROM automation.document_failure_events AS d\n    WHERE d.alert_status IN ('delivery_unknown', 'dead')\n\n    UNION ALL\n\n    SELECT\n        'approval_reminders',\n        a.id,\n        a.status\n    FROM automation.approval_reminders AS a\n    WHERE a.status = 'delivery_unknown'\n),\nclaimed AS (\n    INSERT INTO automation.reliability_alerts (\n        source_system,\n        source_id,\n        problem_status,\n        lease_token,\n        lease_expires_at\n    )\n    SELECT\n        p.source_system,\n        p.source_id,\n        p.problem_status,\n        gen_random_uuid(),\n        NOW() + INTERVAL '5 minutes'\n    FROM problems AS p\n    ORDER BY p.source_system, p.source_id\n    LIMIT 10\n    ON CONFLICT (\n        source_system,\n        source_id,\n        problem_status\n    )\n    DO NOTHING\n    RETURNING\n        id,\n        source_system,\n        source_id,\n        problem_status,\n        lease_token\n)\nSELECT * FROM claimed;",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "a02063de-fc12-466e-bd97-fdf92763da7a",
+      "name": "03 | Discover and Claim New Reliability Problems",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "e6566d53-96cf-4aea-91ef-89f304aa2000",
+              "leftValue": "={{ Boolean($json.id && $json.lease_token && $json.source_id) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        672,
+        0
+      ],
+      "id": "fc466f1d-b212-468d-9b2c-7fb3d3bafae2",
+      "name": "04 | Monitoring Alert Available?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const alert = $json;\n\nif (\n  !alert.id ||\n  !alert.source_id ||\n  !alert.lease_token ||\n  !alert.source_system\n) {\n  throw new Error(\"Missing reliability alert ownership\");\n}\n\nconst content = [\n  \"🚨 OPSPILOT AUTOMATION RELIABILITY ALERT\",\n  \"\",\n  `System: ${alert.source_system}`,\n  `Problem: ${alert.problem_status}`,\n  `Source ID: ${alert.source_id}`,\n  `Monitoring Alert ID: ${alert.id}`,\n  \"\",\n  \"Action required: Investigate the source record.\",\n  \"Check the external provider before retrying.\",\n  \"Never automatically resend uncertain financial or customer notifications.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...alert,\n    discord_message: content\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -16
+      ],
+      "id": "8053ebbb-7c78-4357-a460-8d8f8ef76c06",
+      "name": "05 | Prepare Reliability Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1565123584169484391/3gcjRgkiJT11iOwIl0s6BPNCoEOxFQ-qRsP39O9OyCzoFobSp-o-837Vh5RkPk2icYtF",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wait",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  content: $json.discord_message,\n  allowed_mentions: { parse: [] }\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1152,
+        -16
+      ],
+      "id": "804e6394-b61f-4ca9-a722-929e5aca0890",
+      "name": "06 | Send Reliability Discord Alert",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.reliability_alerts\n    SET\n        status = 'delivered',\n        delivered_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n      AND lease_expires_at > NOW()\n      AND $3::integer = 200\n      AND NULLIF($4::text, '') IS NOT NULL\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM finalized) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Reliability Alert').item.json.id,\n  $('05 | Prepare Reliability Alert').item.json.lease_token,\n  $json.statusCode ?? 0,\n  $json.body?.id ?? ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1376,
+        -112
+      ],
+      "id": "0f23a304-8ee8-4262-b790-d141602b5c3b",
+      "name": "07 | Finalize Reliability Alert Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.reliability_alerts\n    SET\n        status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Reliability Alert').item.json.id,\n  $('05 | Prepare Reliability Alert').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Discord outcome uncertain')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1376,
+        80
+      ],
+      "id": "97e01b39-7b02-4542-9caa-1b6c634981a4",
+      "name": "08 | Quarantine Uncertain Discord Failure",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "5f4008fb-6a1c-469f-9c3a-f5c3c62cb014",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1632,
+        -112
+      ],
+      "id": "215151d3-0142-4c69-96e9-392d4ebb724e",
+      "name": "09 | Reliability Alert Finalized?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.reliability_alerts\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Discord delivery finalization unconfirmed',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Reliability Alert').item.json.id,\n  $('05 | Prepare Reliability Alert').item.json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1856,
+        -16
+      ],
+      "id": "e182c725-8fcc-4c22-8bba-317a5d11f7a0",
+      "name": "10 | Quarantine Unconfirmed Alert Finalization",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Reliability Monitoring": {
+      "main": [
+        [
+          {
+            "node": "02 | Quarantine Expired Monitoring Leases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Quarantine Expired Monitoring Leases": {
+      "main": [
+        [
+          {
+            "node": "03 | Discover and Claim New Reliability Problems",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Discover and Claim New Reliability Problems": {
+      "main": [
+        [
+          {
+            "node": "04 | Monitoring Alert Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Monitoring Alert Available?": {
+      "main": [
+        [
+          {
+            "node": "05 | Prepare Reliability Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Prepare Reliability Alert": {
+      "main": [
+        [
+          {
+            "node": "06 | Send Reliability Discord Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Send Reliability Discord Alert": {
+      "main": [
+        [
+          {
+            "node": "07 | Finalize Reliability Alert Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 | Quarantine Uncertain Discord Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 | Finalize Reliability Alert Delivery": {
+      "main": [
+        [
+          {
+            "node": "09 | Reliability Alert Finalized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 | Reliability Alert Finalized?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "10 | Quarantine Unconfirmed Alert Finalization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "48ca59f2-2cac-455a-9db2-610bc80b38be",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "ROVFJQf6IToFpWha",
+  "tags": []
+}

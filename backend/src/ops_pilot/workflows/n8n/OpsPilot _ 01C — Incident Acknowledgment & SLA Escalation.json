@@ -1,0 +1,594 @@
+{
+  "name": "OpsPilot | 01C — Incident Acknowledgment & SLA Escalation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        -16
+      ],
+      "id": "9471baaa-c409-4535-9c39-c5eed51b56c2",
+      "name": "01 | Schedule Incident SLA Monitoring"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    c.organization_id,\n    c.incident_id,\n    c.source_event_id,\n    c.title,\n    c.priority,\n    c.status,\n    c.opened_at,\n    c.acknowledgment_due_at,\n    c.escalation_due_at,\n    NOW() AS checked_at,\n    (c.acknowledgment_due_at <= NOW())\n        AS acknowledgment_overdue\nFROM automation.incident_cases AS c\nWHERE c.status IN ('open', 'escalated')\n  AND c.acknowledged_at IS NULL\n  AND c.escalation_due_at <= NOW()\nORDER BY c.escalation_due_at ASC\nLIMIT 50;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7f0b4fdc-593a-4296-9e9e-9591f13cb05a",
+      "name": "02 | Find Overdue Incident Cases",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "d93ed50c-de08-4584-a1d4-e04029041d67",
+              "leftValue": "={{ Boolean($json.organization_id && $json.incident_id && $json.escalation_due_at) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "ea8f4ed9-91df-4d55-9d84-4c6c85c8d092",
+      "name": "03 | Valid Overdue Incident?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nWITH escalated AS (\n    UPDATE automation.incident_cases AS c\n    SET status = 'escalated'\n    WHERE c.organization_id = $1::uuid\n      AND c.incident_id = $2::uuid\n      AND c.status = 'open'\n      AND c.acknowledged_at IS NULL\n      AND c.escalation_due_at <= NOW()\n    RETURNING\n        c.organization_id,\n        c.incident_id\n),\nqueued AS (\n    INSERT INTO automation.notification_tasks (\n        organization_id,\n        incident_id,\n        channel,\n        notification_type\n    )\n    SELECT\n        e.organization_id,\n        e.incident_id,\n        channels.channel,\n        'manager_escalation'\n    FROM escalated AS e\n    CROSS JOIN (\n        VALUES ('discord'), ('email')\n    ) AS channels(channel)\n    ON CONFLICT (\n        organization_id,\n        incident_id,\n        channel,\n        notification_type\n    ) DO NOTHING\n    RETURNING id\n)\nSELECT\n    EXISTS (SELECT 1 FROM escalated)\n        AS escalated,\n    (SELECT COUNT(*)::integer FROM queued)\n        AS notifications_queued;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.organization_id, $json.incident_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        672,
+        -96
+      ],
+      "id": "8fd2594b-59ad-40c0-b637-c76f305390af",
+      "name": "04 | Atomically Escalate Incident",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "fd0eb7f8-4b0c-40df-82d1-728d4a3a050b",
+              "leftValue": "={{ $json.escalated }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "a4edaba0-6b98-4205-b28d-c475cd7a75c3",
+      "name": "05 | Escalation Created?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nSELECT\n    channel,\n    notification_type,\n    status,\n    attempts,\n    created_at\nFROM automation.notification_tasks\nWHERE organization_id = $1::uuid\n  AND incident_id = $2::uuid\n  AND notification_type = 'manager_escalation'\nORDER BY channel;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('02 | Find Overdue Incident Cases').item.json.organization_id,\n  $('02 | Find Overdue Incident Cases').item.json.incident_id\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1088,
+        -112
+      ],
+      "id": "57a21437-d853-4d6b-931e-073ce8badc8b",
+      "name": "06 | Verify Manager Notification Tasks",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-acknowledged",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        224
+      ],
+      "id": "51866ffb-6211-461f-a058-7a8e7f580a92",
+      "name": "07 | Receive Incident Acknowledgment",
+      "webhookId": "b8784ebc-2783-4360-a34b-3021870f77bc",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6Tlb49Kt9T6hRM0e",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $json.body ?? {};\n\nconst uuidPattern =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nconst organizationId = body.organization_id;\nconst incidentId = body.incident_id;\nconst responderId = body.responder_id;\n\nconst valid =\n  typeof organizationId === 'string' &&\n  typeof incidentId === 'string' &&\n  typeof responderId === 'string' &&\n  uuidPattern.test(organizationId) &&\n  uuidPattern.test(incidentId) &&\n  responderId.trim().length > 0 &&\n  responderId.length <= 200;\n\nreturn {\n  json: {\n    valid,\n    organization_id: valid ? organizationId : null,\n    incident_id: valid ? incidentId : null,\n    responder_id: valid ? responderId.trim() : null\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        240
+      ],
+      "id": "d4df69bd-b4fe-4246-8a40-4ead40d508aa",
+      "name": "08 | Validate Acknowledgment"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "2290749e-5d6b-4352-96fb-8a785877bf57",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        752,
+        288
+      ],
+      "id": "75860711-68e5-4b24-99ac-f7bb6ec46afb",
+      "name": "09 | Valid Acknowledgment?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nWITH acknowledged AS (\n    UPDATE automation.incident_cases AS c\n    SET\n        status = 'acknowledged',\n        acknowledged_at = NOW(),\n        acknowledged_by = $3::text\n    WHERE c.organization_id = $1::uuid\n      AND c.incident_id = $2::uuid\n      AND c.status IN ('open', 'escalated')\n      AND c.acknowledged_at IS NULL\n    RETURNING\n        c.organization_id,\n        c.incident_id,\n        c.acknowledged_at,\n        c.acknowledged_by\n),\ncancelled AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'dead',\n        last_error = 'Cancelled after incident acknowledgment',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    FROM acknowledged AS a\n    WHERE t.organization_id = a.organization_id\n      AND t.incident_id = a.incident_id\n      AND t.notification_type = 'manager_escalation'\n      AND t.status IN ('pending', 'failed')\n    RETURNING t.id\n)\nSELECT\n    CASE\n        WHEN EXISTS (SELECT 1 FROM acknowledged)\n            THEN 'acknowledged'\n        WHEN EXISTS (\n            SELECT 1\n            FROM automation.incident_cases\n            WHERE organization_id = $1::uuid\n              AND incident_id = $2::uuid\n              AND acknowledged_at IS NOT NULL\n        )\n            THEN 'already_acknowledged'\n        ELSE 'not_eligible'\n    END AS result,\n    (SELECT acknowledged_at FROM acknowledged) AS acknowledged_at,\n    (SELECT COUNT(*)::integer FROM cancelled)\n        AS notifications_cancelled;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.organization_id,\n  $json.incident_id,\n  $json.responder_id\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        992,
+        208
+      ],
+      "id": "c3725cdf-9f26-4db5-8086-8984e11c5603",
+      "name": "10 | Record Incident Acknowledgment",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1232,
+        272
+      ],
+      "id": "6af37f9c-c348-41c4-80ec-437f50093f29",
+      "name": "11 | Respond with Acknowledgment Result"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"Invalid acknowledgment request\"}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1008,
+        416
+      ],
+      "id": "60c1a667-7caa-4379-8dc4-dc0404222b18",
+      "name": "12 | Reject Invalid Acknowledgment"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-resolved",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        688
+      ],
+      "id": "772ccc4b-a9df-4bd3-9ffe-8c59af17a3aa",
+      "name": "13 | Receive Incident Resolution",
+      "webhookId": "af912d63-2a05-4359-aab1-0ccea8e3a627",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6Tlb49Kt9T6hRM0e",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $json.body ?? {};\nconst payload = body.payload ?? {};\n\nconst uuidPattern =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nconst organizationId = body.organization_id;\nconst incidentId = payload.incident_id ?? body.incident_id;\n\nconst valid =\n  body.event_type === \"incident.resolved\" &&\n  typeof organizationId === \"string\" &&\n  typeof incidentId === \"string\" &&\n  uuidPattern.test(organizationId) &&\n  uuidPattern.test(incidentId);\n\nreturn {\n  json: {\n    valid,\n    organization_id: valid ? organizationId : null,\n    incident_id: valid ? incidentId : null,\n    event_id: body.event_id ?? null,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        688
+      ],
+      "id": "8eb3cea0-66a2-4dbf-942c-b92822fa1851",
+      "name": "14 | Validate Incident Resolution"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "5bc62a23-905b-492e-aef5-628684dcf481",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        672,
+        688
+      ],
+      "id": "8ccdae40-b265-493b-9a6d-fd1afff1a021",
+      "name": "15 | Valid Resolution Event?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nWITH resolved AS (\n    UPDATE automation.incident_cases AS c\n    SET\n        status = 'resolved',\n        resolved_at = NOW()\n    WHERE c.organization_id = $1::uuid\n      AND c.incident_id = $2::uuid\n      AND c.status IN ('open', 'acknowledged', 'escalated')\n      AND c.resolved_at IS NULL\n    RETURNING\n        c.organization_id,\n        c.incident_id\n),\ncancelled AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'dead',\n        last_error = 'Cancelled because incident was resolved',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    FROM resolved AS r\n    WHERE t.organization_id = r.organization_id\n      AND t.incident_id = r.incident_id\n      AND t.status IN ('pending', 'failed')\n    RETURNING t.id\n)\nSELECT\n    CASE\n        WHEN EXISTS (SELECT 1 FROM resolved)\n            THEN 'resolved'\n        WHEN EXISTS (\n            SELECT 1\n            FROM automation.incident_cases\n            WHERE organization_id = $1::uuid\n              AND incident_id = $2::uuid\n              AND status = 'resolved'\n        )\n            THEN 'already_resolved'\n        ELSE 'not_eligible'\n    END AS result,\n    (SELECT COUNT(*)::integer FROM cancelled)\n        AS notifications_cancelled;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.organization_id, $json.incident_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        592
+      ],
+      "id": "12b9cd2b-48e6-4564-b6ec-cb1c574256b8",
+      "name": "16 | Resolve Incident and Cancel Notifications",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        592
+      ],
+      "id": "a8676e1e-ada0-469a-8444-833f184e033c",
+      "name": "17 | Respond with Resolution Result"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\":\"Invalid incident resolution event\"}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        784
+      ],
+      "id": "3dec8f30-0f82-4082-9dfb-91de8d9f724a",
+      "name": "18 | Reject Invalid Resolution Event"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Incident SLA Monitoring": {
+      "main": [
+        [
+          {
+            "node": "02 | Find Overdue Incident Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Find Overdue Incident Cases": {
+      "main": [
+        [
+          {
+            "node": "03 | Valid Overdue Incident?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Valid Overdue Incident?": {
+      "main": [
+        [
+          {
+            "node": "04 | Atomically Escalate Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Atomically Escalate Incident": {
+      "main": [
+        [
+          {
+            "node": "05 | Escalation Created?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Escalation Created?": {
+      "main": [
+        [
+          {
+            "node": "06 | Verify Manager Notification Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 | Receive Incident Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "08 | Validate Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 | Validate Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "09 | Valid Acknowledgment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 | Valid Acknowledgment?": {
+      "main": [
+        [
+          {
+            "node": "10 | Record Incident Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12 | Reject Invalid Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 | Record Incident Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "11 | Respond with Acknowledgment Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 | Receive Incident Resolution": {
+      "main": [
+        [
+          {
+            "node": "14 | Validate Incident Resolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 | Validate Incident Resolution": {
+      "main": [
+        [
+          {
+            "node": "15 | Valid Resolution Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 | Valid Resolution Event?": {
+      "main": [
+        [
+          {
+            "node": "16 | Resolve Incident and Cancel Notifications",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "18 | Reject Invalid Resolution Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 | Resolve Incident and Cancel Notifications": {
+      "main": [
+        [
+          {
+            "node": "17 | Respond with Resolution Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2fa1db5b-96be-4a46-b0b8-143284ab771a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "xhD8JbB0pY9D8E8Z",
+  "tags": []
+}

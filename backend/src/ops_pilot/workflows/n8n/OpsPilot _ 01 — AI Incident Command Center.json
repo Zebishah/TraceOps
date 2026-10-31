@@ -1,0 +1,482 @@
+{
+  "name": "OpsPilot | 01 — AI Incident Command Center",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-high-risk",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -192,
+        368
+      ],
+      "id": "3e917ed0-adb5-4782-b441-1d2f38bf25cc",
+      "name": "01 | Receive High-Risk Incident",
+      "webhookId": "65f5e8e3-3a4a-493e-8d68-70426c3c817d",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6Tlb49Kt9T6hRM0e",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all();\n\nconst UUID_RE =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\nfunction isUuid(value) {\n  return typeof value === \"string\" && UUID_RE.test(value);\n}\n\nfunction cleanText(value, maxLength) {\n  if (typeof value !== \"string\") return null;\n\n  const cleaned = value.trim();\n\n  if (!cleaned || cleaned.length > maxLength) {\n    return null;\n  }\n\n  return cleaned;\n}\n\nfunction validate(input) {\n  const event = input?.body;\n  const errors = [];\n\n  if (\n    !event ||\n    typeof event !== \"object\" ||\n    Array.isArray(event)\n  ) {\n    return {\n      valid: false,\n      errors: [\"Request body must be a JSON object\"],\n    };\n  }\n\n  if (!isUuid(event.event_id)) {\n    errors.push(\"Invalid event_id\");\n  }\n\n  if (event.event_type !== \"incident.high_risk\") {\n    errors.push(\"Unsupported event_type\");\n  }\n\n  if (!isUuid(event.organization_id)) {\n    errors.push(\"Invalid organization_id\");\n  }\n\n  if (\n    typeof event.occurred_at !== \"string\" ||\n    !/^\\d{4}-\\d{2}-\\d{2}T/.test(event.occurred_at) ||\n    !Number.isFinite(Date.parse(event.occurred_at))\n  ) {\n    errors.push(\"Invalid occurred_at\");\n  }\n\n  const payload = event.payload;\n\n  if (\n    !payload ||\n    typeof payload !== \"object\" ||\n    Array.isArray(payload)\n  ) {\n    errors.push(\"Invalid incident payload\");\n  }\n\n  const incidentId = payload?.incident_id;\n  const title = cleanText(payload?.title, 300);\n  const category =\n    payload?.category == null\n      ? null\n      : cleanText(payload.category, 100);\n\n  const priority =\n    typeof payload?.priority === \"string\"\n      ? payload.priority.trim().toLowerCase()\n      : null;\n\n  if (!isUuid(incidentId)) {\n    errors.push(\"Invalid incident_id\");\n  }\n\n  if (!title) {\n    errors.push(\"Invalid incident title\");\n  }\n\n  if (\n    payload?.category != null &&\n    category === null\n  ) {\n    errors.push(\"Invalid incident category\");\n  }\n\n  if (![\"high\", \"critical\"].includes(priority)) {\n    errors.push(\"Priority must be high or critical\");\n  }\n\n  if (errors.length > 0) {\n    return {\n      valid: false,\n      errors,\n      event_id: isUuid(event.event_id)\n        ? event.event_id.toLowerCase()\n        : null,\n    };\n  }\n\n  return {\n    valid: true,\n    errors: [],\n    event_id: event.event_id.toLowerCase(),\n    event_type: \"incident.high_risk\",\n    organization_id: event.organization_id.toLowerCase(),\n    occurred_at: new Date(event.occurred_at).toISOString(),\n\n    incident_id: incidentId.toLowerCase(),\n    title,\n    priority,\n    category,\n\n    acknowledgment_minutes:\n      priority === \"critical\" ? 5 : 15,\n\n    escalation_minutes:\n      priority === \"critical\" ? 10 : 30,\n  };\n}\n\nreturn items.map((item, index) => ({\n  json: validate(item.json),\n  pairedItem: { item: index },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        368
+      ],
+      "id": "fc71b47f-7cdb-4c7f-a969-884f348b4b04",
+      "name": "02 | Validate & Normalize Incident Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "0ed5b03a-677c-4eca-831d-09e0df033c38",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        256,
+        368
+      ],
+      "id": "d439330a-8c76-466f-b704-72ce4573b108",
+      "name": "03 | Event Valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"rejected\",\n  code: \"INVALID_INCIDENT_EVENT\",\n  message: \"Incident event validation failed\",\n  errors: $json.errors\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        464
+      ],
+      "id": "4c68a058-9313-4b1d-98d4-e9d418bbeb13",
+      "name": "04 | Reject Invalid Incident Event"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intake_result }}",
+                    "rightValue": "created",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "81298c29-0749-4cf8-9891-97f3eaa206c4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NEW EVENT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "096a84f1-8c2c-481b-b6cf-2f6a4d8f2480",
+                    "leftValue": "={{ $json.intake_result }}",
+                    "rightValue": "duplicate",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DUPLICATE EVENT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "ebaf2010-a245-4bcc-9d77-0e66d0f10eeb",
+                    "leftValue": "={{ $json.intake_result }}",
+                    "rightValue": "conflict",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CONFLICTING EVENT"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        704,
+        240
+      ],
+      "id": "900ba2f2-e672-4ece-bf35-16d26c84d56e",
+      "name": "06 | Route Event Intake Result"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"rejected\",\n  code: \"EVENT_IDENTITY_CONFLICT\",\n  message: \"The event identifier is already associated with different incident data.\"\n}) }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        928,
+        272
+      ],
+      "id": "57d10174-def7-4ef7-a6cf-c2bc941e618f",
+      "name": "07 | Reject Conflicting Event Identity"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM automation.intake_high_risk_event(\n    $1::uuid,\n    $2::uuid,\n    $3::uuid,\n    $4::text,\n    $5::text,\n    $6::text,\n    $7::timestamptz,\n    $8::jsonb\n);",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "=\n{{ [\n  $json.event_id,\n  $json.organization_id,\n  $json.incident_id,\n  $json.title,\n  $json.priority,\n  $json.category,\n  $json.occurred_at,\n  JSON.stringify({\n    event_id: $json.event_id,\n    event_type: $json.event_type,\n    organization_id: $json.organization_id,\n    occurred_at: $json.occurred_at,\n    payload: {\n      incident_id: $json.incident_id,\n      title: $json.title,\n      priority: $json.priority,\n      category: $json.category\n    }\n  })\n] }}\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        480,
+        272
+      ],
+      "id": "3cf8c85c-2496-4cab-b647-54a59a688de6",
+      "name": "05 | Persist & Deduplicate Incident Event",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nSELECT\n    c.organization_id,\n    c.incident_id,\n    c.status AS incident_status,\n\n    EXISTS (\n        SELECT 1\n        FROM automation.notification_tasks t\n        WHERE t.organization_id = c.organization_id\n          AND t.incident_id = c.incident_id\n          AND t.channel = 'discord'\n          AND t.notification_type = 'initial_alert'\n    ) AS discord_task_exists,\n\n    EXISTS (\n        SELECT 1\n        FROM automation.notification_tasks t\n        WHERE t.organization_id = c.organization_id\n          AND t.incident_id = c.incident_id\n          AND t.channel = 'email'\n          AND t.notification_type = 'initial_alert'\n    ) AS email_task_exists,\n\n    c.acknowledgment_due_at,\n    c.escalation_due_at\n\nFROM automation.incident_cases c\n\nWHERE c.organization_id = $1::uuid\n  AND c.incident_id = $2::uuid;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.organization_id,\n  $json.incident_id\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        928,
+        80
+      ],
+      "id": "32545341-6612-4494-b40c-96c707971a9f",
+      "name": "08 | Verify Incident Response Readiness",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"error\",\n  code: \"UNEXPECTED_INTAKE_RESULT\",\n  message: \"Incident intake could not be completed.\"\n}) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        928,
+        464
+      ],
+      "id": "b22063c7-0bd3-4d76-9f0b-5239c80e61e0",
+      "name": "09 | Handle Unexpected Intake Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "d327cc02-9178-4dc5-aeab-ff71ad4b89ed",
+              "leftValue": "={{ $json.discord_task_exists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "15186d40-bf57-40f6-b207-dfbf427be49a",
+              "leftValue": "={{ $json.email_task_exists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1152,
+        80
+      ],
+      "id": "b1cc8639-2638-4ab9-884d-ac860c866a3f",
+      "name": "10 | Incident Response Ready?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"accepted\",\n  code: \"INCIDENT_INTAKE_PERSISTED\",\n  incident_id: $json.incident_id,\n  message: \"Incident response case and notification tasks are persisted.\"\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1376,
+        -16
+      ],
+      "id": "684735fb-5dda-49a7-afa7-78889d9b9c10",
+      "name": "11  |  Acknowledge Durable Incident Intake"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"error\",\n  code: \"INCIDENT_PREPARATION_INCOMPLETE\",\n  message: \"Incident response preparation could not be verified.\"\n}) }}",
+        "options": {
+          "responseCode": 503
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1376,
+        176
+      ],
+      "id": "76006226-9c4a-4017-a49f-b93c0478cc37",
+      "name": "12  | Reject Incomplete Incident Preparation"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Receive High-Risk Incident": {
+      "main": [
+        [
+          {
+            "node": "02 | Validate & Normalize Incident Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Validate & Normalize Incident Event": {
+      "main": [
+        [
+          {
+            "node": "03 | Event Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Event Valid?": {
+      "main": [
+        [
+          {
+            "node": "05 | Persist & Deduplicate Incident Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "04 | Reject Invalid Incident Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Route Event Intake Result": {
+      "main": [
+        [
+          {
+            "node": "08 | Verify Incident Response Readiness",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 | Verify Incident Response Readiness",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "07 | Reject Conflicting Event Identity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "09 | Handle Unexpected Intake Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Persist & Deduplicate Incident Event": {
+      "main": [
+        [
+          {
+            "node": "06 | Route Event Intake Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 | Verify Incident Response Readiness": {
+      "main": [
+        [
+          {
+            "node": "10 | Incident Response Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 | Incident Response Ready?": {
+      "main": [
+        [
+          {
+            "node": "11  |  Acknowledge Durable Incident Intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12  | Reject Incomplete Incident Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2de61a28-aa67-4a3a-a333-0084d1f88c55",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "Q2vMiSpiapDbL30J",
+  "tags": []
+}

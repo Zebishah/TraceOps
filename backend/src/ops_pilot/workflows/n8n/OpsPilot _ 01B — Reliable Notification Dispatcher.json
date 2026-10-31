@@ -1,0 +1,810 @@
+{
+  "name": "OpsPilot | 01B — Reliable Notification Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e3ea3e6e-fb23-4564-aab8-9fdc1c863253",
+      "name": "01 | Schedule Notification Dispatch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nWITH selected AS (\n    SELECT t.id\n    FROM automation.notification_tasks AS t\n    JOIN automation.incident_cases AS c\n      ON c.organization_id = t.organization_id\n     AND c.incident_id = t.incident_id\n    WHERE t.status IN ('pending', 'failed')\n      AND t.attempts < 8\n      AND t.next_attempt_at <= NOW()\n      AND (\n          (\n              t.notification_type = 'initial_alert'\n              AND c.status <> 'resolved'\n          )\n          OR\n          (\n              t.notification_type = 'manager_escalation'\n              AND c.status IN ('open', 'escalated')\n              AND c.acknowledged_at IS NULL\n              AND c.resolved_at IS NULL\n          )\n      )\n    ORDER BY t.next_attempt_at, t.created_at, t.id\n    FOR UPDATE OF t SKIP LOCKED\n    LIMIT 10\n)\nUPDATE automation.notification_tasks AS task\nSET\n    status = 'processing',\n    attempts = task.attempts + 1,\n    lease_token = gen_random_uuid(),\n    lease_expires_at = NOW() + INTERVAL '2 minutes',\n    updated_at = NOW()\nFROM selected\nWHERE task.id = selected.id\nRETURNING\n    task.id AS task_id,\n    task.organization_id,\n    task.incident_id,\n    task.channel,\n    task.notification_type,\n    task.attempts,\n    task.lease_token,\n    task.lease_expires_at;\n",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "12381879-3ee0-421b-b550-0cc38eec7617",
+      "name": "02 | Claim Pending Notification Tasks",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'discord'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();\n  AND (\n    (\n        t.notification_type = 'initial_alert'\n        AND c.status <> 'resolved'\n    )\n    OR (\n        t.notification_type = 'manager_escalation'\n        AND c.status IN ('open', 'escalated')\n        AND c.acknowledged_at IS NULL\n        AND c.resolved_at IS NULL\n    )\n)",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.task_id,\n  $json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        -112
+      ],
+      "id": "2c9ca933-49cf-45a5-8114-551ba9127cbf",
+      "name": "04 | Load Discord Alert Details",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const incident = $json;\n\nconst isEscalation =\n  incident.notification_type === \"manager_escalation\";\n\nif (\n  !incident.task_id ||\n  !incident.lease_token ||\n  !incident.incident_id ||\n  ![\"initial_alert\", \"manager_escalation\"].includes(\n    incident.notification_type\n  )\n) {\n  throw new Error(\"Invalid claimed incident notification\");\n}\n\nconst heading = isEscalation\n  ? \"🚨 MANAGER ESCALATION — INCIDENT UNACKNOWLEDGED\"\n  : \"🚨 NEW HIGH-RISK INCIDENT\";\n\nconst message = [\n  heading,\n  \"\",\n  `Incident: ${String(incident.title ?? \"Unknown\").slice(0, 200)}`,\n  `Priority: ${incident.priority ?? \"Unknown\"}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  \"\",\n  isEscalation\n    ? \"The incident passed its escalation deadline without acknowledgment.\"\n    : \"A high-risk incident requires investigation.\",\n  \"\",\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at ?? \"Unknown\"}`,\n  `Escalation deadline: ${incident.escalation_due_at ?? \"Unknown\"}`,\n  \"\",\n  \"Open OpsPilot to investigate and respond.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    discord_message: message.slice(0, 1900)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -128
+      ],
+      "id": "0a0ddd89-4bf3-4e4e-8bb9-a9110ed167da",
+      "name": "05 | Prepare Discord Incident Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1565123584169484391/3gcjRgkiJT11iOwIl0s6BPNCoEOxFQ-qRsP39O9OyCzoFobSp-o-837Vh5RkPk2icYtF",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wait",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  content: $json.discord_message,\n  allowed_mentions: {\n    parse: []\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1600,
+        -80
+      ],
+      "id": "dd80fa18-67dd-4a44-9656-f360b43a9daa",
+      "name": "06 | Send Discord Incident Alert",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivered',\n        delivered_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n      AND t.channel = 'discord'\n      AND t.lease_expires_at > NOW()\n      AND $3::integer = 200\n      AND NULLIF($4::text, '') IS NOT NULL\n    RETURNING t.id\n)\nSELECT\n    EXISTS(SELECT 1 FROM finalized) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Discord Incident Alert').item.json.task_id,\n  $('05 | Prepare Discord Incident Alert').item.json.lease_token,\n  $json.statusCode ?? 0,\n  $json.body?.id ?? ''\n] }}",
+          "treatQueryParametersInSingleQuotesAsText": false
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1776,
+        -240
+      ],
+      "id": "8cc69847-acea-401a-b87a-c4bf0258a21a",
+      "name": "07 | Finalize Discord Delivery Success",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "discord",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "fdaecfaf-db69-46c2-97d1-b7515674cc8f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DISCORD"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "5c4b1b8c-f5e5-4ad2-bcbd-6a8bef422aeb",
+                    "leftValue": "={{ $json.channel }}",
+                    "rightValue": "email",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "EMAIL"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        656,
+        80
+      ],
+      "id": "52511181-bfbb-4759-8070-b3027d3b7071",
+      "name": "03 | Route Notification Channel"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\nSELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'email'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();\n  AND (\n    (\n        t.notification_type = 'initial_alert'\n        AND c.status <> 'resolved'\n    )\n    OR (\n        t.notification_type = 'manager_escalation'\n        AND c.status IN ('open', 'escalated')\n        AND c.acknowledged_at IS NULL\n        AND c.resolved_at IS NULL\n    )\n)",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.task_id,\n  $json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        128
+      ],
+      "id": "7895befd-4a91-4eca-970f-b1a235be330a",
+      "name": "09 | Load Email Alert Details",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const incident = $json;\n\nconst isEscalation =\n  incident.notification_type === \"manager_escalation\";\n\nif (\n  !incident.task_id ||\n  !incident.lease_token ||\n  !incident.incident_id ||\n  ![\"initial_alert\", \"manager_escalation\"].includes(\n    incident.notification_type\n  )\n) {\n  throw new Error(\"Invalid claimed incident notification\");\n}\n\n// Configure these using authorized operational destinations.\n// During testing, both may point to your own test inbox.\nconst RESPONDER_EMAIL = \"\";\nconst MANAGER_EMAIL = \"\";\n\nconst recipient = isEscalation\n  ? MANAGER_EMAIL\n  : RESPONDER_EMAIL;\n\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(recipient)) {\n  throw new Error(\n    `Missing authorized ${isEscalation ? \"manager\" : \"responder\"} recipient`\n  );\n}\n\nconst subject = isEscalation\n  ? `[MANAGER ESCALATION] ${incident.title ?? \"Incident\"}`\n  : `[INCIDENT ALERT] ${incident.title ?? \"Incident\"}`;\n\nconst message = [\n  isEscalation\n    ? \"An incident has exceeded its escalation deadline without acknowledgment.\"\n    : \"A high-risk incident requires investigation.\",\n  \"\",\n  `Incident: ${incident.title ?? \"Unknown\"}`,\n  `Priority: ${incident.priority ?? \"Unknown\"}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at ?? \"Unknown\"}`,\n  `Escalation deadline: ${incident.escalation_due_at ?? \"Unknown\"}`,\n  \"\",\n  \"Please open OpsPilot and take the appropriate action.\",\n  \"Do not approve refunds or execute financial actions by replying.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    recipient,\n    subject,\n    message\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        112
+      ],
+      "id": "69995217-da79-41ca-82fc-95740d0d0d4e",
+      "name": "10 | Prepare Responder Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "zebihaider123@gmail.com",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "senderName": "Ops-pilot",
+          "replyToSenderOnly": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        256
+      ],
+      "id": "5357ce88-936f-45c8-b5a4-b908dca40996",
+      "name": "11 | Send Responder Email",
+      "webhookId": "5faa9763-ca01-49b2-b541-edb714f08c51",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lEVybiQxzjnBFIjE",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivered',\n        delivered_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n      AND t.channel = 'email'\n      AND t.lease_expires_at > NOW()\n      AND NULLIF($3::text, '') IS NOT NULL\n    RETURNING t.id\n)\nSELECT\n    EXISTS(SELECT 1 FROM finalized) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('10 | Prepare Responder Email').item.json.task_id,\n  $('10 | Prepare Responder Email').item.json.lease_token,\n  $json.id ?? ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1856,
+        192
+      ],
+      "id": "418c4f6b-6d7b-4dd0-a0b0-abc89595f252",
+      "name": "12 | Finalize Email Delivery Success",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE automation.notification_tasks AS t\nSET\n    status = 'dead',\n    last_error = 'Unsupported notification channel',\n    lease_token = NULL,\n    lease_expires_at = NULL,\n    updated_at = NOW()\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW()\n  AND t.channel NOT IN ('discord', 'email')\nRETURNING\n    t.id AS task_id,\n    t.channel,\n    t.status,\n    t.last_error;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.task_id,\n  $json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        336
+      ],
+      "id": "6401f68d-80e7-4874-b8dc-d98c451a9a7c",
+      "name": "14 | Quarantine Unsupported Channel",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1b360088-230b-48a6-ab72-5324032c243b",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2000,
+        -240
+      ],
+      "id": "f28f79b8-2bb0-40f5-b383-6ff2e751beac",
+      "name": "16 | Verify Discord Delivery Finalization"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "9803b5d1-4643-4d99-b99a-75306abab0b0",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2080,
+        192
+      ],
+      "id": "6b8c9ac8-8497-47ec-8086-1a00c503968e",
+      "name": "17 | Verify Email Delivery Finalization"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Worker lease expired; external delivery outcome is uncertain',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE t.status = 'processing'\n      AND t.lease_expires_at IS NOT NULL\n      AND t.lease_expires_at <= NOW()\n    RETURNING t.id\n)\nSELECT COUNT(*)::integer AS uncertain_tasks_quarantined\nFROM quarantined;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "4fe668c9-49c3-4333-8a37-a79a4992ff8e",
+      "name": "15 | Quarantine Expired Notification Leases",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n    RETURNING t.id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Discord Incident Alert').item.json.task_id,\n  $('05 | Prepare Discord Incident Alert').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Discord request failed')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1936,
+        0
+      ],
+      "id": "e7baf32f-b63c-4a5a-bf0b-9e08c48449d0",
+      "name": "08 | Quarantine Uncertain Discord Failure",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n    RETURNING t.id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('10 | Prepare Responder Email').item.json.task_id,\n  $('10 | Prepare Responder Email').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Gmail delivery failed')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1872,
+        432
+      ],
+      "id": "f2dded74-0be2-4ba7-952f-3e0716393228",
+      "name": "13 | Quarantine Uncertain Email Failure",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Discord delivery accepted or uncertain; finalization was not confirmed',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n    RETURNING t.id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('05 | Prepare Discord Incident Alert').item.json.task_id,\n  $('05 | Prepare Discord Incident Alert').item.json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2224,
+        -144
+      ],
+      "id": "6393b790-1eae-4f21-9675-b29cfe87c100",
+      "name": "18 | Quarantine Unconfirmed Discord Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.notification_tasks AS t\n    SET\n        status = 'delivery_unknown',\n        last_error = 'Gmail delivery accepted or uncertain; finalization was not confirmed',\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        updated_at = NOW()\n    WHERE t.id = $1::uuid\n      AND t.lease_token = $2::uuid\n      AND t.status = 'processing'\n    RETURNING t.id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('10 | Prepare Responder Email').item.json.task_id,\n  $('10 | Prepare Responder Email').item.json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2304,
+        288
+      ],
+      "id": "5da698da-f711-4fae-bb89-67c531880431",
+      "name": "19 | Quarantine Unconfirmed Email Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "7b4fabf1-a321-40fb-a8af-7698cdc8fd78",
+              "leftValue": "={{ Boolean($json.task_id && $json.lease_token && $json.incident_id && $json.title) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        -112
+      ],
+      "id": "15acb039-a806-4258-81b4-c0fc560d903f",
+      "name": "20 | Verify Discord Task Ownership"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "c3505502-865c-45ba-a28a-186403f0f9bf",
+              "leftValue": "={{ Boolean($json.task_id && $json.lease_token && $json.incident_id && $json.title) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        128
+      ],
+      "id": "a36c8145-13c7-4f62-8832-250dfeac3f91",
+      "name": "21 | Verify Email Task Ownership"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Notification Dispatch": {
+      "main": [
+        [
+          {
+            "node": "15 | Quarantine Expired Notification Leases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Claim Pending Notification Tasks": {
+      "main": [
+        [
+          {
+            "node": "03 | Route Notification Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Load Discord Alert Details": {
+      "main": [
+        [
+          {
+            "node": "20 | Verify Discord Task Ownership",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Prepare Discord Incident Alert": {
+      "main": [
+        [
+          {
+            "node": "06 | Send Discord Incident Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Send Discord Incident Alert": {
+      "main": [
+        [
+          {
+            "node": "07 | Finalize Discord Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "08 | Quarantine Uncertain Discord Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 | Finalize Discord Delivery Success": {
+      "main": [
+        [
+          {
+            "node": "16 | Verify Discord Delivery Finalization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Route Notification Channel": {
+      "main": [
+        [
+          {
+            "node": "04 | Load Discord Alert Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "09 | Load Email Alert Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14 | Quarantine Unsupported Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 | Load Email Alert Details": {
+      "main": [
+        [
+          {
+            "node": "21 | Verify Email Task Ownership",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 | Prepare Responder Email": {
+      "main": [
+        [
+          {
+            "node": "11 | Send Responder Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 | Send Responder Email": {
+      "main": [
+        [
+          {
+            "node": "12 | Finalize Email Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "13 | Quarantine Uncertain Email Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 | Finalize Email Delivery Success": {
+      "main": [
+        [
+          {
+            "node": "17 | Verify Email Delivery Finalization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 | Verify Discord Delivery Finalization": {
+      "main": [
+        [],
+        [
+          {
+            "node": "18 | Quarantine Unconfirmed Discord Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17 | Verify Email Delivery Finalization": {
+      "main": [
+        [],
+        [
+          {
+            "node": "19 | Quarantine Unconfirmed Email Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 | Quarantine Expired Notification Leases": {
+      "main": [
+        [
+          {
+            "node": "02 | Claim Pending Notification Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 | Quarantine Uncertain Discord Failure": {
+      "main": [
+        []
+      ]
+    },
+    "20 | Verify Discord Task Ownership": {
+      "main": [
+        [
+          {
+            "node": "05 | Prepare Discord Incident Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "21 | Verify Email Task Ownership": {
+      "main": [
+        [
+          {
+            "node": "10 | Prepare Responder Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c05c8661-dcfa-4287-922c-16c845e84339",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "033XnLgVW4vVvnO2",
+  "tags": []
+}

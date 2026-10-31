@@ -1,0 +1,326 @@
+{
+  "name": "OpsPilot | 03B — Document Failure Alert Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9c25cab6-a19f-48cf-9033-f469f94f25b7",
+      "name": "01 | Schedule Failure Alert Dispatch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.document_failure_events\n    SET\n        alert_status = 'delivery_unknown',\n        last_error = 'Alert worker lease expired; delivery uncertain',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE alert_status = 'processing'\n      AND lease_expires_at <= NOW()\n    RETURNING event_id\n)\nSELECT COUNT(*)::integer AS quarantined_count\nFROM quarantined;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "588f8006-31f4-4f50-ad50-4310f3c6dfea",
+      "name": "02 | Quarantine Expired Alert Leases",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n    SELECT event_id\n    FROM automation.document_failure_events\n    WHERE alert_status = 'pending'\n      AND alert_attempts < 5\n    ORDER BY received_at, event_id\n    FOR UPDATE SKIP LOCKED\n    LIMIT 10\n)\nUPDATE automation.document_failure_events AS d\nSET\n    alert_status = 'processing',\n    alert_attempts = d.alert_attempts + 1,\n    lease_token = gen_random_uuid(),\n    lease_expires_at = NOW() + INTERVAL '3 minutes'\nFROM selected\nWHERE d.event_id = selected.event_id\nRETURNING\n    d.event_id,\n    d.organization_id,\n    d.document_id,\n    d.job_id,\n    d.filename,\n    d.error_message,\n    d.occurred_at,\n    d.lease_token,\n    d.alert_attempts;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "eddb22e8-ed3e-472d-a15f-88226e3c7998",
+      "name": "03 | Claim Pending Document Alerts",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $json;\n\nif (!item.event_id || !item.lease_token || !item.job_id) {\n  throw new Error(\"Missing claimed failure event ownership\");\n}\n\nconst safe = (value, max = 180) =>\n  String(value ?? \"\")\n    .replace(/[`*_~<>@]/g, \"\")\n    .replace(/https?:\\/\\/\\S+/gi, \"[URL redacted]\")\n    .replace(/[\\r\\n\\t]/g, \" \")\n    .slice(0, max);\n\nconst message = [\n  \"🚨 DOCUMENT INDEXING FAILURE\",\n  \"\",\n  `Document: ${safe(item.filename, 120)}`,\n  `Job ID: ${item.job_id}`,\n  `Document ID: ${item.document_id}`,\n  `Organization ID: ${item.organization_id}`,\n  `Error: ${safe(item.error_message, 300)}`,\n  `Occurred at: ${item.occurred_at}`,\n  \"\",\n  \"Action required: Investigate the indexing job in OpsPilot.\",\n  \"Do not automatically retry until the failure is reviewed.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    event_id: item.event_id,\n    lease_token: item.lease_token,\n    discord_message: message\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "56026c7f-3f18-4465-a222-b2a7d09acade",
+      "name": "04 | Prepare Safe Discord Failure Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1565123584169484391/3gcjRgkiJT11iOwIl0s6BPNCoEOxFQ-qRsP39O9OyCzoFobSp-o-837Vh5RkPk2icYtF",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wait",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  content: $json.discord_message,\n  allowed_mentions: {\n    parse: []\n  }\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        864,
+        0
+      ],
+      "id": "86f5da3c-c600-445c-8ecb-285b72fd6ff5",
+      "name": "05 | Send Document Failure Alert",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.document_failure_events\n    SET\n        alert_status = 'delivered',\n        alerted_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL\n    WHERE event_id = $1::uuid\n      AND lease_token = $2::uuid\n      AND alert_status = 'processing'\n      AND lease_expires_at > NOW()\n      AND $3::integer = 200\n      AND NULLIF($4::text, '') IS NOT NULL\n    RETURNING event_id\n)\nSELECT EXISTS(SELECT 1 FROM finalized) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Safe Discord Failure Alert').item.json.event_id,\n  $('04 | Prepare Safe Discord Failure Alert').item.json.lease_token,\n  $json.statusCode ?? 0,\n  $json.body?.id ?? ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1088,
+        -96
+      ],
+      "id": "c2e128e0-e2f4-4f45-9a32-3aeb7fbdc2b1",
+      "name": "06 | Finalize Successful Alert",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.document_failure_events\n    SET\n        alert_status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE event_id = $1::uuid\n      AND lease_token = $2::uuid\n      AND alert_status = 'processing'\n    RETURNING event_id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Safe Discord Failure Alert').item.json.event_id,\n  $('04 | Prepare Safe Discord Failure Alert').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Discord outcome uncertain')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1088,
+        96
+      ],
+      "id": "290b74c1-4ed5-47f5-9c47-18cd33deadb4",
+      "name": "07 | Quarantine Uncertain Discord Failure",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "7779cb3f-84bd-485e-9546-cb9a98322c1c",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1312,
+        -96
+      ],
+      "id": "d266a6a5-0070-4908-af6b-da2f97a22859",
+      "name": "08 | Alert Delivery Finalized?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.document_failure_events\n    SET\n        alert_status = 'delivery_unknown',\n        last_error = 'Discord accepted or outcome uncertain; finalization failed',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE event_id = $1::uuid\n      AND lease_token = $2::uuid\n      AND alert_status = 'processing'\n    RETURNING event_id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Safe Discord Failure Alert').item.json.event_id,\n  $('04 | Prepare Safe Discord Failure Alert').item.json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1488,
+        80
+      ],
+      "id": "85a7ecd7-b889-49b3-a519-992f53bb6745",
+      "name": "09 | Quarantine Unconfirmed Finalization",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Failure Alert Dispatch": {
+      "main": [
+        [
+          {
+            "node": "02 | Quarantine Expired Alert Leases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Quarantine Expired Alert Leases": {
+      "main": [
+        [
+          {
+            "node": "03 | Claim Pending Document Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Claim Pending Document Alerts": {
+      "main": [
+        [
+          {
+            "node": "04 | Prepare Safe Discord Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Prepare Safe Discord Failure Alert": {
+      "main": [
+        [
+          {
+            "node": "05 | Send Document Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Send Document Failure Alert": {
+      "main": [
+        [
+          {
+            "node": "06 | Finalize Successful Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "07 | Quarantine Uncertain Discord Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Finalize Successful Alert": {
+      "main": [
+        [
+          {
+            "node": "08 | Alert Delivery Finalized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 | Alert Delivery Finalized?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "09 | Quarantine Unconfirmed Finalization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a2b2c7ad-b31e-4217-a7e1-d154be46a3f0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "6Zb9yGDDis0xIQvN",
+  "tags": []
+}

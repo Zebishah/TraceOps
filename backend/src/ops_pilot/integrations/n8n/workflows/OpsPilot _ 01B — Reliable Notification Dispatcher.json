@@ -24,8 +24,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "\nWITH selected AS (\n    SELECT t.id\n    FROM automation.notification_tasks AS t\n    WHERE t.attempts < 8\n      AND t.id IN (\n      '7b6ca029-df29-4476-9a37-3f6c1737ba39'::uuid,\n      'e2749778-eaab-478e-8314-7b24e46662c8'::uuid\n  )\n      AND t.next_attempt_at <= NOW()\n      AND t.status IN ('pending', 'failed')\n    ORDER BY t.next_attempt_at, t.created_at, t.id\n    FOR UPDATE SKIP LOCKED\n    LIMIT 10\n)\nUPDATE automation.notification_tasks AS task\nSET\n    status = 'processing',\n    attempts = task.attempts + 1,\n    lease_token = gen_random_uuid(),\n    lease_expires_at = NOW() + INTERVAL '2 minutes',\n    updated_at = NOW()\nFROM selected\nWHERE task.id = selected.id\nRETURNING\n    task.id AS task_id,\n    task.organization_id,\n    task.incident_id,\n    task.channel,\n    task.notification_type,\n    task.attempts,\n    task.lease_token,\n    task.lease_expires_at;\n",
-        "options": {}
+        "query": "\nWITH selected AS (\n    SELECT t.id\n    FROM automation.notification_tasks AS t\n    JOIN automation.incident_cases AS c\n      ON c.organization_id = t.organization_id\n     AND c.incident_id = t.incident_id\n    WHERE t.status IN ('pending', 'failed')\n      AND t.attempts < 8\n      AND t.next_attempt_at <= NOW()\n      AND (\n          (\n              t.notification_type = 'initial_alert'\n              AND c.status <> 'resolved'\n          )\n          OR\n          (\n              t.notification_type = 'manager_escalation'\n              AND c.status IN ('open', 'escalated')\n              AND c.acknowledged_at IS NULL\n              AND c.resolved_at IS NULL\n          )\n      )\n    ORDER BY t.next_attempt_at, t.created_at, t.id\n    FOR UPDATE OF t SKIP LOCKED\n    LIMIT 10\n)\nUPDATE automation.notification_tasks AS task\nSET\n    status = 'processing',\n    attempts = task.attempts + 1,\n    lease_token = gen_random_uuid(),\n    lease_expires_at = NOW() + INTERVAL '2 minutes',\n    updated_at = NOW()\nFROM selected\nWHERE task.id = selected.id\nRETURNING\n    task.id AS task_id,\n    task.organization_id,\n    task.incident_id,\n    task.channel,\n    task.notification_type,\n    task.attempts,\n    task.lease_token,\n    task.lease_expires_at;\n",
+        "options": {
+          "queryBatching": "single"
+        }
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
@@ -45,7 +47,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'discord'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();",
+        "query": "SELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'discord'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();\n  AND (\n    (\n        t.notification_type = 'initial_alert'\n        AND c.status <> 'resolved'\n    )\n    OR (\n        t.notification_type = 'manager_escalation'\n        AND c.status IN ('open', 'escalated')\n        AND c.acknowledged_at IS NULL\n        AND c.resolved_at IS NULL\n    )\n)",
         "options": {
           "queryBatching": "independently",
           "queryReplacement": "={{ [\n  $json.task_id,\n  $json.lease_token\n] }}"
@@ -69,7 +71,8 @@
     },
     {
       "parameters": {
-        "jsCode": "const incident = $json;\n\nconst severity =\n  incident.priority === 'critical'\n    ? '🚨 CRITICAL'\n    : '⚠️ HIGH';\n\nconst message = [\n  `${severity} | OPSPILOT INCIDENT`,\n  '',\n  `Title: ${incident.title}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Status: ${incident.incident_status}`,\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  '',\n  'Action required: Assign an incident responder.'\n].join('\\n');\n\nreturn {\n  json: {\n    ...incident,\n    discord_message: message.slice(0, 1900)\n  }\n};"
+        "mode": "runOnceForEachItem",
+        "jsCode": "const incident = $json;\n\nconst isEscalation =\n  incident.notification_type === \"manager_escalation\";\n\nif (\n  !incident.task_id ||\n  !incident.lease_token ||\n  !incident.incident_id ||\n  ![\"initial_alert\", \"manager_escalation\"].includes(\n    incident.notification_type\n  )\n) {\n  throw new Error(\"Invalid claimed incident notification\");\n}\n\nconst heading = isEscalation\n  ? \"🚨 MANAGER ESCALATION — INCIDENT UNACKNOWLEDGED\"\n  : \"🚨 NEW HIGH-RISK INCIDENT\";\n\nconst message = [\n  heading,\n  \"\",\n  `Incident: ${String(incident.title ?? \"Unknown\").slice(0, 200)}`,\n  `Priority: ${incident.priority ?? \"Unknown\"}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  \"\",\n  isEscalation\n    ? \"The incident passed its escalation deadline without acknowledgment.\"\n    : \"A high-risk incident requires investigation.\",\n  \"\",\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at ?? \"Unknown\"}`,\n  `Escalation deadline: ${incident.escalation_due_at ?? \"Unknown\"}`,\n  \"\",\n  \"Open OpsPilot to investigate and respond.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    discord_message: message.slice(0, 1900)\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -211,7 +214,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "\nSELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'email'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();\n",
+        "query": "\nSELECT\n    t.id AS task_id,\n    t.organization_id,\n    t.incident_id,\n    t.lease_token,\n    t.attempts,\n    t.notification_type,\n    c.title,\n    c.priority,\n    c.status AS incident_status,\n    c.acknowledgment_due_at,\n    c.escalation_due_at\nFROM automation.notification_tasks AS t\nJOIN automation.incident_cases AS c\n    ON c.organization_id = t.organization_id\n   AND c.incident_id = t.incident_id\nWHERE t.id = $1::uuid\n  AND t.lease_token = $2::uuid\n  AND t.channel = 'email'\n  AND t.status = 'processing'\n  AND t.lease_expires_at > NOW();\n  AND (\n    (\n        t.notification_type = 'initial_alert'\n        AND c.status <> 'resolved'\n    )\n    OR (\n        t.notification_type = 'manager_escalation'\n        AND c.status IN ('open', 'escalated')\n        AND c.acknowledged_at IS NULL\n        AND c.resolved_at IS NULL\n    )\n)",
         "options": {
           "queryBatching": "independently",
           "queryReplacement": "={{ [\n  $json.task_id,\n  $json.lease_token\n] }}"
@@ -236,7 +239,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "\nconst incident = $json;\n\nconst priority = String(incident.priority || \"\").toLowerCase();\n\nconst label =\n  priority === \"critical\" ? \"CRITICAL\" : \"HIGH\";\n\nconst safeTitle = String(incident.title || \"\")\n  .replace(/[\\r\\n]+/g, \" \")\n  .trim()\n  .slice(0, 180);\n\nconst subject = `[OpsPilot] ${label} Incident — ${safeTitle}`;\n\nconst body = [\n  \"OPSPILOT — INCIDENT RESPONSE NOTIFICATION\",\n  \"\",\n  `Priority: ${label}`,\n  `Incident: ${safeTitle}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Current status: ${incident.incident_status}`,\n  \"\",\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  \"\",\n  \"Required action:\",\n  \"Review the incident and assign an authorized responder.\",\n  \"\",\n  \"This is an automated operational notification.\",\n  \"Do not reply with passwords, credentials or payment information.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    email_subject: subject,\n    email_body: body\n  }\n};\n"
+        "jsCode": "const incident = $json;\n\nconst isEscalation =\n  incident.notification_type === \"manager_escalation\";\n\nif (\n  !incident.task_id ||\n  !incident.lease_token ||\n  !incident.incident_id ||\n  ![\"initial_alert\", \"manager_escalation\"].includes(\n    incident.notification_type\n  )\n) {\n  throw new Error(\"Invalid claimed incident notification\");\n}\n\n// Configure these using authorized operational destinations.\n// During testing, both may point to your own test inbox.\nconst RESPONDER_EMAIL = \"\";\nconst MANAGER_EMAIL = \"\";\n\nconst recipient = isEscalation\n  ? MANAGER_EMAIL\n  : RESPONDER_EMAIL;\n\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(recipient)) {\n  throw new Error(\n    `Missing authorized ${isEscalation ? \"manager\" : \"responder\"} recipient`\n  );\n}\n\nconst subject = isEscalation\n  ? `[MANAGER ESCALATION] ${incident.title ?? \"Incident\"}`\n  : `[INCIDENT ALERT] ${incident.title ?? \"Incident\"}`;\n\nconst message = [\n  isEscalation\n    ? \"An incident has exceeded its escalation deadline without acknowledgment.\"\n    : \"A high-risk incident requires investigation.\",\n  \"\",\n  `Incident: ${incident.title ?? \"Unknown\"}`,\n  `Priority: ${incident.priority ?? \"Unknown\"}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at ?? \"Unknown\"}`,\n  `Escalation deadline: ${incident.escalation_due_at ?? \"Unknown\"}`,\n  \"\",\n  \"Please open OpsPilot and take the appropriate action.\",\n  \"Do not approve refunds or execute financial actions by replying.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    recipient,\n    subject,\n    message\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -796,7 +799,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "82e4b3e4-a2a1-4d6f-a841-2c6eba19f531",
+  "versionId": "c05c8661-dcfa-4287-922c-16c845e84339",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"

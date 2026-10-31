@@ -1,0 +1,396 @@
+{
+  "name": "OpsPilot | 04B — Approval Reminder Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d27652fb-fc59-4d1f-9d34-b922a6f60992",
+      "name": "01 | Schedule Approval Reminder Dispatch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.approval_reminders\n    SET status = 'delivery_unknown',\n        last_error = 'Approval reminder worker lease expired',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE status = 'processing'\n      AND lease_expires_at <= NOW()\n    RETURNING id\n)\nSELECT COUNT(*)::integer AS quarantined_count\nFROM quarantined;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "1a770e31-9b41-4fe5-800a-463e1662c5e2",
+      "name": "02 | Quarantine Expired Reminder Leases",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH selected AS (\n    SELECT r.id\n    FROM automation.approval_reminders AS r\n    JOIN public.approval_requests AS a\n      ON a.id = r.approval_id\n     AND a.organization_id = r.organization_id\n     AND a.incident_id = r.incident_id\n    WHERE r.status = 'pending'\n      AND r.attempts < 5\n      AND a.status = 'pending'\n    ORDER BY r.created_at, r.id\n    FOR UPDATE OF r SKIP LOCKED\n    LIMIT 10\n),\nclaimed AS (\n    UPDATE automation.approval_reminders AS r\n    SET\n        status = 'processing',\n        attempts = r.attempts + 1,\n        lease_token = gen_random_uuid(),\n        lease_expires_at = NOW() + INTERVAL '5 minutes'\n    FROM selected\n    WHERE r.id = selected.id\n    RETURNING\n        r.id AS reminder_id,\n        r.approval_id,\n        r.organization_id,\n        r.incident_id,\n        r.reminder_level,\n        r.lease_token\n)\nSELECT * FROM claimed;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "1dff4342-0d76-45ca-9f64-96465e9ffdb7",
+      "name": "03 | Claim Pending Approval Reminders",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const reminder = $json;\n\nif (!reminder.reminder_id || !reminder.lease_token) {\n  throw new Error(\"Missing approval reminder ownership\");\n}\n\nconst isEscalation = reminder.reminder_level === \"escalation\";\n\nconst subject = isEscalation\n  ? \"[ESCALATION] Refund approval awaiting review\"\n  : \"Refund approval requires review\";\n\nconst message = [\n  \"OpsPilot Approval Notification\",\n  \"\",\n  isEscalation\n    ? \"An approval has exceeded its escalation threshold.\"\n    : \"A refund approval is awaiting review.\",\n  \"\",\n  `Approval ID: ${reminder.approval_id}`,\n  `Incident ID: ${reminder.incident_id}`,\n  `Organization ID: ${reminder.organization_id}`,\n  \"\",\n  \"Open OpsPilot to review and make an authorized decision.\",\n  \"Do not approve or reject refunds by replying to this email.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...reminder,\n    subject,\n    message\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "600413a0-e7c6-481a-b045-e91352c21774",
+      "name": "04 | Prepare Approval Reminder"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS (\n    SELECT 1\n    FROM automation.approval_reminders AS r\n    JOIN public.approval_requests AS a\n      ON a.id = r.approval_id\n     AND a.organization_id = r.organization_id\n     AND a.incident_id = r.incident_id\n    WHERE r.id = $1::uuid\n      AND r.lease_token = $2::uuid\n      AND r.status = 'processing'\n      AND r.lease_expires_at > NOW()\n      AND a.status = 'pending'\n) AS can_send;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [$json.reminder_id, $json.lease_token] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "id": "111d4237-02cb-492a-81a9-cda3c6eed258",
+      "name": "05 | Verify Approval Still Pending",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "66e9e5cb-272e-4bca-9bb9-d6f19259a9bd",
+              "leftValue": "={{ $json.can_send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "5d33160c-b204-4a95-b817-2848f80e25df",
+      "name": "06 | Approval Still Pending?"
+    },
+    {
+      "parameters": {
+        "sendTo": "zebihaider123@gmail.com",
+        "subject": "={{ $('04 | Prepare Approval Reminder').item.json.subject }}",
+        "emailType": "text",
+        "message": "={{ $('04 | Prepare Approval Reminder').item.json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "7026eee8-a24f-4d16-b590-d73792c92cfc",
+      "name": "07 | Send Approval Reminder Email",
+      "webhookId": "1cf66c19-0cd4-4ed2-b424-37c5418fd92f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lEVybiQxzjnBFIjE",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH finalized AS (\n    UPDATE automation.approval_reminders\n    SET status = 'delivered',\n        delivered_at = NOW(),\n        lease_token = NULL,\n        lease_expires_at = NULL,\n        last_error = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n      AND lease_expires_at > NOW()\n      AND NULLIF($3::text, '') IS NOT NULL\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM finalized) AS finalized;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Approval Reminder').item.json.reminder_id,\n  $('04 | Prepare Approval Reminder').item.json.lease_token,\n  $json.id ?? ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1600,
+        -160
+      ],
+      "id": "71a6fd4e-046b-4a75-b4ae-4dc92b8f0dbc",
+      "name": "08 | Finalize Reminder Delivery",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.approval_reminders\n    SET status = 'delivery_unknown',\n        last_error = LEFT($3::text, 1000),\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Approval Reminder').item.json.reminder_id,\n  $('04 | Prepare Approval Reminder').item.json.lease_token,\n  String($json.error?.message ?? $json.message ?? 'Gmail delivery uncertain')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1600,
+        48
+      ],
+      "id": "75c466f6-6bd3-45c9-b0a9-8e297ec940ea",
+      "name": "09 | Quarantine Uncertain Email Failure",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "bd7b7bf1-5b53-46f9-bf36-f346e48a921f",
+              "leftValue": "={{ $json.finalized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1824,
+        -160
+      ],
+      "id": "fc4ad210-1571-491d-81a6-6cf2a0d6a1a5",
+      "name": "10 | Reminder Delivery Finalized?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH quarantined AS (\n    UPDATE automation.approval_reminders\n    SET status = 'delivery_unknown',\n        last_error = 'Gmail delivery finalization unconfirmed',\n        lease_token = NULL,\n        lease_expires_at = NULL\n    WHERE id = $1::uuid\n      AND lease_token = $2::uuid\n      AND status = 'processing'\n    RETURNING id\n)\nSELECT EXISTS(SELECT 1 FROM quarantined) AS quarantined;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $('04 | Prepare Approval Reminder').item.json.reminder_id,\n  $('04 | Prepare Approval Reminder').item.json.lease_token\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2048,
+        -64
+      ],
+      "id": "24d2948f-2141-42a5-a309-116b19773a19",
+      "name": "11 | Quarantine Unconfirmed Reminder",
+      "credentials": {
+        "postgres": {
+          "id": "dkzZ44RtqalwotTh",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 | Schedule Approval Reminder Dispatch": {
+      "main": [
+        [
+          {
+            "node": "02 | Quarantine Expired Reminder Leases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 | Quarantine Expired Reminder Leases": {
+      "main": [
+        [
+          {
+            "node": "03 | Claim Pending Approval Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 | Claim Pending Approval Reminders": {
+      "main": [
+        [
+          {
+            "node": "04 | Prepare Approval Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 | Prepare Approval Reminder": {
+      "main": [
+        [
+          {
+            "node": "05 | Verify Approval Still Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 | Verify Approval Still Pending": {
+      "main": [
+        [
+          {
+            "node": "06 | Approval Still Pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 | Approval Still Pending?": {
+      "main": [
+        [
+          {
+            "node": "07 | Send Approval Reminder Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 | Send Approval Reminder Email": {
+      "main": [
+        [
+          {
+            "node": "08 | Finalize Reminder Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "09 | Quarantine Uncertain Email Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 | Finalize Reminder Delivery": {
+      "main": [
+        [
+          {
+            "node": "10 | Reminder Delivery Finalized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 | Reminder Delivery Finalized?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "11 | Quarantine Unconfirmed Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f03342cd-0fc9-4857-8295-05bfb8cd17cb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a8b05b0970d615da32aef8ebefecf9e41f39f24ad72f3704ebd46c4aa58d980d"
+  },
+  "nodeGroups": [],
+  "id": "8dIYdLlRKEhhiGdQ",
+  "tags": []
+}
