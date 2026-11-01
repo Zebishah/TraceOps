@@ -48,6 +48,11 @@ class CustomerRecoveryPayload(BaseModel):
     currency: str
 
 
+class IncidentAcknowledgedPayload(BaseModel):
+    incident_id: uuid.UUID
+    responder_id: uuid.UUID
+
+
 class AutomationEvent(BaseModel):
     event_id: uuid.UUID
     event_type: str
@@ -55,6 +60,7 @@ class AutomationEvent(BaseModel):
     occurred_at: datetime
     payload: (
         IncidentResolvedPayload
+        | IncidentAcknowledgedPayload
         | HighRiskIncidentPayload
         | DocumentIndexingFailedPayload
         | CustomerRecoveryPayload

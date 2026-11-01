@@ -12,7 +12,7 @@ from ops_pilot.services.automation_outbox import (
     fn_id="recover-automation-deliveries",
     name="Recover Automation Deliveries",
     trigger=inngest.TriggerCron(
-        cron="* * * * *",
+        cron="0 */2 * * *",
     ),
     retries=2,
 )

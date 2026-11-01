@@ -18,6 +18,7 @@ from ops_pilot.schemas.approvals import (
     ApprovalResponse,
 )
 from ops_pilot.schemas.incidents import (
+    IncidentAcknowledgmentResponse,
     IncidentClassificationResponse,
     IncidentCreateRequest,
     IncidentEvidenceResponse,
@@ -32,6 +33,11 @@ from ops_pilot.services.approval_workflow import (
     decide_and_resume_approval,
 )
 from ops_pilot.services.approvals import get_approval_request
+from ops_pilot.services.incident_acknowledgment import (
+    IncidentAcknowledgmentConflict,
+    IncidentAcknowledgmentNotFound,
+    acknowledge_incident,
+)
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
 )
@@ -315,3 +321,42 @@ async def get_approval_resume_status_endpoint(
         )
 
     return result
+
+
+@router.post(
+    "/{incident_id}/acknowledge",
+    response_model=IncidentAcknowledgmentResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def acknowledge_incident_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: IncidentInvestigatorMembership,
+    session: DbSession,
+) -> IncidentAcknowledgmentResponse:
+    try:
+        event_id = await acknowledge_incident(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+            responder_id=current_user.id,
+        )
+
+    except IncidentAcknowledgmentNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except IncidentAcknowledgmentConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return IncidentAcknowledgmentResponse(
+        incident_id=incident_id,
+        event_id=event_id,
+        status="queued",
+    )

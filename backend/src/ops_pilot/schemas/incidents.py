@@ -47,6 +47,12 @@ class IncidentResponse(BaseModel):
     updated_at: datetime
 
 
+class IncidentAcknowledgmentResponse(BaseModel):
+    incident_id: uuid.UUID
+    event_id: uuid.UUID
+    status: str = "queued"
+
+
 class IncidentNoActionResolutionRequest(BaseModel):
     reason: str = Field(
         min_length=10,
