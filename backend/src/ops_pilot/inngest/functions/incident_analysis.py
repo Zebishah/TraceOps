@@ -12,7 +12,11 @@ from ops_pilot.services.background_jobs import (
     get_background_job,
     update_job_for_dispatch,
 )
-from ops_pilot.services.incident_background import run_incident_analysis
+from ops_pilot.services.incident_background import (
+    investigation_thread_id,
+    run_incident_analysis,
+)
+from ops_pilot.workflows.observability import observe_workflow_step
 
 
 async def incident_analysis_on_failure(
@@ -43,6 +47,11 @@ async def incident_analysis_on_failure(
                 job.job_type != BackgroundJobType.INCIDENT_ANALYSIS
                 or job.resource_id != data.resource_id
                 or job.dispatch_id != data.dispatch_id
+                or job.status
+                not in {
+                    BackgroundJobStatus.QUEUED,
+                    BackgroundJobStatus.PROCESSING,
+                }
             ):
                 return {"updated": False}
 
@@ -79,7 +88,14 @@ async def investigate_incident_background(
     data = BackgroundJobEventData.model_validate(ctx.event.data)
 
     async def investigate() -> dict[str, str]:
-        return await run_incident_analysis(data)
+        return await observe_workflow_step(
+            node="background_incident_analysis",
+            incident_id=data.resource_id,
+            workflow_thread_id=investigation_thread_id(data.job_id),
+            job_id=data.job_id,
+            dispatch_id=data.dispatch_id,
+            call=lambda: run_incident_analysis(data),
+        )
 
     return await ctx.step.run(
         "investigate-from-checkpoint",

@@ -12,6 +12,8 @@ async def observe_workflow_step[T](
     incident_id: object,
     workflow_thread_id: object | None,
     call: Callable[[], Awaitable[T]],
+    job_id: object | None = None,
+    dispatch_id: object | None = None,
 ) -> T:
     metadata: dict[str, Any] = {
         "node": node,
@@ -20,7 +22,11 @@ async def observe_workflow_step[T](
 
     if workflow_thread_id is not None:
         metadata["workflow_thread_id"] = str(workflow_thread_id)
+    if job_id is not None:
+        metadata["job_id"] = str(job_id)
 
+    if dispatch_id is not None:
+        metadata["dispatch_id"] = str(dispatch_id)
     logger.info(
         "workflow_step_started",
         extra=metadata,
