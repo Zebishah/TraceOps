@@ -177,3 +177,59 @@ def test_invalid_thresholds_are_rejected(threshold: int) -> None:
             quarantine_age_threshold_seconds=3600,
             processing_count_threshold=25,
         )
+
+
+@pytest.mark.anyio
+async def test_production_can_execute_with_both_gates_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "get_settings",
+        lambda: settings(
+            environment="production",
+            execution_enabled=True,
+            staging_cron=False,
+            production_enabled=True,
+        ),
+    )
+
+    expected = {
+        "claimed": 1,
+        "completed": 1,
+        "failed": 0,
+    }
+    step = SimpleNamespace(run=AsyncMock(return_value=expected))
+    ctx = SimpleNamespace(step=step)
+
+    result = await scheduler.execute_approval_recovery(ctx)
+
+    assert result == expected
+    step.run.assert_awaited_once_with(
+        "recover-approval-resumes",
+        scheduler.run_approval_resume_recovery,
+    )
+
+
+@pytest.mark.anyio
+async def test_production_kill_switch_blocks_registered_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "get_settings",
+        lambda: settings(
+            environment="production",
+            execution_enabled=False,
+            staging_cron=False,
+            production_enabled=True,
+        ),
+    )
+
+    step = SimpleNamespace(run=AsyncMock())
+    ctx = SimpleNamespace(step=step)
+
+    result = await scheduler.execute_approval_recovery(ctx)
+
+    assert result == {"skipped": 1}
+    step.run.assert_not_awaited()

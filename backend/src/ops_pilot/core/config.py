@@ -167,10 +167,14 @@ class Settings(BaseSettings):
             # Production registration is intentionally not yet enabled.
             # This guard will remain until the R04 proof, staging
             # canary and operational alert verification pass.
-            if environment == "production" and self.enable_production_approval_recovery:
+            if (
+                environment == "production"
+                and self.approval_recovery_execution_enabled
+                and not self.enable_production_approval_recovery
+            ):
                 raise ValueError(
-                    "Production financial recovery remains locked "
-                    "until recovery safety verification is complete"
+                    "Production financial recovery execution requires "
+                    "ENABLE_PRODUCTION_APPROVAL_RECOVERY"
                 )
 
             if not resource_url.startswith("https://"):

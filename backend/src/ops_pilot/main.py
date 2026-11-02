@@ -87,7 +87,13 @@ def create_app() -> FastAPI:
     # Financial recovery is intentionally opt-in.
     # Production must never register this scheduler
     # through the staging feature switch.
-    if settings.environment.lower() == "staging" and settings.enable_approval_resume_cron:
+    environment = settings.environment.lower()
+
+    register_approval_recovery = (
+        environment == "staging" and settings.enable_approval_resume_cron
+    ) or (environment == "production" and settings.enable_production_approval_recovery)
+
+    if register_approval_recovery:
         inngest_functions.append(recover_approval_resume_jobs)
 
     inngest.fast_api.serve(

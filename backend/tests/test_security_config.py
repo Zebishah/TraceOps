@@ -218,3 +218,37 @@ def test_production_accepts_secure_n8n_config() -> None:
 
     assert settings.inngest_dev is False
     assert settings.n8n_webhook_secret == "test-secret"
+
+
+def test_production_can_register_recovery_without_execution() -> None:
+    settings = production_settings(
+        enable_approval_resume_cron=False,
+        enable_production_approval_recovery=True,
+        approval_recovery_execution_enabled=False,
+    )
+
+    assert settings.enable_production_approval_recovery is True
+    assert settings.approval_recovery_execution_enabled is False
+
+
+def test_production_can_enable_registered_recovery() -> None:
+    settings = production_settings(
+        enable_approval_resume_cron=False,
+        enable_production_approval_recovery=True,
+        approval_recovery_execution_enabled=True,
+    )
+
+    assert settings.enable_production_approval_recovery is True
+    assert settings.approval_recovery_execution_enabled is True
+
+
+def test_production_rejects_execution_without_registration() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="ENABLE_PRODUCTION_APPROVAL_RECOVERY",
+    ):
+        production_settings(
+            enable_approval_resume_cron=False,
+            enable_production_approval_recovery=False,
+            approval_recovery_execution_enabled=True,
+        )

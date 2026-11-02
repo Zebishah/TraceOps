@@ -16,53 +16,50 @@ from ops_pilot.services.approval_resume_reconciliation import (
 
 
 @pytest.mark.parametrize(
-    ("environment", "enabled", "expected"),
+    (
+        "environment",
+        "staging_enabled",
+        "production_enabled",
+        "expected",
+    ),
     [
-        ("development", False, False),
-        ("development", True, False),
-        ("staging", False, False),
-        ("staging", True, True),
-        ("production", False, False),
-        ("production", True, False),
+        ("development", False, False, False),
+        ("development", True, True, False),
+        ("staging", False, False, False),
+        ("staging", True, False, True),
+        ("staging", False, True, False),
+        ("production", False, False, False),
+        ("production", True, False, False),
+        ("production", False, True, True),
     ],
 )
-def test_recovery_registration_is_staging_only(
-    monkeypatch,
-    environment,
-    enabled,
-    expected,
-):
+def test_recovery_registration_uses_environment_specific_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    environment: str,
+    staging_enabled: bool,
+    production_enabled: bool,
+    expected: bool,
+) -> None:
     settings = SimpleNamespace(
         app_name="OpsPilot Test",
         app_version="0.1.0",
         log_level="INFO",
         environment=environment,
-        enable_approval_resume_cron=enabled,
+        enable_approval_resume_cron=staging_enabled,
+        enable_production_approval_recovery=production_enabled,
     )
 
-    monkeypatch.setattr(
-        main,
-        "get_settings",
-        lambda: settings,
-    )
+    monkeypatch.setattr(main, "get_settings", lambda: settings)
 
     serve = Mock()
-
-    monkeypatch.setattr(
-        main.inngest.fast_api,
-        "serve",
-        serve,
-    )
+    monkeypatch.setattr(main.inngest.fast_api, "serve", serve)
 
     main.create_app()
 
     serve.assert_called_once()
-
     registered = serve.call_args.args[2]
 
-    found = main.recover_approval_resume_jobs in registered
-
-    assert found is expected
+    assert (main.recover_approval_resume_jobs in registered) is expected
 
 
 def test_recovery_coordinator_success(monkeypatch):
