@@ -1,8 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
 
 from ops_pilot.ai.llm import get_chat_model
-from ops_pilot.ai.observability import (
-    observe_llm_call,
+from ops_pilot.ai.output_validation import (
+    InvalidAIOutputError,
+    run_with_output_retry,
 )
 from ops_pilot.schemas.incident_classification import IncidentClassification
 
@@ -37,6 +38,8 @@ or repeated major failure
 - low: minor issue with little operational impact
 
 Choose exactly one category and one priority.
+Return exactly the fields category, priority, and confidence.
+Do not rename these fields or add reasoning fields.
 Do not invent facts that are not present in the incident.
 """,
         ),
@@ -69,19 +72,22 @@ async def classify_incident(
 
     chain = CLASSIFICATION_PROMPT | structured_model
 
-    result = await observe_llm_call(
-        operation="incident_classification",
-        call=lambda: chain.ainvoke(
+    async def generate_classification() -> IncidentClassification:
+        result = await chain.ainvoke(
             {
                 "title": title,
                 "description": description,
             }
-        ),
-    )
-
-    if not isinstance(result, IncidentClassification):
-        raise RuntimeError(
-            "Incident classifier returned an unexpected result",
         )
 
-    return result
+        if not isinstance(result, IncidentClassification):
+            raise InvalidAIOutputError(
+                "Incident classifier returned an unexpected result",
+            )
+
+        return result
+
+    return await run_with_output_retry(
+        operation="incident_classification",
+        call=generate_classification,
+    )

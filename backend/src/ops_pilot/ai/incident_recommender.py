@@ -1,5 +1,6 @@
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda
 
 from ops_pilot.ai.incident_context import (
     format_duplicate_payment_candidate,
@@ -8,7 +9,10 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
-from ops_pilot.ai.observability import observe_llm_call
+from ops_pilot.ai.output_validation import (
+    run_with_output_retry,
+    validate_text_response,
+)
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.duplicate_payments import DuplicatePaymentCandidate
 from ops_pilot.schemas.incident_classification import IncidentCategory
@@ -47,7 +51,9 @@ Rules:
 - Do not invent facts.
 - Cite document evidence using [SOURCE n].
 - Cite operational data using [TOOL n].
-- The only valid citation formats are [SOURCE n] and [TOOL n].
+- The only valid citation formats are [SOURCE n], [TOOL n], and [MEMORY n].
+- Cite only labels that exist in the supplied context.
+- Never cite a failed tool result as supporting evidence.
 - Clearly state uncertainty when information is insufficient.
 - Prefer verification when required facts are not confirmed.
 - Never claim that this investigation executed an action.
@@ -127,9 +133,18 @@ async def recommend_incident_action(
     priority = IncidentPriority(priority)
     model = get_chat_model()
 
-    chain = INCIDENT_RECOMMENDATION_PROMPT | model | StrOutputParser()
+    def validate_response(message: BaseMessage) -> str:
+        return validate_text_response(
+            message,
+            source_count=len(evidence),
+            tool_successes=[result.success for result in (tool_results or [])],
+            memory_count=len(memories or []),
+            empty_error=("Incident recommender returned an empty recommendation"),
+        )
 
-    recommendation = await observe_llm_call(
+    chain = INCIDENT_RECOMMENDATION_PROMPT | model | RunnableLambda(validate_response)
+
+    recommendation = await run_with_output_retry(
         operation="incident_recommendation",
         call=lambda: chain.ainvoke(
             {

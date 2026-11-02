@@ -1,5 +1,6 @@
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda
 
 from ops_pilot.ai.incident_context import (
     format_duplicate_payment_candidate,
@@ -8,8 +9,9 @@ from ops_pilot.ai.incident_context import (
     format_tool_results,
 )
 from ops_pilot.ai.llm import get_chat_model
-from ops_pilot.ai.observability import (
-    observe_llm_call,
+from ops_pilot.ai.output_validation import (
+    run_with_output_retry,
+    validate_text_response,
 )
 from ops_pilot.models.incident import IncidentPriority
 from ops_pilot.schemas.duplicate_payments import (
@@ -50,7 +52,10 @@ Rules:
 - Do not invent facts.
 - Document-backed claims may cite [SOURCE n].
 - Operational-data-backed claims may cite [TOOL n].
-- The only valid citation formats are [SOURCE n] and [TOOL n].
+- The only valid citation formats are [SOURCE n], [TOOL n], and [MEMORY n].
+- Cite only labels that exist in the supplied context.
+- Never cite a failed tool result as supporting evidence.
+- Cite each item separately; never use citation ranges or combined labels.
 - Clearly state uncertainty when information is insufficient.
 - Perform analysis only.
 - Do not recommend actions or execute anything.
@@ -115,9 +120,18 @@ async def analyze_incident(
     priority = IncidentPriority(priority)
     model = get_chat_model()
 
-    chain = INCIDENT_ANALYSIS_PROMPT | model | StrOutputParser()
+    def validate_response(message: BaseMessage) -> str:
+        return validate_text_response(
+            message,
+            source_count=len(evidence),
+            tool_successes=[result.success for result in (tool_results or [])],
+            memory_count=len(memories or []),
+            empty_error="Incident analyzer returned an empty analysis",
+        )
 
-    analysis = await observe_llm_call(
+    chain = INCIDENT_ANALYSIS_PROMPT | model | RunnableLambda(validate_response)
+
+    analysis = await run_with_output_retry(
         operation="incident_analysis",
         call=lambda: chain.ainvoke(
             {
