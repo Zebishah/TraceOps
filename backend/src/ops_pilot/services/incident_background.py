@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import Mapping
 
@@ -29,6 +30,20 @@ from ops_pilot.services.incidents import get_incident, invalidate_incident_cache
 from ops_pilot.workflows.incident.checkpointing import open_incident_checkpointer
 from ops_pilot.workflows.incident.graph import build_incident_investigation_graph
 from ops_pilot.workflows.incident.state import IncidentGraphContext
+
+logger = logging.getLogger(__name__)
+
+
+class InvestigationRetryNotFound(Exception):
+    pass
+
+
+class InvestigationRetryConflict(Exception):
+    pass
+
+
+class InvestigationRetryDispatchError(Exception):
+    pass
 
 
 def investigation_thread_id(job_id: uuid.UUID) -> str:
@@ -263,3 +278,94 @@ async def get_incident_analysis_result(
         return IncidentInvestigationResponse.model_validate(
             snapshot.values,
         )
+
+
+async def retry_incident_analysis(
+    *,
+    session: AsyncSession,
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    job_id: uuid.UUID,
+    requested_by_user_id: uuid.UUID,
+) -> BackgroundJob:
+    job = await get_background_job(
+        session=session,
+        organization_id=organization_id,
+        job_id=job_id,
+    )
+
+    if (
+        job is None
+        or job.job_type != BackgroundJobType.INCIDENT_ANALYSIS
+        or job.resource_id != incident_id
+    ):
+        raise InvestigationRetryNotFound("Investigation job not found")
+
+    if job.status != BackgroundJobStatus.FAILED:
+        raise InvestigationRetryConflict("Only failed investigation jobs can be retried")
+
+    incident = await get_incident(
+        session=session,
+        organization_id=organization_id,
+        incident_id=incident_id,
+    )
+
+    if incident.status not in {
+        IncidentStatus.NEW,
+        IncidentStatus.INVESTIGATING,
+    }:
+        raise InvestigationRetryConflict(
+            "Incident must be new or investigating. "
+            "Approval and resolved workflows require separate recovery."
+        )
+
+    # The existing helper atomically changes FAILED to QUEUED.
+    # A concurrent retry cannot replace a queued/processing dispatch.
+    previous_dispatch_id = job.dispatch_id
+
+    dispatch_id = await prepare_background_job_dispatch(
+        session=session,
+        job=job,
+    )
+
+    if dispatch_id is None:
+        raise InvestigationRetryConflict("Job state changed; refresh its status before retrying")
+
+    logger.info(
+        "incident_analysis_retry_requested",
+        extra={
+            "organization_id": str(organization_id),
+            "incident_id": str(incident_id),
+            "job_id": str(job_id),
+            "requested_by_user_id": str(requested_by_user_id),
+            "previous_dispatch_id": str(previous_dispatch_id),
+            "dispatch_id": str(dispatch_id),
+        },
+    )
+
+    try:
+        await _send_background_job_event(
+            session=session,
+            job=job,
+            dispatch_id=dispatch_id,
+            event_name=INCIDENT_ANALYSIS_EVENT,
+            organization_id=organization_id,
+            resource_id=incident_id,
+        )
+    except Exception as exc:
+        logger.exception(
+            "incident_analysis_retry_dispatch_failed",
+            extra={
+                "job_id": str(job_id),
+                "dispatch_id": str(dispatch_id),
+            },
+        )
+
+        # The queued dispatch was already committed. Existing
+        # dispatch recovery can send it after its send lease expires.
+        raise InvestigationRetryDispatchError(
+            "Retry was saved, but immediate event delivery failed. "
+            "Check job status; dispatch recovery can resend it."
+        ) from exc
+
+    return job

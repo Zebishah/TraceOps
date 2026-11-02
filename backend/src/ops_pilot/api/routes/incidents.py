@@ -45,8 +45,12 @@ from ops_pilot.services.incident_acknowledgment import (
     acknowledge_incident,
 )
 from ops_pilot.services.incident_background import (
+    InvestigationRetryConflict,
+    InvestigationRetryDispatchError,
+    InvestigationRetryNotFound,
     enqueue_incident_analysis,
     get_incident_analysis_result,
+    retry_incident_analysis,
 )
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
@@ -441,3 +445,43 @@ async def get_background_investigation_result_endpoint(
         incident_id=incident_id,
         job_id=job_id,
     )
+
+
+@router.post(
+    "/{incident_id}/investigations/{job_id}/retry",
+    response_model=BackgroundJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_background_investigation_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    job_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: IncidentInvestigatorMembership,
+    session: DbSession,
+) -> BackgroundJobResponse:
+    try:
+        job = await retry_incident_analysis(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+            job_id=job_id,
+            requested_by_user_id=current_user.id,
+        )
+    except InvestigationRetryNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except InvestigationRetryConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except InvestigationRetryDispatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return BackgroundJobResponse.model_validate(job)

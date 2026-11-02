@@ -29,41 +29,38 @@ async def close_qdrant_client() -> None:
 async def ensure_document_collection() -> None:
     settings = get_settings()
     client = get_qdrant_client()
+    collection_name = settings.qdrant_collection_name
 
     exists = await client.collection_exists(
-        collection_name=settings.qdrant_collection_name,
+        collection_name=collection_name,
     )
 
-    if exists:
-        info = await client.get_collection(collection_name=settings.qdrant_collection_name)
-        indexed = info.payload_schema or {}
-        if "index_generation" not in indexed:
+    if not exists:
+        await client.create_collection(
+            collection_name=collection_name,
+            vectors_config=models.VectorParams(
+                size=settings.embedding_dimension,
+                distance=models.Distance.COSINE,
+            ),
+        )
+
+    info = await client.get_collection(
+        collection_name=collection_name,
+    )
+    indexed = info.payload_schema or {}
+
+    for field_name in (
+        "organization_id",
+        "document_id",
+        "index_generation",
+    ):
+        if field_name not in indexed:
             await client.create_payload_index(
-                collection_name=settings.qdrant_collection_name,
-                field_name="index_generation",
+                collection_name=collection_name,
+                field_name=field_name,
                 field_schema=models.PayloadSchemaType.KEYWORD,
+                wait=True,
             )
-        return
-
-    await client.create_collection(
-        collection_name=settings.qdrant_collection_name,
-        vectors_config=models.VectorParams(
-            size=settings.embedding_dimension,
-            distance=models.Distance.COSINE,
-        ),
-    )
-
-    await client.create_payload_index(
-        collection_name=settings.qdrant_collection_name,
-        field_name="organization_id",
-        field_schema=models.PayloadSchemaType.KEYWORD,
-    )
-
-    await client.create_payload_index(
-        collection_name=settings.qdrant_collection_name,
-        field_name="document_id",
-        field_schema=models.PayloadSchemaType.KEYWORD,
-    )
 
 
 async def ensure_memory_collection() -> None:
