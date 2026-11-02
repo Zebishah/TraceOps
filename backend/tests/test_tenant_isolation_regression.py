@@ -4,6 +4,7 @@ from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from qdrant_client import models
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import ops_pilot.services.incident_memory_retrieval as memory_retrieval
@@ -139,42 +140,38 @@ async def test_document_vector_search_filters_by_organization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     organization_id = uuid.uuid4()
+    generation_id = uuid.uuid4()
 
-    async def fake_embed_query(
-        query: str,
-    ) -> list[float]:
-        return [0.1] * 1024
+    eligible_pages = AsyncMock(
+        return_value=[
+            ([generation_id], []),
+        ],
+    )
+    embed_query = AsyncMock(return_value=[0.1] * 1024)
+    query_points = AsyncMock(
+        return_value=SimpleNamespace(points=[]),
+    )
 
-    captured_filter = None
-
-    class FakeClient:
-        async def query_points(
-            self,
-            **kwargs: object,
-        ):
-            nonlocal captured_filter
-
-            captured_filter = kwargs["query_filter"]
-
-            return SimpleNamespace(points=[])
-
+    monkeypatch.setattr(
+        retrieval_service,
+        "_eligible_generation_pages",
+        eligible_pages,
+    )
     monkeypatch.setattr(
         retrieval_service,
         "embed_query",
-        fake_embed_query,
+        embed_query,
     )
-
     monkeypatch.setattr(
         retrieval_service,
         "get_qdrant_client",
-        lambda: FakeClient(),
+        lambda: SimpleNamespace(query_points=query_points),
     )
-
     monkeypatch.setattr(
         retrieval_service,
         "get_settings",
         lambda: SimpleNamespace(
-            qdrant_collection_name=("document_chunks"),
+            qdrant_collection_name="document_chunks",
             retrieval_candidate_limit=12,
         ),
     )
@@ -185,17 +182,55 @@ async def test_document_vector_search_filters_by_organization(
     )
 
     assert result == []
-    assert captured_filter is not None
 
-    must = captured_filter.must
+    eligible_pages.assert_awaited_once_with(
+        organization_id=organization_id,
+    )
+    embed_query.assert_awaited_once_with("payment policy")
+    query_points.assert_awaited_once()
 
-    assert len(must) == 1
+    query_call = query_points.await_args
+    assert query_call is not None
 
-    condition = must[0]
+    query_filter = query_call.kwargs["query_filter"]
+    assert isinstance(query_filter, models.Filter)
 
-    assert condition.key == "organization_id"
+    assert query_filter.must is not None
+    assert isinstance(query_filter.must, list)
 
-    assert condition.match.value == str(organization_id)
+    tenant_conditions = [
+        condition
+        for condition in query_filter.must
+        if isinstance(condition, models.FieldCondition) and condition.key == "organization_id"
+    ]
+
+    assert len(tenant_conditions) == 1
+
+    tenant_match = tenant_conditions[0].match
+    assert isinstance(tenant_match, models.MatchValue)
+    assert tenant_match.value == str(organization_id)
+
+    generation_groups = [
+        condition for condition in query_filter.must if isinstance(condition, models.Filter)
+    ]
+
+    assert len(generation_groups) == 1
+
+    eligible_conditions = generation_groups[0].should
+    assert eligible_conditions is not None
+    assert isinstance(eligible_conditions, list)
+
+    generation_conditions = [
+        condition
+        for condition in eligible_conditions
+        if isinstance(condition, models.FieldCondition) and condition.key == "index_generation"
+    ]
+
+    assert len(generation_conditions) == 1
+
+    generation_match = generation_conditions[0].match
+    assert isinstance(generation_match, models.MatchAny)
+    assert generation_match.any == [str(generation_id)]
 
 
 @pytest.mark.anyio

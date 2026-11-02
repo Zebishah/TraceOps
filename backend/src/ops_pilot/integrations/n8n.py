@@ -3,12 +3,8 @@ import logging
 import httpx
 
 from ops_pilot.core.config import get_settings
-from ops_pilot.integrations.observability import (
-    observe_external_call,
-)
-from ops_pilot.schemas.automation_events import (
-    AutomationEvent,
-)
+from ops_pilot.integrations.observability import observe_external_call
+from ops_pilot.schemas.automation_events import AutomationEvent
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +17,12 @@ async def send_n8n_event(
     settings = get_settings()
 
     if settings.n8n_webhook_base_url is None:
-        raise RuntimeError(
-            "N8N_WEBHOOK_BASE_URL is not configured",
-        )
+        raise RuntimeError("N8N_WEBHOOK_BASE_URL is not configured")
 
     if settings.n8n_webhook_secret is None:
-        raise RuntimeError(
-            "N8N_WEBHOOK_SECRET is not configured",
-        )
-
-    base_url: str = settings.n8n_webhook_base_url.rstrip("/")
-
-    webhook_secret: str = settings.n8n_webhook_secret
-
+        raise RuntimeError("N8N_WEBHOOK_SECRET is not configured")
+    webhook_secret = settings.n8n_webhook_secret
+    base_url = settings.n8n_webhook_base_url.rstrip("/")
     path = webhook_path.lstrip("/")
 
     async with httpx.AsyncClient(
@@ -43,11 +32,9 @@ async def send_n8n_event(
         async def send_request() -> httpx.Response:
             return await client.post(
                 f"{base_url}/{path}",
-                json=event.model_dump(
-                    mode="json",
-                ),
+                json=event.model_dump(mode="json"),
                 headers={
-                    "X-OpsPilot-Webhook-Secret": (webhook_secret),
+                    "X-OpsPilot-Webhook-Secret": webhook_secret,
                 },
             )
 
@@ -65,7 +52,7 @@ async def send_n8n_event(
             extra={
                 "provider": "n8n",
                 "operation": "webhook",
-                "status_code": (response.status_code),
+                "status_code": response.status_code,
                 "webhook_path": path,
             },
         )

@@ -163,15 +163,13 @@ async def retrieve_document_chunks(
     limit: int = 5,
 ) -> list[RetrievalResult]:
     settings = get_settings()
-
-    query_vector = await embed_query(query)
-
-    client = get_qdrant_client()
-
-    pages = await _eligible_generation_pages(organization_id=organization_id)
+    pages = await _eligible_generation_pages(
+        organization_id=organization_id,
+    )
     if not pages:
         return []
-
+    query_vector = await embed_query(query)
+    client = get_qdrant_client()
     candidate_limit = max(limit, settings.retrieval_candidate_limit)
     candidates_by_chunk: dict[uuid.UUID, RetrievalCandidate] = {}
 

@@ -17,6 +17,7 @@ from ops_pilot.api.upload_limit import DocumentUploadLimitMiddleware
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
 from ops_pilot.core.logging import configure_logging
+from ops_pilot.db.engine import engine
 from ops_pilot.inngest.client import inngest_client
 from ops_pilot.inngest.functions.approval_resume_recovery import recover_approval_resume_jobs
 from ops_pilot.inngest.functions.automation_delivery_recovery import (
@@ -44,13 +45,23 @@ from ops_pilot.vectorstore.qdrant import close_qdrant_client
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    async with mcp.session_manager.run():
-        yield
-
-    await close_redis_client()
-    await close_mistral_embedding_client()
-    await close_voyage_reranker_client()
-    await close_qdrant_client()
+    try:
+        async with mcp.session_manager.run():
+            yield
+    finally:
+        try:
+            await close_redis_client()
+        finally:
+            try:
+                await close_mistral_embedding_client()
+            finally:
+                try:
+                    await close_voyage_reranker_client()
+                finally:
+                    try:
+                        await close_qdrant_client()
+                    finally:
+                        await engine.dispose()
 
 
 def create_app() -> FastAPI:

@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from time import perf_counter
 
 from fastapi import APIRouter
@@ -11,145 +13,120 @@ from ops_pilot.db.session import async_session_factory
 from ops_pilot.vectorstore.qdrant import get_qdrant_client
 
 router = APIRouter()
-
 logger = logging.getLogger(__name__)
+
+type HealthResult = tuple[bool, float]
 
 
 @router.get("/health")
 async def health_check() -> dict[str, str]:
-    return {
-        "status": "ok",
-    }
+    """Cheap process health check with no external service calls."""
+    return {"status": "ok"}
 
 
-async def check_database() -> tuple[bool, float]:
+async def _check_dependency(
+    *,
+    provider: str,
+    operation: Callable[[], Awaitable[bool]],
+) -> HealthResult:
     started_at = perf_counter()
 
     try:
-        async with async_session_factory() as session:
-            await session.execute(text("SELECT 1"))
+        async with asyncio.timeout(get_settings().health_dependency_timeout_seconds):
+            healthy = await operation()
+
+        if not healthy:
+            logger.warning(
+                "readiness_dependency_unavailable",
+                extra={
+                    "provider": provider,
+                    "operation": "health_check",
+                },
+            )
+
     except Exception:
-        duration_ms = (perf_counter() - started_at) * 1000
+        healthy = False
 
         logger.exception(
             "readiness_dependency_failed",
             extra={
-                "provider": "postgresql",
+                "provider": provider,
                 "operation": "health_check",
-                "duration_ms": round(
-                    duration_ms,
-                    2,
-                ),
             },
         )
 
-        return False, duration_ms
-
     duration_ms = (perf_counter() - started_at) * 1000
-
-    return True, duration_ms
-
-
-async def check_redis() -> tuple[bool, float]:
-    started_at = perf_counter()
-
-    try:
-        redis = get_redis_client()
-
-        await redis.ping()
-    except Exception:
-        duration_ms = (perf_counter() - started_at) * 1000
-
-        logger.exception(
-            "readiness_dependency_failed",
-            extra={
-                "provider": "redis",
-                "operation": "health_check",
-                "duration_ms": round(
-                    duration_ms,
-                    2,
-                ),
-            },
-        )
-
-        return False, duration_ms
-
-    duration_ms = (perf_counter() - started_at) * 1000
-
-    return True, duration_ms
+    return healthy, duration_ms
 
 
-async def check_qdrant() -> tuple[bool, float]:
-    started_at = perf_counter()
+async def _database_available() -> bool:
+    async with async_session_factory() as session:
+        await session.execute(text("SELECT 1"))
 
-    try:
-        settings = get_settings()
+    return True
 
-        client = get_qdrant_client()
 
-        await client.collection_exists(
-            collection_name=(settings.qdrant_collection_name),
-        )
-    except Exception:
-        duration_ms = (perf_counter() - started_at) * 1000
+async def _redis_available() -> bool:
+    return bool(await get_redis_client().ping())
 
-        logger.exception(
-            "readiness_dependency_failed",
-            extra={
-                "provider": "qdrant",
-                "operation": "health_check",
-                "duration_ms": round(
-                    duration_ms,
-                    2,
-                ),
-            },
-        )
 
-        return False, duration_ms
+async def _qdrant_available() -> bool:
+    settings = get_settings()
 
-    duration_ms = (perf_counter() - started_at) * 1000
+    return await get_qdrant_client().collection_exists(
+        collection_name=settings.qdrant_collection_name,
+    )
 
-    return True, duration_ms
+
+async def check_database() -> HealthResult:
+    return await _check_dependency(
+        provider="postgresql",
+        operation=_database_available,
+    )
+
+
+async def check_redis() -> HealthResult:
+    return await _check_dependency(
+        provider="redis",
+        operation=_redis_available,
+    )
+
+
+async def check_qdrant() -> HealthResult:
+    return await _check_dependency(
+        provider="qdrant",
+        operation=_qdrant_available,
+    )
 
 
 @router.get("/health/ready")
 async def readiness_check() -> JSONResponse:
-    database_ok, database_duration = await check_database()
+    database, redis, qdrant = await asyncio.gather(
+        check_database(),
+        check_redis(),
+        check_qdrant(),
+    )
 
-    redis_ok, redis_duration = await check_redis()
-
-    qdrant_ok, qdrant_duration = await check_qdrant()
-
-    dependencies = {
-        "database": {
-            "status": ("connected" if database_ok else "unavailable"),
-            "duration_ms": round(
-                database_duration,
-                2,
-            ),
-        },
-        "redis": {
-            "status": ("connected" if redis_ok else "unavailable"),
-            "duration_ms": round(
-                redis_duration,
-                2,
-            ),
-        },
-        "qdrant": {
-            "status": ("connected" if qdrant_ok else "unavailable"),
-            "duration_ms": round(
-                qdrant_duration,
-                2,
-            ),
-        },
+    results = {
+        "database": database,
+        "redis": redis,
+        "qdrant": qdrant,
     }
 
-    ready = database_ok and redis_ok and qdrant_ok
+    ready = all(healthy for healthy, _duration in results.values())
+
+    dependencies = {
+        name: {
+            "status": "connected" if healthy else "unavailable",
+            "duration_ms": round(duration_ms, 2),
+        }
+        for name, (healthy, duration_ms) in results.items()
+    }
 
     return JSONResponse(
-        status_code=(200 if ready else 503),
+        status_code=200 if ready else 503,
         content={
-            "status": ("ready" if ready else "not_ready"),
+            "status": "ready" if ready else "not_ready",
             "dependencies": dependencies,
         },
     )

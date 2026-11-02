@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl, model_validator
+from pydantic import AnyHttpUrl, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -73,6 +73,12 @@ class Settings(BaseSettings):
 
     groq_api_key: str
     generation_model: str = "qwen/qwen3.8-27b"
+    database_pool_size: int = Field(default=3, ge=1, le=50)
+    database_max_overflow: int = Field(default=2, ge=0, le=50)
+    database_pool_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    database_connect_timeout_seconds: int = Field(default=10, ge=1, le=120)
+
+    health_dependency_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":

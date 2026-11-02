@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import ops_pilot.services.incident_resolution as resolution_service
 from ops_pilot.models.approval import ApprovalStatus
 from ops_pilot.models.incident import IncidentStatus
 from ops_pilot.services.incident_resolution import (
@@ -41,7 +42,9 @@ def run_resolution(session, reason="Verified no refund is required."):
     )
 
 
-def test_resolution_succeeds_when_no_active_approval():
+def test_resolution_succeeds_when_no_active_approval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     incident = SimpleNamespace(
         status=IncidentStatus.INVESTIGATING,
         resolved_by_user_id=None,
@@ -51,13 +54,47 @@ def test_resolution_succeeds_when_no_active_approval():
 
     session = make_session(incident, None)
 
+    event = object()
+    build_event = AsyncMock(return_value=event)
+    enqueue_event = AsyncMock()
+
+    monkeypatch.setattr(
+        resolution_service,
+        "build_incident_resolved_event",
+        build_event,
+    )
+    monkeypatch.setattr(
+        resolution_service,
+        "enqueue_automation_in_session",
+        enqueue_event,
+    )
+
     result = run_resolution(session)
 
+    assert result is incident
     assert result.status == IncidentStatus.RESOLVED
     assert result.resolved_by_user_id is not None
     assert result.resolution_reason == "Verified no refund is required."
     assert result.resolved_at is not None
+
+    session.flush.assert_awaited_once()
+    build_event.assert_awaited_once()
+
+    event_call = build_event.await_args
+    assert event_call is not None
+    assert event_call.kwargs["session"] is session
+    assert isinstance(event_call.kwargs["organization_id"], uuid.UUID)
+    assert isinstance(event_call.kwargs["incident_id"], uuid.UUID)
+
+    enqueue_event.assert_awaited_once_with(
+        session=session,
+        webhook_path="incident-resolved",
+        event=event,
+    )
+
     session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+    session.refresh.assert_awaited_once_with(incident)
 
 
 @pytest.mark.parametrize(
