@@ -14,12 +14,12 @@ MAX_OUTPUT_ATTEMPTS = 2
 
 # Recognize source-like labels, including malformed and unclosed labels.
 CITATION_CANDIDATE = re.compile(
-    r"\[\s*(?:SOURCE|TOOL|MEMORY)\b[^\]\r\n]*(?:\]|$)",
+    r"\[\s*(?:SOURCE|TOOL|MEMORY|DETECTION)\b[^\]\r\n]*(?:\]|$)",
     flags=re.IGNORECASE | re.MULTILINE,
 )
 
 VALID_CITATION = re.compile(
-    r"\[(SOURCE|TOOL|MEMORY) ([1-9][0-9]*)\]",
+    r"\[(SOURCE|TOOL|MEMORY|DETECTION) ([1-9][0-9]*)\]",
 )
 
 REJECTED_FINISH_REASONS = frozenset(
@@ -76,6 +76,7 @@ def validate_text_response(
     tool_successes: Sequence[bool],
     memory_count: int,
     empty_error: str,
+    detection_count: int = 0,
 ) -> str:
     """Validate completion metadata and citation identities before returning text."""
     finish_reason = message.response_metadata.get("finish_reason")
@@ -117,6 +118,8 @@ def validate_text_response(
             valid = index <= source_count
         elif kind == "MEMORY":
             valid = index <= memory_count
+        elif kind == "DETECTION":
+            valid = index <= detection_count
         else:
             valid = index <= len(tool_successes) and tool_successes[index - 1]
 
@@ -145,6 +148,7 @@ def build_citation_policy(
     source_count: int,
     tool_successes: Sequence[bool],
     memory_count: int,
+    detection_count: int = 0,
 ) -> str:
     source_labels = [f"[SOURCE {index}]" for index in range(1, source_count + 1)]
 
@@ -153,11 +157,12 @@ def build_citation_policy(
     ]
 
     memory_labels = [f"[MEMORY {index}]" for index in range(1, memory_count + 1)]
-
+    detection_labels = [f"[DETECTION {index}]" for index in range(1, detection_count + 1)]
     return "\n".join(
         [
             "AUTHORITATIVE CITATION ALLOWLIST:",
             "Document labels: " + (" ".join(source_labels) or "NONE"),
+            "Candidate-input labels: " + (" ".join(detection_labels) or "NONE"),
             "Successful tool labels: " + (" ".join(tool_labels) or "NONE"),
             "Historical memory labels: " + (" ".join(memory_labels) or "NONE"),
             "Only the labels listed above may be cited.",

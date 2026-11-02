@@ -54,7 +54,14 @@ Rules:
 - Do not invent facts.
 - Document-backed claims may cite [SOURCE n].
 - Operational-data-backed claims may cite [TOOL n].
-- The only valid citation formats are [SOURCE n], [TOOL n], and [MEMORY n].
+- Valid citation formats are [SOURCE n], [TOOL n], [MEMORY n], and [DETECTION n].
+- Cite the supplied duplicate-payment candidate input using [DETECTION 1].
+- Tool citations support tool records, not the separate candidate-input conclusion.
+- No supplied candidate does not prove that duplicates never occurred.
+- A charge with status refunded must not be counted as currently succeeded.
+- Use the current ledger status counts when describing payment records.
+- Do not infer a charge's historical status without explicit history.
+- Preserve transaction identifiers exactly; do not shorten them.
 - Cite only labels that exist in the supplied context.
 - Never cite a failed tool result as supporting evidence.
 - Cite each item separately; never use citation ranges or combined labels.
@@ -101,7 +108,8 @@ SIMILAR HISTORICAL INCIDENTS:
 OPERATIONAL TOOL RESULTS:
 {tool_results}
 
-VERIFIED DUPLICATE PAYMENT DETECTION:
+DUPLICATE-PAYMENT CANDIDATE INPUT:
+[DETECTION 1]
 {duplicate_payment}
 
 Produce only a grounded investigation analysis.
@@ -132,6 +140,7 @@ async def analyze_incident(
         source_count=len(evidence),
         tool_successes=tool_successes,
         memory_count=len(memories or []),
+        detection_count=1,
     )
 
     output_feedback = "No previous output validation failure."
@@ -146,6 +155,7 @@ async def analyze_incident(
                 tool_successes=tool_successes,
                 memory_count=len(memories or []),
                 empty_error="Incident analyzer returned an empty analysis",
+                detection_count=1,
             )
         except InvalidAIOutputError as exc:
             output_feedback = (

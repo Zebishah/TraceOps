@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     voyage_api_key: str
     reranker_model: str = "rerank-3-lite"
     retrieval_candidate_limit: int = 12
-
+    n8n_delivery_enabled: bool = True
     n8n_webhook_base_url: str | None = None
     n8n_webhook_secret: str | None = None
     n8n_timeout_seconds: float = 10.0

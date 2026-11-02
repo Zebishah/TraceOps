@@ -1,5 +1,6 @@
 """Durable, at-least-once delivery of n8n automation events."""
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -9,6 +10,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ops_pilot.core.config import get_settings
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.integrations.n8n import send_n8n_event
 from ops_pilot.models.automation_delivery import AutomationDelivery
@@ -218,7 +220,15 @@ async def deliver_automation(
     *,
     delivery_id: uuid.UUID,
 ) -> bool:
-    """Attempt one delivery; save its result and never lose failure state."""
+    """Attempt delivery without letting webhook outages escape to callers."""
+    settings = get_settings()
+
+    if not settings.n8n_delivery_enabled:
+        logger.info(
+            "automation_delivery_paused",
+            extra={"delivery_id": str(delivery_id)},
+        )
+        return False
 
     claim = await claim_delivery(delivery_id=delivery_id)
 
@@ -226,24 +236,27 @@ async def deliver_automation(
         return False
 
     token, raw_event, webhook_path = claim
-
     error: Exception | None = None
 
     try:
         event = AutomationEvent.model_validate(raw_event)
 
-        # Always deliver the persisted event, not a rebuilt
-        # event with potentially different content.
         if event.event_id != delivery_id:
-            raise ValueError("Automation event ID does not match outbox ID")
+            raise ValueError(
+                "Automation event ID does not match outbox ID",
+            )
 
-        await send_n8n_event(
-            webhook_path=webhook_path,
-            event=event,
-        )
+        # A total deadline also bounds slow responses that would otherwise
+        # keep resetting individual HTTP read timeouts.
+        async with asyncio.timeout(settings.n8n_timeout_seconds):
+            await send_n8n_event(
+                webhook_path=webhook_path,
+                event=event,
+            )
 
     except Exception as exc:
         error = exc
+
         logger.warning(
             "automation_delivery_failed",
             extra={"delivery_id": str(delivery_id)},
@@ -328,6 +341,14 @@ async def recover_automation_deliveries() -> dict[str, int]:
 
     # First, permanently close abandoned deliveries that
     # have already reached their maximum attempt count.
+    if not get_settings().n8n_delivery_enabled:
+        logger.info("automation_recovery_paused")
+
+        return {
+            "examined": 0,
+            "delivered": 0,
+            "expired": 0,
+        }
     expired = await expire_exhausted_delivery_leases()
 
     now = datetime.now(UTC)

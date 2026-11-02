@@ -53,7 +53,14 @@ Rules:
 - Do not invent facts.
 - Cite document evidence using [SOURCE n].
 - Cite operational data using [TOOL n].
-- The only valid citation formats are [SOURCE n], [TOOL n], and [MEMORY n].
+- Valid citation formats are [SOURCE n], [TOOL n], [MEMORY n], and [DETECTION n].
+- Cite the supplied duplicate-payment candidate input using [DETECTION 1].
+- Tool citations support tool records, not the separate candidate-input conclusion.
+- No supplied candidate does not prove that duplicates never occurred.
+- A charge with status refunded must not be counted as currently succeeded.
+- Use the current ledger status counts when describing payment records.
+- Do not infer a charge's historical status without explicit history.
+- Preserve transaction identifiers exactly; do not shorten them.
 - Cite only labels that exist in the supplied context.
 - Never cite a failed tool result as supporting evidence.
 - Clearly state uncertainty when information is insufficient.
@@ -112,7 +119,8 @@ SIMILAR HISTORICAL INCIDENTS:
 OPERATIONAL TOOL RESULTS:
 {tool_results}
 
-VERIFIED DUPLICATE PAYMENT DETECTION:
+DUPLICATE-PAYMENT CANDIDATE INPUT:
+[DETECTION 1]
 {duplicate_payment}
 
 Recommend the next appropriate action.
@@ -145,6 +153,7 @@ async def recommend_incident_action(
         source_count=len(evidence),
         tool_successes=tool_successes,
         memory_count=len(memories or []),
+        detection_count=1,
     )
 
     output_feedback = "No previous output validation failure."
@@ -159,6 +168,7 @@ async def recommend_incident_action(
                 tool_successes=tool_successes,
                 memory_count=len(memories or []),
                 empty_error=("Incident recommender returned an empty recommendation"),
+                detection_count=1,
             )
         except InvalidAIOutputError as exc:
             output_feedback = (
