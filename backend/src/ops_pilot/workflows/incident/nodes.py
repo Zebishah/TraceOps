@@ -23,6 +23,7 @@ from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
 from ops_pilot.schemas.incident_classification import (
+    IncidentCategory,
     IncidentClassification,
 )
 from ops_pilot.schemas.incident_memories import IncidentMemoryRetrievalResult
@@ -368,7 +369,7 @@ async def propose_action_node(
     # A deterministic payment candidate is the only
     # authorized source of executable refund proposals.
     # No LLM fallback may create a financial action.
-    if state["category"].value != "payment":
+    if IncidentCategory(state["category"]) != IncidentCategory.PAYMENT:
         return {
             "proposed_action": None,
             "approval_required": False,
@@ -737,7 +738,7 @@ def detect_duplicate_payment_node(
             "Duplicate payment detection requires incident category",
         )
 
-    if category.value != "payment":
+    if IncidentCategory(category) != IncidentCategory.PAYMENT:
         return {
             "duplicate_payment_candidate": None,
         }
