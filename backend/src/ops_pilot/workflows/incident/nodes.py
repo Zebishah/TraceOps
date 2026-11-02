@@ -645,10 +645,18 @@ async def select_operational_tool_node(
         category=state["category"],
         tool_results=tool_results,
     )
-
     if required_tool_call is not None:
         return {
             "pending_tool_call": required_tool_call,
+            "needs_more_information": False,
+            "clarification_question": None,
+        }
+    if IncidentCategory(state["category"]) == IncidentCategory.PAYMENT:
+        # Required payment inspection is deterministic.
+        # Once it is complete, analyze those results instead of
+        # asking an LLM to fetch the same transactions again.
+        return {
+            "pending_tool_call": None,
             "needs_more_information": False,
             "clarification_question": None,
         }

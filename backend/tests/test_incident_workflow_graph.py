@@ -291,7 +291,6 @@ def test_incident_investigation_graph_runs_in_order(
         "retrieve_memories",
         "list_customer_orders",
         "list_order_payments",
-        "select_optional_tool",
         "detect_duplicate_payment",
         "analyze",
         "recommend",
