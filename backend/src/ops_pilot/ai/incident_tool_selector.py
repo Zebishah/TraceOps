@@ -78,11 +78,13 @@ async def select_incident_tool(
     *,
     title: str,
     description: str,
-    category: IncidentCategory,
-    priority: IncidentPriority,
+    category: IncidentCategory | str,
+    priority: IncidentPriority | str,
     evidence: list[RetrievalResult],
     tool_results: list[ToolExecutionResult],
 ) -> ToolCallRequest | None:
+    category = IncidentCategory(category)
+    priority = IncidentPriority(priority)
     model = get_chat_model().bind_tools(
         OPERATIONAL_TOOL_DEFINITIONS,
         tool_choice="auto",

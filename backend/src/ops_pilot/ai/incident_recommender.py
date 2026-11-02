@@ -101,14 +101,17 @@ async def recommend_incident_action(
     *,
     title: str,
     description: str,
-    category: IncidentCategory,
-    priority: IncidentPriority,
+    category: IncidentCategory | str,
+    priority: IncidentPriority | str,
     analysis: str,
     evidence: list[RetrievalResult],
     memories: list[IncidentMemoryRetrievalResult] | None = None,
     tool_results: list[ToolExecutionResult] | None = None,
     duplicate_payment: DuplicatePaymentCandidate | None = None,
 ) -> str:
+
+    category = IncidentCategory(category)
+    priority = IncidentPriority(priority)
     model = get_chat_model()
 
     chain = INCIDENT_RECOMMENDATION_PROMPT | model | StrOutputParser()

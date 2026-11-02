@@ -93,13 +93,15 @@ async def analyze_incident(
     *,
     title: str,
     description: str,
-    category: IncidentCategory,
-    priority: IncidentPriority,
+    category: IncidentCategory | str,
+    priority: IncidentPriority | str,
     evidence: list[RetrievalResult],
     memories: list[IncidentMemoryRetrievalResult] | None = None,
     tool_results: list[ToolExecutionResult] | None = None,
     duplicate_payment: DuplicatePaymentCandidate | None = None,
 ) -> str:
+    category = IncidentCategory(category)
+    priority = IncidentPriority(priority)
     model = get_chat_model()
 
     chain = INCIDENT_ANALYSIS_PROMPT | model | StrOutputParser()

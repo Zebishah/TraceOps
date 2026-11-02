@@ -94,13 +94,15 @@ async def propose_incident_action(
     *,
     title: str,
     description: str,
-    category: IncidentCategory,
-    priority: IncidentPriority,
+    category: IncidentCategory | str,
+    priority: IncidentPriority | str,
     evidence: list[RetrievalResult],
     tool_results: list[ToolExecutionResult],
     analysis: str,
     recommendation: str,
 ) -> IncidentActionProposal:
+    category = IncidentCategory(category)
+    priority = IncidentPriority(priority)
     model = get_chat_model()
 
     structured_model = model.with_structured_output(
