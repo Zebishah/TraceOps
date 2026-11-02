@@ -18,9 +18,16 @@ from ops_pilot.models.payment_transaction import (
 
 async def main() -> None:
     marker = uuid.uuid4().hex[:8]
-
+    target_organization_id = uuid.UUID("d5d2a37c-5538-4783-8f42-a285d8534b7a")
+    fingerprint = f"synthetic-card-{marker}"
     async with async_session_factory() as session:
-        membership_result = await session.execute(select(Membership).limit(1))
+        membership_result = await session.execute(
+            select(Membership)
+            .where(
+                Membership.organization_id == target_organization_id,
+            )
+            .limit(1)
+        )
 
         membership = membership_result.scalar_one_or_none()
 
@@ -61,6 +68,7 @@ async def main() -> None:
             transaction_type=(PaymentTransactionType.CHARGE),
             amount=Decimal("12000.00"),
             currency="PKR",
+            payment_instrument_fingerprint=fingerprint,
             status=(PaymentTransactionStatus.SUCCEEDED),
             processed_at=(datetime.now(UTC) - timedelta(minutes=9)),
         )
@@ -73,6 +81,7 @@ async def main() -> None:
             transaction_type=(PaymentTransactionType.CHARGE),
             amount=Decimal("12000.00"),
             currency="PKR",
+            payment_instrument_fingerprint=fingerprint,
             status=(PaymentTransactionStatus.SUCCEEDED),
             processed_at=(datetime.now(UTC) - timedelta(minutes=8)),
         )

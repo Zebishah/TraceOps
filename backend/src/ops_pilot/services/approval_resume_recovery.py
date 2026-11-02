@@ -70,15 +70,18 @@ async def renew_resume_job_lease(
 async def claim_resume_jobs(
     *,
     limit: int = BATCH_SIZE,
+    job_id: uuid.UUID | None = None,
+    organization_id: uuid.UUID | None = None,
 ) -> list[ClaimedResumeJob]:
     """Claim due jobs without allowing concurrent database claims."""
-
+    if (job_id is None) != (organization_id is None):
+        raise ValueError("job_id and organization_id must be supplied together")
     now = datetime.now(UTC)
     claimed: list[ClaimedResumeJob] = []
 
     async with async_session_factory() as session:
         async with session.begin():
-            result = await session.execute(
+            statement = (
                 select(ApprovalResumeJob)
                 .where(
                     ApprovalResumeJob.status.in_(
@@ -98,6 +101,13 @@ async def claim_resume_jobs(
                 .with_for_update(skip_locked=True)
             )
 
+            if job_id is not None and organization_id is not None:
+                statement = statement.where(
+                    ApprovalResumeJob.id == job_id,
+                    ApprovalResumeJob.organization_id == organization_id,
+                )
+
+            result = await session.execute(statement)
             jobs = result.scalars().all()
 
             for job in jobs:

@@ -5,6 +5,7 @@ Only this worker resumes approval-gated LangGraph workflows.
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 from time import monotonic
 
@@ -373,16 +374,23 @@ async def keep_resume_job_lease_alive(
             return
 
 
-async def run_approval_resume_sweep() -> ResumeSweepResult:
+async def run_approval_resume_sweep(
+    *,
+    job_id: uuid.UUID | None = None,
+    organization_id: uuid.UUID | None = None,
+) -> ResumeSweepResult:
     """Process bounded recovery jobs sequentially, claiming one at a time."""
+    if (job_id is None) != (organization_id is None):
+        raise ValueError("job_id and organization_id must be supplied together")
 
+    batch_size = 1 if job_id is not None else RECOVERY_SWEEP_BATCH_SIZE
     sweep_started_at = monotonic()
 
     claimed_count = 0
     completed = 0
     failed = 0
 
-    for _ in range(RECOVERY_SWEEP_BATCH_SIZE):
+    for _ in range(batch_size):
         if monotonic() - sweep_started_at >= RECOVERY_SWEEP_BUDGET_SECONDS:
             logger.warning(
                 "approval_resume_sweep_budget_reached",
@@ -395,8 +403,14 @@ async def run_approval_resume_sweep() -> ResumeSweepResult:
             break
 
         # Acquire only one lease at a time.
-        jobs = await claim_resume_jobs(limit=1)
-
+        if job_id is None:
+            jobs = await claim_resume_jobs(limit=1)
+        else:
+            jobs = await claim_resume_jobs(
+                limit=1,
+                job_id=job_id,
+                organization_id=organization_id,
+            )
         if not jobs:
             break
 
