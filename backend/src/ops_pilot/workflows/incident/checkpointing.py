@@ -16,6 +16,9 @@ from ops_pilot.schemas.action_execution import (
 from ops_pilot.schemas.approvals import (
     ApprovalResumeDecision,
 )
+from ops_pilot.schemas.duplicate_payments import (
+    DuplicatePaymentCandidate,
+)
 from ops_pilot.schemas.incident_actions import (
     IncidentActionProposal,
 )
@@ -50,6 +53,10 @@ def get_checkpoint_serializer() -> JsonPlusSerializer:
     return JsonPlusSerializer(
         pickle_fallback=False,
         allowed_msgpack_modules=[
+            IncidentStatus,
+            IncidentPriority,
+            IncidentCategory,
+            DuplicatePaymentCandidate,
             IncidentStatus,
             IncidentPriority,
             IncidentCategory,
