@@ -22,6 +22,7 @@ from ops_pilot.db.base import Base
 class BackgroundJobType(StrEnum):
     DOCUMENT_PROCESSING = "document_processing"
     MEMORY_INDEXING = "memory_indexing"
+    INCIDENT_ANALYSIS = "incident_analysis"
 
 
 class BackgroundJobStatus(StrEnum):

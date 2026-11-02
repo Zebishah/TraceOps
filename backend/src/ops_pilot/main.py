@@ -32,6 +32,9 @@ from ops_pilot.inngest.functions.document_processing import (
 from ops_pilot.inngest.functions.health import (
     background_health_check,
 )
+from ops_pilot.inngest.functions.incident_analysis import (
+    investigate_incident_background,
+)
 from ops_pilot.inngest.functions.memory_indexing import (
     index_incident_memory_background,
 )
@@ -82,6 +85,7 @@ def create_app() -> FastAPI:
         index_incident_memory_background,
         recover_background_dispatches,
         recover_automation_deliveries_background,
+        investigate_incident_background,
     ]
 
     # Financial recovery is intentionally opt-in.

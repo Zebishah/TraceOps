@@ -10,6 +10,10 @@ from ops_pilot.api.dependencies import (
     IncidentCreatorMembership,
     IncidentInvestigatorMembership,
 )
+from ops_pilot.models.background_job import (
+    BackgroundJobStatus,
+    BackgroundJobType,
+)
 from ops_pilot.schemas.approval_resume_status import (
     ApprovalResumeStatusResponse,
 )
@@ -17,6 +21,7 @@ from ops_pilot.schemas.approvals import (
     ApprovalDecisionRequest,
     ApprovalResponse,
 )
+from ops_pilot.schemas.background_jobs import BackgroundJobResponse
 from ops_pilot.schemas.incidents import (
     IncidentAcknowledgmentResponse,
     IncidentClassificationResponse,
@@ -33,10 +38,15 @@ from ops_pilot.services.approval_workflow import (
     decide_and_resume_approval,
 )
 from ops_pilot.services.approvals import get_approval_request
+from ops_pilot.services.background_jobs import get_background_job
 from ops_pilot.services.incident_acknowledgment import (
     IncidentAcknowledgmentConflict,
     IncidentAcknowledgmentNotFound,
     acknowledge_incident,
+)
+from ops_pilot.services.incident_background import (
+    enqueue_incident_analysis,
+    get_incident_analysis_result,
 )
 from ops_pilot.services.incident_classification import (
     classify_stored_incident,
@@ -359,4 +369,75 @@ async def acknowledge_incident_endpoint(
         incident_id=incident_id,
         event_id=event_id,
         status="queued",
+    )
+
+
+@router.post(
+    "/{incident_id}/investigate-background",
+    response_model=BackgroundJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_incident_investigation_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    current_user: CurrentUser,
+    membership: IncidentInvestigatorMembership,
+    session: DbSession,
+) -> BackgroundJobResponse:
+    try:
+        job = await enqueue_incident_analysis(
+            session=session,
+            organization_id=organization_id,
+            incident_id=incident_id,
+            user_id=current_user.id,
+        )
+    except IncidentResolutionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return BackgroundJobResponse.model_validate(job)
+
+
+@router.get(
+    "/{incident_id}/investigations/{job_id}/result",
+    response_model=IncidentInvestigationResponse,
+)
+async def get_background_investigation_result_endpoint(
+    organization_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    job_id: uuid.UUID,
+    membership: IncidentInvestigatorMembership,
+    session: DbSession,
+) -> IncidentInvestigationResponse:
+    job = await get_background_job(
+        session=session,
+        organization_id=organization_id,
+        job_id=job_id,
+    )
+
+    if (
+        job is None
+        or job.job_type != BackgroundJobType.INCIDENT_ANALYSIS
+        or job.resource_id != incident_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Investigation job not found",
+        )
+
+    if job.status != BackgroundJobStatus.SUCCEEDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Investigation result is not ready",
+        )
+
+    # Release the read transaction before loading checkpoints.
+    await session.rollback()
+
+    return await get_incident_analysis_result(
+        organization_id=organization_id,
+        incident_id=incident_id,
+        job_id=job_id,
     )

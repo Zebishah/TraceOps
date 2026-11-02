@@ -16,6 +16,7 @@ from ops_pilot.models.background_job import (
     BackgroundJobType,
 )
 from ops_pilot.services.background_job_dispatch import (
+    INCIDENT_ANALYSIS_EVENT,
     MEMORY_INDEXING_EVENT,
     _send_background_job_event,
 )
@@ -92,6 +93,8 @@ async def recover_abandoned_dispatches() -> RecoveryResult:
             event_name = DOCUMENT_PROCESSING_EVENT
         elif job_type == BackgroundJobType.MEMORY_INDEXING:
             event_name = MEMORY_INDEXING_EVENT
+        elif job_type == BackgroundJobType.INCIDENT_ANALYSIS:
+            event_name = INCIDENT_ANALYSIS_EVENT
         else:
             logger.error(
                 "unknown_background_job_type",

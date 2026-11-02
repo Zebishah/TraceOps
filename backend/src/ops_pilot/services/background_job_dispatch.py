@@ -28,6 +28,7 @@ from ops_pilot.services.document_processing import (
 )
 
 MEMORY_INDEXING_EVENT = "ops_pilot/memory.indexing.requested"
+INCIDENT_ANALYSIS_EVENT = "ops_pilot/incident.analysis.requested"
 
 
 async def _send_background_job_event(

@@ -129,7 +129,7 @@ async def execute_approval_recovery(
     fn_id="recover-approval-resume-jobs",
     name="Recover Approval Resume Jobs",
     trigger=inngest.TriggerCron(
-        cron="*/10 * * * *",
+        cron="0 */2 * * *",
     ),
     retries=1,
 )
