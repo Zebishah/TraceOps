@@ -53,7 +53,7 @@ def test_retrieve_similar_incident_memories(
         subject_customer_id=customer_id,
         category="payment",
         summary=("Customer had two successful charges for one order."),
-        resolution=("The duplicate charge was refunded."),
+        resolution="The duplicate charge was refunded.",
     )
 
     db_result = Mock()
@@ -160,7 +160,12 @@ def test_retrieve_similar_incident_memories(
 
     assert retrieved.vector_score == 0.93
 
-    assert retrieved.resolution == ("The duplicate charge was refunded.")
+    assert retrieved.resolution == (
+        "Historical context only. This retrieved memory "
+        "does not independently verify execution by an "
+        "external payment provider. Historical resolution: "
+        "The duplicate charge was refunded."
+    )
 
     cast(
         AsyncMock,

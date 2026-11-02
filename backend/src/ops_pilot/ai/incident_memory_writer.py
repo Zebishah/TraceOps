@@ -113,14 +113,14 @@ def format_refund_execution(
         return "No verified write action was executed."
 
     return (
-        f"Source transaction: "
-        f"{execution.source_transaction_id}\n"
-        f"Refund transaction: "
-        f"{execution.refund_transaction_id}\n"
+        "Execution mode: simulated internal ledger only.\n"
+        "No external payment provider was contacted; "
+        "no real money was moved.\n"
+        f"Source transaction: {execution.source_transaction_id}\n"
+        f"Refund transaction: {execution.refund_transaction_id}\n"
         f"Amount: {execution.amount}\n"
         f"Currency: {execution.currency}\n"
-        f"Already executed: "
-        f"{execution.already_executed}"
+        f"Already executed: {execution.already_executed}"
     )
 
 
@@ -135,6 +135,23 @@ async def generate_incident_memory(
     tool_results: list[ToolExecutionResult],
     execution: RefundExecutionResult | None,
 ) -> IncidentMemoryCreate:
+    if execution is not None:
+        return IncidentMemoryCreate(
+            summary=(
+                "A human-approved simulated refund was recorded "
+                "and verified in OpsPilot's internal ledger. "
+                f"Source transaction: {execution.source_transaction_id}. "
+                f"Amount: {execution.amount} {execution.currency}."
+            ),
+            resolution=(
+                f"Simulated refund {execution.refund_transaction_id} "
+                f"for {execution.amount} {execution.currency} "
+                "was recorded in OpsPilot's internal ledger against "
+                f"transaction {execution.source_transaction_id}. "
+                "No external payment provider was contacted and "
+                "no real money was moved."
+            ),
+        )
     model = get_chat_model()
 
     structured_model = model.with_structured_output(

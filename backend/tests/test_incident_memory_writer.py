@@ -85,9 +85,18 @@ def test_generate_incident_memory_returns_structured_memory(
             ),
         )
     )
-
-    assert result.summary == ("The customer had two successful charges for the same order.")
+    assert result.summary == (
+        "A human-approved simulated refund was recorded "
+        "and verified in OpsPilot's internal ledger. "
+        "Source transaction: TXN-B. "
+        "Amount: 12000.00 PKR."
+    )
 
     assert result.resolution == (
-        "The duplicate charge was refunded after human approval and verification."
+        "Simulated refund refund-123 "
+        "for 12000.00 PKR "
+        "was recorded in OpsPilot's internal ledger against "
+        "transaction TXN-B. "
+        "No external payment provider was contacted and "
+        "no real money was moved."
     )

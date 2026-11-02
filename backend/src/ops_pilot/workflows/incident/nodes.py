@@ -79,6 +79,38 @@ from ops_pilot.workflows.observability import (
 )
 
 MAX_TOOL_ROUNDS = 5
+CUSTOMER_CONTEXT_QUESTION = (
+    "Please select the customer associated with this incident "
+    "(subject_customer_id). Also provide the order ID or transaction "
+    "IDs if available. Do not provide card numbers or payment credentials."
+)
+
+
+def route_after_customer_context(
+    state: IncidentInvestigationState,
+) -> str:
+    if state.get("subject_customer_id") is None:
+        return "request_customer_context"
+
+    return "retrieve_evidence"
+
+
+def request_customer_context_node(
+    state: IncidentInvestigationState,
+) -> dict[str, object]:
+    return {
+        "needs_more_information": True,
+        "clarification_question": CUSTOMER_CONTEXT_QUESTION,
+        "retrieval_query": "",
+        "evidence": [],
+        "similar_memories": [],
+        "tool_results": [],
+        "pending_tool_call": None,
+        "duplicate_payment_candidate": None,
+        "proposed_action": None,
+        "approval_required": False,
+        "approval_request_id": None,
+    }
 
 
 async def classify_incident_node(
@@ -586,17 +618,7 @@ async def select_operational_tool_node(
     )
 
     if customer_id is None:
-        return {
-            "pending_tool_call": None,
-            "needs_more_information": True,
-            "clarification_question": (
-                "Please provide or select "
-                "the relevant order, "
-                "transaction, product, "
-                "amount, or approximate "
-                "transaction date."
-            ),
-        }
+        return request_customer_context_node(state)
 
     if (
         "title" not in state

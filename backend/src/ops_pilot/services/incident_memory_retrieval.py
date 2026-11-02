@@ -146,7 +146,12 @@ async def retrieve_similar_incident_memories(
                 subject_customer_id=(memory.subject_customer_id),
                 category=memory.category,
                 summary=memory.summary,
-                resolution=memory.resolution,
+                resolution=(
+                    "Historical context only. This retrieved memory "
+                    "does not independently verify execution by an "
+                    "external payment provider. Historical resolution: "
+                    f"{memory.resolution}"
+                ),
                 vector_score=score,
             )
         )
