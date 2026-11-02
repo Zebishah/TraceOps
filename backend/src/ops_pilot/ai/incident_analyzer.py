@@ -10,6 +10,8 @@ from ops_pilot.ai.incident_context import (
 )
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.ai.output_validation import (
+    InvalidAIOutputError,
+    build_citation_policy,
     run_with_output_retry,
     validate_text_response,
 )
@@ -69,6 +71,10 @@ Rules:
 - Never state a root cause unless the supplied evidence or tool results explicitly prove it.
 - Multiple successful charges prove that multiple charges occurred; they do not by themselves
 prove why they occurred.
+{citation_policy}
+
+OUTPUT VALIDATION FEEDBACK:
+{output_feedback}
 """,
         ),
         (
@@ -120,16 +126,41 @@ async def analyze_incident(
     priority = IncidentPriority(priority)
     model = get_chat_model()
 
-    def validate_response(message: BaseMessage) -> str:
-        return validate_text_response(
-            message,
-            source_count=len(evidence),
-            tool_successes=[result.success for result in (tool_results or [])],
-            memory_count=len(memories or []),
-            empty_error="Incident analyzer returned an empty analysis",
-        )
+    tool_successes = [result.success for result in (tool_results or [])]
 
-    chain = INCIDENT_ANALYSIS_PROMPT | model | RunnableLambda(validate_response)
+    citation_policy = build_citation_policy(
+        source_count=len(evidence),
+        tool_successes=tool_successes,
+        memory_count=len(memories or []),
+    )
+
+    output_feedback = "No previous output validation failure."
+
+    def validate_response(message: BaseMessage) -> str:
+        nonlocal output_feedback
+
+        try:
+            return validate_text_response(
+                message,
+                source_count=len(evidence),
+                tool_successes=tool_successes,
+                memory_count=len(memories or []),
+                empty_error="Incident analyzer returned an empty analysis",
+            )
+        except InvalidAIOutputError as exc:
+            output_feedback = (
+                f"The previous answer was rejected: {exc} "
+                "Generate a new concise answer using the citation allowlist. "
+                "Remove unsupported claims instead of inventing references. "
+                "If a claim cannot be supported, state the uncertainty."
+            )
+            raise
+
+    prompt = INCIDENT_ANALYSIS_PROMPT.partial(
+        citation_policy=citation_policy,
+    )
+
+    chain = prompt | model | RunnableLambda(validate_response)
 
     analysis = await run_with_output_retry(
         operation="incident_analysis",
@@ -150,6 +181,7 @@ async def analyze_incident(
                         duplicate_payment,
                     )
                 ),
+                "output_feedback": output_feedback,
                 "tool_results": format_tool_results(tool_results or []),
             }
         ),

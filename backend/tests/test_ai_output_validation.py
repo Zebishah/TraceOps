@@ -200,3 +200,82 @@ def test_ai_stages_retry_unsupported_citation(
 
     assert result == "Request transaction details before proceeding."
     assert attempts == 2
+
+
+@pytest.mark.parametrize("stage", ["analysis", "recommendation"])
+def test_retry_receives_citation_allowlist_and_rejection_feedback(
+    monkeypatch,
+    stage: str,
+) -> None:
+    system_messages: list[str] = []
+
+    async def fake_model(prompt_value):
+        messages = prompt_value.to_messages()
+        system_text = str(messages[0].content)
+        system_messages.append(system_text)
+
+        if len(system_messages) == 1:
+            return AIMessage(
+                content="A transaction was verified [TOOL 3].",
+                response_metadata={"finish_reason": "stop"},
+            )
+
+        assert "Unavailable citation [TOOL 3]" in system_text
+        assert "Successful tool labels: NONE" in system_text
+
+        return AIMessage(
+            content="Insufficient evidence; transaction verification is required.",
+            response_metadata={"finish_reason": "stop"},
+        )
+
+    module = analyzer_module if stage == "analysis" else recommender_module
+
+    monkeypatch.setattr(
+        module,
+        "get_chat_model",
+        lambda: RunnableLambda(fake_model),
+    )
+
+    if stage == "analysis":
+        result = asyncio.run(
+            analyzer_module.analyze_incident(
+                title="Payment report",
+                description="Transaction details are not verified.",
+                category="payment",
+                priority="high",
+                evidence=[],
+            )
+        )
+    else:
+        result = asyncio.run(
+            recommender_module.recommend_incident_action(
+                title="Payment report",
+                description="Transaction details are not verified.",
+                category="payment",
+                priority="high",
+                analysis="The available evidence is insufficient.",
+                evidence=[],
+            )
+        )
+
+    assert len(system_messages) == 2
+    assert "Document labels: NONE" in system_messages[0]
+    assert "Historical memory labels: NONE" in system_messages[0]
+    assert "previous answer was rejected" not in system_messages[0]
+    assert result == ("Insufficient evidence; transaction verification is required.")
+
+
+def test_invalid_citation_error_contains_safe_diagnostics() -> None:
+    with pytest.raises(
+        InvalidAIOutputError,
+        match=r"Unavailable citation \[TOOL 3\]",
+    ) as caught:
+        validate(
+            "Sensitive customer details must not appear in the error [TOOL 3].",
+            tools=(True, False),
+        )
+
+    error_message = str(caught.value)
+
+    assert "successful tool positions: [1]" in error_message
+    assert "Sensitive customer details" not in error_message

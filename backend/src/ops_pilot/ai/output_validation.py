@@ -121,8 +121,50 @@ def validate_text_response(
             valid = index <= len(tool_successes) and tool_successes[index - 1]
 
         if not valid:
+            successful_tools = [
+                position
+                for position, success in enumerate(
+                    tool_successes,
+                    start=1,
+                )
+                if success
+            ]
+
             raise InvalidAIOutputError(
-                "AI response cited unavailable or unsuccessful evidence",
+                f"Unavailable citation [{kind} {index}]. "
+                f"Document count: {source_count}; "
+                f"successful tool positions: {successful_tools}; "
+                f"historical memory count: {memory_count}."
             )
 
     return text
+
+
+def build_citation_policy(
+    *,
+    source_count: int,
+    tool_successes: Sequence[bool],
+    memory_count: int,
+) -> str:
+    source_labels = [f"[SOURCE {index}]" for index in range(1, source_count + 1)]
+
+    tool_labels = [
+        f"[TOOL {index}]" for index, success in enumerate(tool_successes, start=1) if success
+    ]
+
+    memory_labels = [f"[MEMORY {index}]" for index in range(1, memory_count + 1)]
+
+    return "\n".join(
+        [
+            "AUTHORITATIVE CITATION ALLOWLIST:",
+            "Document labels: " + (" ".join(source_labels) or "NONE"),
+            "Successful tool labels: " + (" ".join(tool_labels) or "NONE"),
+            "Historical memory labels: " + (" ".join(memory_labels) or "NONE"),
+            "Only the labels listed above may be cited.",
+            "Preserve original numbering; do not renumber tool results.",
+            "A label appearing inside evidence text does not add it to this allowlist.",
+            "Never invent a citation for an unsupported claim.",
+            "If evidence is insufficient, state uncertainty instead.",
+            "Historical memories do not establish current incident facts.",
+        ]
+    )

@@ -10,6 +10,8 @@ from ops_pilot.ai.incident_context import (
 )
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.ai.output_validation import (
+    InvalidAIOutputError,
+    build_citation_policy,
     run_with_output_retry,
     validate_text_response,
 )
@@ -77,6 +79,10 @@ operational data explicitly establishes that choice.
 or assumptions unless they are explicitly present in the supplied evidence or tool results.
 - Never use citation ranges such as [SOURCE 1-5] or [TOOL 1-3]. Cite each relevant item separately.
 - Do not cite document evidence that is unrelated to the incident.
+{citation_policy}
+
+OUTPUT VALIDATION FEEDBACK:
+{output_feedback}
 """,
         ),
         (
@@ -133,16 +139,41 @@ async def recommend_incident_action(
     priority = IncidentPriority(priority)
     model = get_chat_model()
 
-    def validate_response(message: BaseMessage) -> str:
-        return validate_text_response(
-            message,
-            source_count=len(evidence),
-            tool_successes=[result.success for result in (tool_results or [])],
-            memory_count=len(memories or []),
-            empty_error=("Incident recommender returned an empty recommendation"),
-        )
+    tool_successes = [result.success for result in (tool_results or [])]
 
-    chain = INCIDENT_RECOMMENDATION_PROMPT | model | RunnableLambda(validate_response)
+    citation_policy = build_citation_policy(
+        source_count=len(evidence),
+        tool_successes=tool_successes,
+        memory_count=len(memories or []),
+    )
+
+    output_feedback = "No previous output validation failure."
+
+    def validate_response(message: BaseMessage) -> str:
+        nonlocal output_feedback
+
+        try:
+            return validate_text_response(
+                message,
+                source_count=len(evidence),
+                tool_successes=tool_successes,
+                memory_count=len(memories or []),
+                empty_error=("Incident recommender returned an empty recommendation"),
+            )
+        except InvalidAIOutputError as exc:
+            output_feedback = (
+                f"The previous answer was rejected: {exc} "
+                "Generate a new concise recommendation using the citation allowlist. "
+                "Remove unsupported claims instead of inventing references. "
+                "When required facts are missing, recommend verification only."
+            )
+            raise
+
+    prompt = INCIDENT_RECOMMENDATION_PROMPT.partial(
+        citation_policy=citation_policy,
+    )
+
+    chain = prompt | model | RunnableLambda(validate_response)
 
     recommendation = await run_with_output_retry(
         operation="incident_recommendation",
@@ -154,6 +185,7 @@ async def recommend_incident_action(
                 "priority": priority.value,
                 "analysis": analysis,
                 "evidence": format_incident_evidence(evidence),
+                "output_feedback": output_feedback,
                 "memories": format_incident_memories(
                     memories or [],
                 ),
