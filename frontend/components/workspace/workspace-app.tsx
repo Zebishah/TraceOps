@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, BookOpen, Boxes, CheckCheck, ChevronDown, ClipboardList, Command, FileCheck, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Workflow, Wrench, X } from 'lucide-react';
+import { Activity, BrainCircuit, ArrowUpRight, Shield, Plus, BookOpen, Boxes, CheckCheck, ChevronDown, ClipboardList, Command, FileCheck, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Workflow, Wrench, X } from 'lucide-react';
 import { api } from '@/lib/product/client';
-import { meSchema, workspaceSchema } from '@/lib/product/contracts';
+import { can, meSchema, workspaceSchema } from '@/lib/product/contracts';
 import { useResource } from '@/hooks/use-resource';
 import { Session } from './context';
+import './workspace-redesign.css';
 import { State } from './ui';
 import { OverviewPage, ResourcePage, OperationsPage, JobsPage, SystemPage, QualityPage, DeveloperPage, McpPage, SettingsPage } from './workspace-pages';
 import { IncidentPage, CreateIncidentPage } from './incidents';
@@ -14,7 +15,7 @@ import { KnowledgePage, DocumentPage } from './knowledge';
 import { ApprovalPage } from './approvals';
 
 const navigation = [
-  { group: 'Workspace', items: [['Overview', '', LayoutDashboard], ['Incidents', 'incidents', ClipboardList], ['Approvals', 'approvals', CheckCheck], ['Knowledge', 'knowledge', BookOpen], ['Operations', 'operations', Boxes], ['Incident Memory', 'memory', Activity]] },
+  { group: 'Workspace', items: [['Command center', '', LayoutDashboard], ['Incidents', 'incidents', ClipboardList], ['Approvals', 'approvals', CheckCheck], ['Knowledge', 'knowledge', BookOpen], ['Operations', 'operations', Boxes], ['Incident Memory', 'memory', Activity]] },
   { group: 'Platform', items: [['MCP Connections', 'mcp', Command], ['Automations', 'automations', Workflow], ['Jobs & Recovery', 'jobs', Wrench]] },
   { group: 'Engineering', items: [['Quality & Evaluations', 'quality', FileCheck], ['System & Integrations', 'system', ShieldCheck], ['Developer Hub', 'developer', Command], ['Settings', 'settings', Settings]] },
 ] as const;
@@ -29,6 +30,17 @@ export function WorkspaceApp({ children, backendOrigin = null }: { children?: Re
   });
   const [mobile, setMobile] = useState(false);
   const [message, setMessage] = useState('');
+  const searchDialog = useRef<HTMLDialogElement>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      const target = event.target;
+      const editing = target instanceof HTMLElement && (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable);
+      if (!editing && (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'))) { event.preventDefault(); searchDialog.current?.showModal(); }
+    };
+    document.addEventListener('keydown', openSearch);
+    return () => document.removeEventListener('keydown', openSearch);
+  }, []);
   const selectedOrganization = auth.data?.memberships.some(m => m.organization_id === organization)
     ? organization : auth.data?.memberships[0]?.organization_id ?? '';
   const membership = auth.data?.memberships.find(m => m.organization_id === selectedOrganization);
@@ -84,16 +96,18 @@ export function WorkspaceApp({ children, backendOrigin = null }: { children?: Re
 
   return <div className="dashboard">
     <aside className={`workspace-sidebar ${mobile ? 'visible' : ''}`}>
-      <div className="sidebar-brand"><a href="/">◈ <strong>opspilot</strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
+      <div className="sidebar-brand"><a href="/"><span className="sidebar-logo"><BrainCircuit size={22}/></span><strong>opspilot<span>INTELLIGENCE WORKSPACE</span></strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
       <label className="workspace-selector"><span>WORKSPACE</span><select value={selectedOrganization} disabled={!membership} onChange={event => selectOrganization(event.target.value)} aria-label="Selected organization">{!auth.data?.memberships.length && <option value="">{auth.loading ? 'Connecting…' : 'Select a workspace'}</option>}{auth.data?.memberships.map(m => <option key={m.organization_id} value={m.organization_id}>{m.organization_id === selectedOrganization && workspace.data ? workspace.data.name : `Organization ${m.organization_id.slice(0, 8)}`}</option>)}</select><small>{membership ? `${membership.role} access` : 'Checking workspace access'} <ChevronDown size={12} /></small></label>
+      {can(membership?.role,'create')&&<a className="sidebar-create" href="/app/incidents/new"><Plus size={15}/> New investigation <ArrowUpRight size={14}/></a>}
       {navigation.map(group => <div className="navigation-group" key={group.group}><span>{group.group}</span>{group.items.map(([label, path, Icon]) => <button key={path} className={section === path ? 'current' : ''} onClick={() => navigate(path)} aria-current={section === path ? 'page' : undefined}><Icon size={16} /><span>{label}</span>{section === path && <i />}</button>)}</div>)}
       <div className="sidebar-account"><div className="avatar">{auth.data ? auth.data.user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : '◈'}</div><div><strong>{auth.data?.user.full_name ?? (auth.loading ? 'Loading account…' : 'Account unavailable')}</strong><small>{auth.data?.user.email ?? 'Your secure workspace'}</small></div><button aria-label="Sign out" onClick={async () => { await fetch('/api/session', { method: 'DELETE' }); window.location.assign('/login'); }}><LogOut size={16} /></button></div>
     </aside>
     {mobile && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
-    <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => navigate('incidents')}><Search size={14} /><span>Search incidents</span><kbd>/</kbd></button><a href="/">Product website ↗</a></div></header>
+    <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span className="topbar-workspace-label"><Shield size={12}/> Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => searchDialog.current?.showModal()}><Search size={14} /><span>Search incidents</span><kbd>⌘ K</kbd></button><a href="/">Product website <ArrowUpRight size={12}/></a></div></header>
       <main className="workspace-content" key={selectedOrganization + pathname}>{content}{children}</main>
       <footer className="workspace-footer"><span>OpsPilot / Evidence · Oversight · Follow-through</span><span>{workspace.data?.environment ?? 'Backend workspace'} · Internal-ledger refund simulation</span></footer>
     </div>
+    <dialog ref={searchDialog} className="workspace-dialog command-search-dialog" aria-label="Search incidents"><form onSubmit={event => { event.preventDefault(); searchDialog.current?.close(); router.push(`/app/incidents?q=${encodeURIComponent(searchTerm.trim())}`); }}><div className="command-search-input"><Search size={20}/><label className="sr-only" htmlFor="command-search">Search incidents</label><input id="command-search" autoFocus value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Find an incident…" maxLength={200}/><button type="button" aria-label="Close search" onClick={() => searchDialog.current?.close()}><X size={18}/></button></div><p>Search incident titles and descriptions in your selected workspace.</p><div className="command-search-footer"><span>Organization-scoped search</span><button className="btn primary-action">Search incidents <ArrowUpRight size={14}/></button></div></form></dialog>
     {message && <div className="toast" role="status">{message}<button aria-label="Dismiss notification" onClick={() => setMessage('')}>×</button></div>}
   </div>;
 }
