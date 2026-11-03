@@ -10,7 +10,7 @@ export type Job = z.infer<typeof jobSchema>;
 export const evidenceSchema = z.object({chunk_id:z.string(),document_id:z.string(),chunk_index:z.number(),page_number:z.number(),text:z.string(),source_filename:z.string(),vector_score:z.number(),reranker_score:z.number()});
 export type Evidence = z.infer<typeof evidenceSchema>;
 const memorySchema = z.object({memory_id:z.string(),incident_id:z.string(),category:z.string(),summary:z.string(),resolution:z.string(),vector_score:z.number()});
-export const investigationSchema = z.object({incident_id:z.string(),workflow_thread_id:z.string(),status:z.string(),category:z.string(),priority:z.string(),classification_confidence:z.number(),approval_required:z.boolean(),approval_request_id:z.string().nullable(),needs_more_information:z.boolean(),clarification_question:z.string().nullable(),analysis:z.string().nullable(),recommended_action:z.string().nullable(),retrieval_query:z.string(),evidence:z.array(evidenceSchema),similar_memories:z.array(memorySchema),tool_results:z.array(z.object({call_id:z.string(),tool_name:z.string(),arguments:z.record(z.unknown()),success:z.boolean(),content:z.string()})),memory_id:z.string().nullable(),memory_indexed:z.boolean()});
+export const investigationSchema = z.object({incident_id:z.string(),workflow_thread_id:z.string(),status:z.string(),category:z.string(),priority:z.string(),classification_confidence:z.number().min(0).max(1).nullable(),approval_required:z.boolean(),approval_request_id:z.string().nullable(),needs_more_information:z.boolean(),clarification_question:z.string().nullable(),analysis:z.string().nullable(),recommended_action:z.string().nullable(),retrieval_query:z.string(),evidence:z.array(evidenceSchema),similar_memories:z.array(memorySchema),tool_results:z.array(z.object({call_id:z.string(),tool_name:z.string(),arguments:z.record(z.unknown()),success:z.boolean(),content:z.string()})),memory_id:z.string().nullable(),memory_indexed:z.boolean()});
 export type Investigation = z.infer<typeof investigationSchema>;
 export const approvalSchema=z.object({id:z.string(),incident_id:z.string(),organization_id:z.string(),workflow_thread_id:z.string(),action_type:z.string(),action_payload:z.record(z.unknown()),reason:z.string(),status:z.string(),decided_by_user_id:z.string().nullable(),decision_comment:z.string().nullable(),decided_at:z.string().nullable(),executed_at:z.string().nullable(),superseded_by_approval_id:z.string().nullable().optional(),supersession_reason:z.string().nullable().optional(),created_at:z.string(),updated_at:z.string()});
 export type Approval=z.infer<typeof approvalSchema>;
@@ -36,3 +36,7 @@ export function can(role:Role|undefined, action:'create'|'investigate'|'review'|
 }
 export function stringValue(value:unknown):string { if(value===null||value===undefined)return '—'; if(typeof value==='object')return JSON.stringify(value);return String(value); }
 export function dateValue(value:unknown):string {if(typeof value!=='string')return '—';const date=new Date(value);return Number.isNaN(date.getTime())?value:date.toLocaleString();}
+
+export function classificationConfidenceLabel(value: number | null): string {
+  return value === null ? "Unavailable" : `${Math.round(value * 100)}%`;
+}

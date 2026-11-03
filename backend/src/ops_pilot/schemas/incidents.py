@@ -66,7 +66,7 @@ class IncidentClassificationResponse(BaseModel):
     status: IncidentStatus
     category: IncidentCategory
     priority: IncidentPriority
-    confidence: float = Field(
+    confidence: float | None = Field(
         ge=0.0,
         le=1.0,
     )
@@ -95,7 +95,7 @@ class IncidentInvestigationResponse(BaseModel):
     status: IncidentStatus
     category: IncidentCategory
     priority: IncidentPriority
-    classification_confidence: float = Field(
+    classification_confidence: float | None = Field(
         ge=0.0,
         le=1.0,
     )

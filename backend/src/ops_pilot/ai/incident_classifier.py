@@ -46,6 +46,7 @@ or repeated major failure
 
 Choose exactly one category and one priority.
 Return exactly the fields category, priority, and confidence.
+Use null for confidence if no meaningful confidence estimate is available.
 Do not rename these fields or add reasoning fields.
 Do not invent facts that are not present in the incident.
 """,
@@ -70,13 +71,20 @@ async def classify_incident(
     description: str,
 ) -> IncidentClassification:
     settings = get_settings()
+    logging.getLogger(__name__).info(
+        "incident_classification_requested",
+        extra={"classifier_backend": settings.incident_classifier_backend},
+    )
     if settings.incident_classifier_backend == "finetuned":
         try:
             return await classify_with_finetuned_model(title=title, description=description)
         except FineTunedClassifierError:
             if not settings.finetuned_classifier_fallback_enabled:
                 raise
-            logging.getLogger(__name__).warning("finetuned_classifier_fallback_to_groq")
+            logging.getLogger(__name__).warning(
+                "finetuned_classifier_fallback_to_groq",
+                extra={"outcome": "fallback", "classifier_backend": "groq"},
+            )
 
     return await _classify_with_groq(title=title, description=description)
 

@@ -1,0 +1,91 @@
+{
+  "adapter_validation": {
+    "category_accuracy": 0.0,
+    "critical_misses": 0,
+    "high_risk_downgrades": 1,
+    "independent_groups": 4,
+    "infrastructure_errors": 0,
+    "invalid_outputs": 1,
+    "joint_accuracy": 0.0,
+    "latency_p50_seconds": 3.5115032319999955,
+    "latency_p95_seconds": 3.9570816779996676,
+    "peak_rss_mib": 3311.734375,
+    "priority_accuracy": 0.25,
+    "total": 4
+  },
+  "artifact_sha256": "3cb93d65b4d48991f1ad5a4baf195fbeec38f92f643c3553c309f892d899fd86",
+  "base_validation": {
+    "category_accuracy": 0.25,
+    "critical_misses": 0,
+    "high_risk_downgrades": 0,
+    "independent_groups": 4,
+    "infrastructure_errors": 0,
+    "invalid_outputs": 0,
+    "joint_accuracy": 0.0,
+    "latency_p50_seconds": 2.5671637790001114,
+    "latency_p95_seconds": 2.9528955489995496,
+    "peak_rss_mib": 3312.2265625,
+    "priority_accuracy": 0.0,
+    "total": 4
+  },
+  "data_source": "synthetic_demo",
+  "environment": {
+    "device": "cpu",
+    "os": "Linux x86-64",
+    "peft": "0.21.2",
+    "python": "3.12.14",
+    "torch": "2.15.0+cpu",
+    "transformers": "5.22.1"
+  },
+  "experiment_smoke": {
+    "candidates": [
+      {
+        "category_accuracy": 0.25,
+        "critical_misses": 0,
+        "high_risk_downgrades": 0,
+        "independent_groups": 4,
+        "infrastructure_errors": 0,
+        "invalid_outputs": 0,
+        "joint_accuracy": 0.0,
+        "latency_p50_seconds": 3.663581435999731,
+        "latency_p95_seconds": 3.7537486469991563,
+        "name": "qwen-05b-rank4",
+        "priority_accuracy": 0.25,
+        "total": 4
+      },
+      {
+        "category_accuracy": 0.0,
+        "critical_misses": 0,
+        "high_risk_downgrades": 1,
+        "independent_groups": 4,
+        "infrastructure_errors": 0,
+        "invalid_outputs": 1,
+        "joint_accuracy": 0.0,
+        "latency_p50_seconds": 3.017373407999912,
+        "latency_p95_seconds": 4.132704104998993,
+        "name": "qwen-05b-rank8",
+        "priority_accuracy": 0.25,
+        "total": 4
+      }
+    ],
+    "optimizer_steps_per_candidate": 1,
+    "production_approved": false,
+    "selected": "qwen-05b-rank4",
+    "selection_split": "validation"
+  },
+  "http_contract": {
+    "accepted_schema_valid_outputs": 3,
+    "authentication_checked": true,
+    "metrics_checked": true,
+    "rejected_invalid_outputs": 1
+  },
+  "limitations": [
+    "One optimizer step verifies mechanics, not model quality.",
+    "Synthetic data is not reviewed production incident data.",
+    "No live Groq baseline or CUDA/QLoRA run was performed."
+  ],
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "optimizer_steps": 1,
+  "production_approved": false,
+  "revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+}

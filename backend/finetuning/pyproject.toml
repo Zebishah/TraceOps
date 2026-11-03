@@ -1,0 +1,30 @@
+[project]
+name = "ops-pilot-finetuning-runtime"
+version = "0.1.0"
+description = "Isolated CPU training and classifier worker environment for OpsPilot"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "ops-pilot",
+  "torch==2.15.0",
+  "transformers==5.22.1",
+  "peft==0.21.2",
+  "accelerate==1.15.0",
+  "safetensors==0.8.0",
+  "cryptography==50.0.2",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0", "pytest-asyncio==1.4.1.post1"]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+ops-pilot = { path = "..", editable = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

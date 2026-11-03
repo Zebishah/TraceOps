@@ -59,7 +59,7 @@ async def test_valid_adapter_labels_preserve_contract(monkeypatch, settings):
     result = await classifier.classify_incident(title="Charge", description="Charged twice")
     assert result.category == "payment"
     assert result.priority == "high"
-    assert result.confidence == 0.0  # Explicitly unavailable, not calibrated certainty.
+    assert result.confidence is None  # Explicitly unavailable, not a fabricated score.
 
 
 @pytest.mark.asyncio
@@ -149,3 +149,33 @@ def test_disabled_worker_needs_no_training_configuration():
 def test_tts_requires_voice_feature():
     with pytest.raises(ValueError, match="VOICE_TTS_ENABLED"):
         make_settings(voice_tts_enabled=True)
+
+
+@pytest.mark.asyncio
+async def test_wrong_or_missing_release_header_is_rejected(monkeypatch, settings):
+    settings.finetuned_classifier_release_id = "a" * 64
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        worker.httpx,
+        "AsyncClient",
+        lambda **kw: original(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200, json={"category": "payment", "priority": "high"}
+                )
+            ),
+            **kw,
+        ),
+    )
+    with pytest.raises(worker.FineTunedClassifierError):
+        await worker.classify_with_finetuned_model(title="t", description="d")
+
+
+def test_production_adapter_configuration_requires_release_identity():
+    with pytest.raises(ValueError, match="approved release"):
+        make_settings(
+            environment="production",
+            incident_classifier_backend="finetuned",
+            finetuned_classifier_url="https://classifier.example/classify",
+            finetuned_classifier_token="x" * 32,
+        )

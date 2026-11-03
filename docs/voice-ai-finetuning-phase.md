@@ -2,6 +2,8 @@
 
 Branch: `feat/voice-ai-and-classifier-finetuning`, created from `main` at `b6e001d`.
 
+> Training/serving follow-up: see [production hardening and release runbook](finetuning-production-hardening.md). It documents verified artifacts, signed releases, frozen CPU dependencies, hard deadlines and nullable confidence.
+
 ## What this phase adds
 
 1. Authenticated recorded-audio transcription using Groq Whisper.
@@ -153,12 +155,10 @@ The training command consumes the validated records and constructs response-only
 For a CPU learning experiment:
 
 ```bash
-uv venv .venv-finetuning
-uv pip install --python .venv-finetuning/bin/python torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python .venv-finetuning/bin/python -e . -r finetuning/requirements.txt
+uv sync --project finetuning --frozen
 ```
 
-This does not alter the normal `.venv`, API requirements, or lock file. A small model can run on CPU,
+This does not alter the normal API `.venv`, API requirements, or lock file. The frozen CPU environment is `finetuning/.venv`. A small model can run on CPU,
 but full training/generation may be slow. CPU RAM requirements depend on model/context length.
 Use a separate GPU environment for QLoRA; the CPU PyTorch build cannot perform CUDA training.
 Install a matching CUDA PyTorch build, the requirements, and `bitsandbytes==0.50.2` there, then use
@@ -171,7 +171,7 @@ Working directory: `ops-pilot/backend`. This downloads the selected base model, 
 LoRA adapter, and saves the adapter/tokenizer plus a training manifest. Check the base-model license.
 
 ```bash
-.venv-finetuning/bin/python -m finetuning.train_classifier --data finetuning/data/demo --output finetuning/adapters/demo --model Qwen/Qwen2.5-0.5B-Instruct --device cpu --epochs 3
+finetuning/.venv/bin/python -m finetuning.train_classifier --data finetuning/data/demo --output finetuning/adapters/demo --model Qwen/Qwen2.5-0.5B-Instruct --device cpu --epochs 3
 ```
 
 For a short execution smoke check, add `--max-steps 1` and use a different empty output directory.
@@ -181,7 +181,7 @@ Evaluate on untouched test examples and compare with the existing Groq classifie
 
 ```bash
 uv run python -m finetuning.evaluate_classifier --backend groq --input finetuning/data/demo/test.jsonl --output finetuning/reports/groq.json
-.venv-finetuning/bin/python -m finetuning.evaluate_classifier --backend adapter --adapter finetuning/adapters/demo --input finetuning/data/demo/test.jsonl --output finetuning/reports/adapter.json
+finetuning/.venv/bin/python -m finetuning.evaluate_classifier --backend adapter --adapter finetuning/adapters/demo --input finetuning/data/demo/test.jsonl --output finetuning/reports/adapter.json
 ```
 
 The Groq baseline command uses your existing API key and consumes provider quota. Other commands do not
@@ -193,15 +193,16 @@ Start the separate worker only after a model passes your evaluation. Generate a 
 of at least 32 characters, and keep the same token in the API and worker environment:
 
 ```bash
+export CLASSIFIER_ENVIRONMENT=development
 export CLASSIFIER_ADAPTER_PATH="$PWD/finetuning/adapters/demo"
 export CLASSIFIER_SERVING_TOKEN="your-separately-generated-random-secret-at-least-32-characters"
 export CLASSIFIER_DEVICE=cpu
-.venv-finetuning/bin/python -m finetuning.serve_classifier
+finetuning/.venv/bin/python -m finetuning.serve_classifier
 ```
 
 The worker listens at `127.0.0.1:8001`, accepts `POST /classify`, and requires a bearer token.
 It returns only `category` and `priority`, rejecting malformed model output. Its default input budget
-is 1,024 tokens; oversized prompts fail instead of silently discarding incident text. Never expose
+is recorded in the artifact (960 input tokens with the default training budget); oversized prompts fail instead of silently discarding incident text. Never expose
 this worker directly to the internet. Remote hosting requires HTTPS, network access restrictions,
 and a reverse-proxy request-size limit. On separate hosts, localhost refers to each host itself.
 
@@ -216,9 +217,10 @@ FINETUNED_CLASSIFIER_FALLBACK_ENABLED=true
 ```
 
 Restart the API. Invalid output, worker errors, or timeouts fall back to Groq by default.
-The existing API requires a numeric confidence value: adapter classifications use `0.0` to mean
-**confidence unavailable/uncalibrated**, not a measured zero probability. Do not interpret it as a
-calibrated score. No financial authorization is derived from that number.
+Adapter classifications now use `confidence: null` to represent unavailable/uncalibrated confidence.
+The repository frontend displays `Unavailable`. Production activation requires an approved signed
+release and matching release ID; follow the hardening runbook. No financial authorization is derived
+from confidence.
 Rollback: set `INCIDENT_CLASSIFIER_BACKEND=groq` and restart. Approval/refund guards remain unchanged.
 
 ## Checks and what they prove
@@ -237,8 +239,8 @@ existing opt-in requirements. The optional ML smoke test skips when training pac
 To run it with real CPU training dependencies:
 
 ```bash
-uv pip install --python .venv-finetuning/bin/python pytest pytest-asyncio
-.venv-finetuning/bin/python -m pytest -q tests/test_finetuning_training.py
+uv sync --project finetuning --frozen
+finetuning/.venv/bin/python -m pytest -q tests/test_finetuning_training.py
 ```
 
 The smoke test builds a tiny random local model/tokenizer, performs a real LoRA optimization step,

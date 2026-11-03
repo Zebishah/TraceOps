@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Literal
 
@@ -139,9 +139,47 @@ def write_splits(*, examples: list[IncidentExample], output: Path, seed: int = 4
     manifest = {
         "seed": seed,
         "counts": {name: len(values) for name, values in splits.items()},
-        "dataset_sha256": hashlib.sha256(
-            "\n".join(example.model_dump_json() for example in examples).encode()
-        ).hexdigest(),
+        "dataset_sha256": dataset_fingerprint(examples),
+        "split_sha256": {
+            name: hashlib.sha256((output / f"{name}.jsonl").read_bytes()).hexdigest()
+            for name in splits
+        },
+        "category_counts": dict(Counter(str(e.category) for e in examples)),
+        "priority_counts": dict(Counter(str(e.priority) for e in examples)),
         "note": "Review supplied labels before training; confidence is not a training target.",
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def dataset_fingerprint(examples: list[IncidentExample]) -> str:
+    """Order-independent identity for the exact labeled, grouped records."""
+    records = sorted(example.model_dump_json() for example in examples)
+    return hashlib.sha256("\n".join(records).encode()).hexdigest()
+
+
+def verified_splits(data: Path) -> tuple[dict[str, list[IncidentExample]], str]:
+    """Reject edited splits and leakage before training or evaluation."""
+    manifest = json.loads((data / "manifest.json").read_text())
+    splits = {
+        name: load_examples(data / f"{name}.jsonl") for name in ("train", "validation", "test")
+    }
+    seen_groups: set[str] = set()
+    seen_inputs: set[str] = set()
+    for name, examples in splits.items():
+        actual_hash = hashlib.sha256((data / f"{name}.jsonl").read_bytes()).hexdigest()
+        if manifest.get("split_sha256", {}).get(name) != actual_hash:
+            raise ValueError("Prepared split changed; prepare the dataset again")
+        groups = {example.group_id for example in examples}
+        if seen_groups & groups:
+            raise ValueError("Dataset groups overlap across splits")
+        seen_groups.update(groups)
+        for example in examples:
+            text = unicodedata.normalize("NFKC", f"{example.title}\n{example.description}")
+            identity = " ".join(text.casefold().split())
+            if identity in seen_inputs:
+                raise ValueError("Duplicate incident input across splits")
+            seen_inputs.add(identity)
+    fingerprint = dataset_fingerprint([e for records in splits.values() for e in records])
+    if fingerprint != manifest.get("dataset_sha256"):
+        raise ValueError("Dataset fingerprint mismatch")
+    return splits, fingerprint

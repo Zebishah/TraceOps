@@ -98,12 +98,17 @@ class Settings(BaseSettings):
     finetuned_classifier_token: str | None = None
     finetuned_classifier_timeout_seconds: float = Field(default=10, gt=0, le=60)
     finetuned_classifier_fallback_enabled: bool = True
+    finetuned_classifier_release_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         environment = self.environment.lower()
 
         if self.incident_classifier_backend == "finetuned":
+            if environment == "production" and not self.finetuned_classifier_release_id:
+                raise ValueError(
+                    "Production fine-tuned classification requires an approved release ID"
+                )
             if not self.finetuned_classifier_url or not self.finetuned_classifier_token:
                 raise ValueError("Fine-tuned classification requires URL and token")
             if len(self.finetuned_classifier_token) < 32:

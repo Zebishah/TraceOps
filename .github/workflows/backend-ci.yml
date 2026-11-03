@@ -4,12 +4,25 @@ on:
   push:
     paths:
       - "backend/**"
+      - "frontend/lib/product/contracts.ts"
+      - "frontend/components/workspace/incidents.tsx"
+      - "frontend/components/workspace/intelligence.tsx"
+      - "frontend/tests/classification-confidence.test.mts"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "frontend/lib/product/contracts.ts"
+      - "frontend/components/workspace/incidents.tsx"
+      - "frontend/components/workspace/intelligence.tsx"
+      - "frontend/tests/classification-confidence.test.mts"
       - ".github/workflows/backend-ci.yml"
   workflow_dispatch:
+    inputs:
+      verify_qwen:
+        description: "Download pinned Qwen and run synthetic CPU training/serving verification"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -98,14 +111,57 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install uv and locked backend test dependencies
+      - name: Install uv
         run: |
           python -m pip install uv
-          uv sync --frozen --group dev
-      - name: Install isolated CPU training dependencies
+      - name: Install isolated locked CPU training dependencies
         run: |
-          uv pip install --python .venv/bin/python torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --python .venv/bin/python -r finetuning/requirements.txt
-          uv run python -c "import torch, transformers, peft"
+          uv sync --project finetuning --frozen
+          uv run --project finetuning --frozen python -c "import torch, transformers, peft, cryptography"
       - name: Train and reload a tiny local adapter without downloading a model
-        run: uv run pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py
+        run: uv run --project finetuning --frozen pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py tests/test_finetuning_quality.py tests/test_finetuning_artifacts.py tests/test_finetuning_process.py
+
+  confidence-contract:
+    name: Frontend nullable confidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the bounded contract-test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/confidence-contract" --no-audit --no-fund zod@3.25.76
+          ln -s "$RUNNER_TEMP/confidence-contract/node_modules" frontend/node_modules
+      - name: Check unavailable and existing numeric confidence
+        run: node --experimental-strip-types --test frontend/tests/classification-confidence.test.mts
+
+  qwen-verification:
+    name: Optional pinned Qwen CPU verification
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_qwen
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TOKENIZERS_PARALLELISM: "false"
+      HF_HUB_DISABLE_XET: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the locked CPU environment
+        run: |
+          python -m pip install uv
+          uv sync --project finetuning --frozen
+      - name: Verify model training, reload, prediction and private HTTP serving
+        run: uv run --project finetuning --frozen python -m finetuning.verify_qwen --output finetuning/runs/qwen-verification
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen-synthetic-verification
+          path: backend/finetuning/runs/qwen-verification/verification.json
+          if-no-files-found: ignore

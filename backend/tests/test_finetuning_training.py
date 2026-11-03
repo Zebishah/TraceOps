@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -73,21 +74,20 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     data = tmp_path / "data"
     write_splits(examples=examples, output=data)
     output = tmp_path / "adapter"
-    train(
-        argparse.Namespace(
-            data=data,
-            output=output,
-            model=str(base),
-            device="cpu",
-            qlora=False,
-            epochs=1,
-            max_tokens=2048,
-            max_steps=1,
-            gradient_accumulation=1,
-            learning_rate=2e-4,
-            seed=42,
-        )
+    args = argparse.Namespace(
+        data=data,
+        output=output,
+        model=str(base),
+        device="cpu",
+        qlora=False,
+        epochs=1,
+        max_tokens=2048,
+        max_steps=1,
+        gradient_accumulation=1,
+        learning_rate=2e-4,
+        seed=42,
     )
+    train(args)
     assert (output / "adapter_model.safetensors").exists()
     weights = load_file(str(output / "adapter_model.safetensors"))
     assert any(t.abs().sum().item() > 0 for k, t in weights.items() if "lora_B" in k)
@@ -96,3 +96,35 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     assert manifest["validation"][0]["validation_loss"] > 0
     restored, _ = load_runtime(output)
     assert not any(p.requires_grad for p in restored.parameters())
+
+    from finetuning.artifacts import verify_artifact
+
+    artifact = verify_artifact(output)
+    assert artifact.base.local_sha256
+    assert artifact.test_sha256 and artifact.test_cases_sha256
+    checkpoint = Path(json.loads((output / "latest_checkpoint.json").read_text())["path"])
+    state = json.loads((checkpoint / "checkpoint.json").read_text())
+    assert state["epoch"] == 0 and state["next_start"] == 1
+    args.resume_from = checkpoint
+    args.max_steps = 2
+    train(args)
+    resumed_checkpoint = Path(json.loads((output / "latest_checkpoint.json").read_text())["path"])
+    resumed_weights = load_file(str(resumed_checkpoint / "adapter_model.safetensors"))
+
+    uninterrupted = argparse.Namespace(**vars(args))
+    uninterrupted.output = tmp_path / "uninterrupted"
+    uninterrupted.resume_from = None
+    train(uninterrupted)
+    full_checkpoint = Path(
+        json.loads((uninterrupted.output / "latest_checkpoint.json").read_text())["path"]
+    )
+    full_weights = load_file(str(full_checkpoint / "adapter_model.safetensors"))
+    assert resumed_weights.keys() == full_weights.keys()
+    assert all(
+        torch.allclose(resumed_weights[key], full_weights[key], atol=1e-6) for key in full_weights
+    )
+    best = json.loads((output / "training_manifest.json").read_text())
+    assert best["best_validation_loss"] == min(row["validation_loss"] for row in best["validation"])
+    args.learning_rate = 0.1
+    with pytest.raises(ValueError, match="Resume settings"):
+        train(args)

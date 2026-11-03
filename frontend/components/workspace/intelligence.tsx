@@ -1,7 +1,7 @@
 'use client';
 
 import { Activity, ArrowRight, BookOpen, BrainCircuit, Check, CheckCheck, CircleDot, Clock3, Database, FileText, GitBranch, Layers3, ShieldCheck, Terminal, Workflow } from 'lucide-react';
-import { dateValue, stringValue, type Approval, type Incident, type Investigation, type Job, type Row, type Workspace } from '@/lib/product/contracts';
+import { classificationConfidenceLabel, dateValue, stringValue, type Approval, type Incident, type Investigation, type Job, type Row, type Workspace } from '@/lib/product/contracts';
 import { Badge } from './ui';
 import {workflowStageStates,savedResultLabel} from '@/lib/product/workflow-view';
 
@@ -40,7 +40,7 @@ export function InvestigationWaiting({ job }: { job?: Job | null }) {
 }
 
 export function InvestigationSummary({ result, approval }: { result: Investigation; approval?: Approval|null }) {
-  return <div className="investigation-summary"><div><SignalMark small /><span><small>SAVED AI RESULT</small><strong>{savedResultLabel(result.needs_more_information,result.approval_required,approval?.status)}</strong></span></div><div><BookOpen size={16} /><strong>{result.evidence.length}</strong><span>{result.evidence.length===1?'source':'sources'}</span></div><div><Terminal size={16} /><strong>{result.tool_results.length}</strong><span>{result.tool_results.length===1?'tool result':'tool results'}</span></div><div><Layers3 size={16} /><strong>{result.similar_memories.length}</strong><span>{result.similar_memories.length===1?'memory':'memories'}</span></div><div className="classification-score"><strong>{Math.round(result.classification_confidence * 100)}%</strong><span>classification confidence</span></div></div>;
+  return <div className="investigation-summary"><div><SignalMark small /><span><small>SAVED AI RESULT</small><strong>{savedResultLabel(result.needs_more_information,result.approval_required,approval?.status)}</strong></span></div><div><BookOpen size={16} /><strong>{result.evidence.length}</strong><span>{result.evidence.length===1?'source':'sources'}</span></div><div><Terminal size={16} /><strong>{result.tool_results.length}</strong><span>{result.tool_results.length===1?'tool result':'tool results'}</span></div><div><Layers3 size={16} /><strong>{result.similar_memories.length}</strong><span>{result.similar_memories.length===1?'memory':'memories'}</span></div><div className="classification-score"><strong>{classificationConfidenceLabel(result.classification_confidence)}</strong><span>classification confidence</span></div></div>;
 }
 
 export function IncidentCards({ rows, onSelect, compact = false }: { rows: Row[]; onSelect: (row: Row) => void; compact?: boolean }) {
