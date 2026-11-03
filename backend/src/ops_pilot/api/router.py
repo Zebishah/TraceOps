@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from ops_pilot.api.routes.dashboard import router as dashboard_router
+
 from ops_pilot.api.routes.answers import router as answers_router
 from ops_pilot.api.routes.auth import router as auth_router
 from ops_pilot.api.routes.background_jobs import (
@@ -40,3 +42,6 @@ api_router.include_router(
     background_jobs_router,
     tags=["background-jobs"],
 )
+
+api_router.include_router(dashboard_router)
+
