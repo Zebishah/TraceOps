@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import ScalarSelect
+
 from ops_pilot.api.dependencies import CurrentMembership, DbSession
 from ops_pilot.core.config import get_settings
 from ops_pilot.db.base import Base
@@ -25,11 +31,6 @@ from ops_pilot.models.organization import Organization
 from ops_pilot.models.payment_transaction import PaymentTransaction
 from ops_pilot.schemas.approvals import ApprovalResponse
 from ops_pilot.schemas.background_jobs import BackgroundJobResponse
-from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import InstrumentedAttribute
-from sqlalchemy.sql.elements import ColumnElement
-from sqlalchemy.sql.selectable import ScalarSelect
 
 router = APIRouter(prefix="/organizations/{organization_id}/dashboard", tags=["dashboard"])
 Resource = Literal[

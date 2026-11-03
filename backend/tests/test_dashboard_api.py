@@ -5,6 +5,11 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import sessionmaker
+
 from ops_pilot.api.dependencies import get_current_user
 from ops_pilot.api.routes.dashboard import router
 from ops_pilot.db.base import Base
@@ -25,10 +30,6 @@ from ops_pilot.models import (
     PaymentTransaction,
     User,
 )
-from sqlalchemy import create_engine
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import sessionmaker
 
 
 @compiles(JSONB, "sqlite")
