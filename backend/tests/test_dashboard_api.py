@@ -329,3 +329,41 @@ async def test_authentication_is_required(dashboard_client):
     app.dependency_overrides.pop(get_current_user)
     response = await client.get(f"/api/v1/organizations/{orgs[0]}/dashboard/overview")
     assert response.status_code in {401, 403}
+
+
+@pytest.mark.asyncio
+async def test_evaluation_report_uses_verified_membership_without_env(
+    dashboard_client, tmp_path, monkeypatch
+):
+    from ops_pilot.evaluation.reporting import publish_organization_report
+
+    client, orgs, *_ = dashboard_client
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("EVALUATION_ORGANIZATION_ID", raising=False)
+    publish_organization_report(
+        organization_id=orgs[0], report={"passed": True, "marker": "team-zero"}
+    )
+    publish_organization_report(
+        organization_id=orgs[1], report={"passed": False, "marker": "private-team-one"}
+    )
+    response = await client.get(f"/api/v1/organizations/{orgs[0]}/dashboard/evaluations")
+    assert response.status_code == 200
+    assert response.json()["report"]["marker"] == "team-zero"
+    assert "private-team-one" not in response.text
+    assert (
+        await client.get(f"/api/v1/organizations/{orgs[1]}/dashboard/evaluations")
+    ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_evaluation_report_requires_privileged_role(dashboard_client):
+    from ops_pilot.api.dependencies import get_current_membership
+
+    client, orgs, _, _, app = dashboard_client
+
+    async def viewer():
+        return Membership(organization_id=orgs[0], user_id=uuid.uuid4(), role=MembershipRole.VIEWER)
+
+    app.dependency_overrides[get_current_membership] = viewer
+    response = await client.get(f"/api/v1/organizations/{orgs[0]}/dashboard/evaluations")
+    assert response.status_code == 403

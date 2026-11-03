@@ -1,11 +1,8 @@
 """Tenant-scoped dashboard reads. This router never executes financial recovery."""
 
-import json
-import os
 import re
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,6 +15,7 @@ from sqlalchemy.sql.selectable import ScalarSelect
 from ops_pilot.api.dependencies import CurrentMembership, DbSession
 from ops_pilot.core.config import get_settings
 from ops_pilot.db.base import Base
+from ops_pilot.evaluation.reporting import load_organization_report
 from ops_pilot.models.approval import ApprovalRequest
 from ops_pilot.models.approval_resume_job import ApprovalResumeJob
 from ops_pilot.models.automation_delivery import AutomationDelivery
@@ -520,12 +518,14 @@ async def evaluation_report(
 ) -> dict[str, object]:
     if str(membership.role) not in {"owner", "admin"}:
         raise HTTPException(403, "Evaluation reports require owner or admin role")
-    if os.getenv("EVALUATION_ORGANIZATION_ID") != str(organization_id):
-        raise HTTPException(404, "No evaluation report is configured for this organization")
-    report_path = Path("evaluation-results/report.json")
-    if not report_path.is_file() or report_path.stat().st_size > 2_000_000:
-        raise HTTPException(404, "Run the evaluation script to generate the report")
-    value: object = json.loads(report_path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise HTTPException(500, "Evaluation report has an invalid format")
-    return {"report": value, "generated_at": report_path.stat().st_mtime}
+    # CurrentMembership already verifies the organization selected from /auth/me.
+    try:
+        return load_organization_report(membership.organization_id)
+    except FileNotFoundError:
+        raise HTTPException(
+            404,
+            "No evaluation report has been published for this workspace. "
+            "Run scripts/run_evaluations.py; it discovers your organizations through /auth/me.",
+        ) from None
+    except (ValueError, OSError):
+        raise HTTPException(500, "The workspace evaluation report could not be read") from None
