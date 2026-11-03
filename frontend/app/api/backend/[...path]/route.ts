@@ -1,0 +1,57 @@
+import { cookies } from 'next/headers';
+import { z } from 'zod';
+import { allowedBackendPath, BACKEND_ORIGIN, cookieLifetime, MAX_REQUEST_BYTES, sameOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
+
+export const dynamic = 'force-dynamic';
+const credentials = z.object({ email: z.string().email().max(320), password: z.string().min(1).max(128) });
+const registration = credentials.extend({ password: z.string().min(8).max(128), full_name: z.string().trim().min(1).max(200), organization_name: z.string().trim().min(1).max(200), organization_slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100) });
+const jsonError = (detail: string, status: number) => Response.json({ detail }, { status, headers: { 'Cache-Control': 'no-store' } });
+type Context = { params: Promise<{ path: string[] }> };
+async function proxy(request: Request, context: Context): Promise<Response> {
+  const { path: parts } = await context.params;
+  const path = parts.join('/');
+  if (!allowedBackendPath(path)) return jsonError('Unsupported API operation', 404);
+  const write = request.method !== 'GET';
+  if (write && !sameOrigin(request.url, request.headers.get('origin'))) return jsonError('Request origin rejected', 403);
+  if (request.method === 'GET' && (path === 'auth/login' || path === 'auth/register' || path === 'auth/mcp-token')) return jsonError('Method not allowed', 405);
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const anonymous = path === 'auth/login' || path === 'auth/register' || path === 'health';
+  if (!anonymous && !token) return jsonError('Sign in to your OpsPilot account', 401);
+  const headers = new Headers({ Accept: 'application/json' });
+  if (token && !anonymous) headers.set('Authorization', `Bearer ${token}`);
+  let body: ArrayBuffer | undefined;
+  if (write) {
+    if (Number(request.headers.get('content-length') ?? 0) > MAX_REQUEST_BYTES) return jsonError('Request exceeds the upload limit', 413);
+    body = await request.arrayBuffer();
+    if (body.byteLength > MAX_REQUEST_BYTES) return jsonError('Request exceeds the upload limit', 413);
+    const contentType = request.headers.get('content-type') ?? 'application/json';
+    headers.set('Content-Type', contentType);
+    if (path === 'auth/login' || path === 'auth/register') {
+      try {
+        const input: unknown = JSON.parse(new TextDecoder().decode(body));
+        const parsed = (path === 'auth/login' ? credentials : registration).safeParse(input);
+        if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? 'Invalid account information', 422);
+        body = new TextEncoder().encode(JSON.stringify(parsed.data)).buffer;
+      } catch { return jsonError('Invalid JSON request', 400); }
+    }
+  }
+  const upstreamUrl = new URL(`/api/v1/${path}`, BACKEND_ORIGIN);
+  upstreamUrl.search = new URL(request.url).search;
+  try {
+    const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(90000), cache: 'no-store' });
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    for (const key of ['retry-after', 'x-request-id']) { const value = upstream.headers.get(key); if (value) responseHeaders.set(key, value); }
+    if (path === 'auth/login' && upstream.ok) {
+      const parsed = z.object({ access_token: z.string().min(1) }).safeParse(await upstream.json());
+      if (!parsed.success) return jsonError('The backend returned an invalid session', 502);
+      cookieStore.set(SESSION_COOKIE, parsed.data.access_token, { httpOnly: true, secure: new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: cookieLifetime(parsed.data.access_token) });
+      return Response.json({ authenticated: true }, { headers: responseHeaders });
+    }
+    if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
+    if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) return jsonError('The backend is warming up or returned an unexpected response. Try again shortly.', 502);
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  } catch { return jsonError('OpsPilot backend could not be reached. Check the backend deployment and try again.', 502); }
+}
+export const GET = proxy;
+export const POST = proxy;
