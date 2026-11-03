@@ -115,6 +115,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
     )
     application.router.routes.extend(build_oauth_routes())
+
+    @application.get("/")
+    async def root() -> dict[str, str]:
+        return {"status": "ok"}
+
     application.mount(
         "/",
         mcp_http_app,
