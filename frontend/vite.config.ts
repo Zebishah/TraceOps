@@ -1,5 +1,5 @@
 import vinext from "vinext";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { configureToolEnvironment } from "./scripts/tool-environment.mjs";
@@ -37,7 +37,11 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command, mode }) => {
+  // This non-secret server setting is passed into the local Worker as a binding.
+  // It is not exposed through VITE_* or NEXT_PUBLIC_* client variables.
+  const localEnv = loadEnv(mode, process.cwd(), "OPSPILOT_");
+  const backendUrl = process.env.OPSPILOT_BACKEND_URL ?? localEnv.OPSPILOT_BACKEND_URL;
   configureToolEnvironment(process.cwd());
 
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
@@ -61,6 +65,7 @@ export default defineConfig(async ({ command }) => {
         inspectorPort: false,
         config: {
           ...localBindingConfig,
+          ...(backendUrl ? { vars: { OPSPILOT_BACKEND_URL: backendUrl } } : {}),
           ...(command === "serve"
             ? {
                 services: [

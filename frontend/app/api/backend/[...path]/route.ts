@@ -1,6 +1,8 @@
 import { cookies } from 'next/headers';
+import { env } from 'cloudflare:workers';
+import { backendOrigin } from '@/lib/product/backend-config';
 import { z } from 'zod';
-import { allowedBackendPath, BACKEND_ORIGIN, cookieLifetime, MAX_REQUEST_BYTES, sameOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
+import { allowedBackendPath, cookieLifetime, MAX_REQUEST_BYTES, sameOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
 
 export const dynamic = 'force-dynamic';
 const credentials = z.object({ email: z.string().email().max(320), password: z.string().min(1).max(128) });
@@ -36,7 +38,10 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       } catch { return jsonError('Invalid JSON request', 400); }
     }
   }
-  const upstreamUrl = new URL(`/api/v1/${path}`, BACKEND_ORIGIN);
+  let origin: string;
+  try { origin = backendOrigin(env.OPSPILOT_BACKEND_URL); }
+  catch (cause) { return jsonError(cause instanceof Error ? cause.message : 'Backend URL is not configured.', 503); }
+  const upstreamUrl = new URL(`/api/v1/${path}`, origin);
   upstreamUrl.search = new URL(request.url).search;
   try {
     const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(90000), cache: 'no-store' });
@@ -51,9 +56,17 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       return Response.json({ authenticated: true }, { headers: responseHeaders });
     }
     if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
-    if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) return jsonError('The backend is warming up or returned an unexpected response. Try again shortly.', 502);
+    if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) {
+      if (upstream.status === 404) return jsonError('Not Found', 404);
+      if (upstream.status === 401) return jsonError('Your session expired. Please sign in again.', 401);
+      if (upstream.status === 403) return jsonError('Your account cannot access this operation.', 403);
+      return jsonError(`The backend returned an unexpected response (HTTP ${upstream.status}). Check the configured deployment or try again after it has started.`, 502);
+    }
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
-  } catch { return jsonError('OpsPilot backend could not be reached. Check the backend deployment and try again.', 502); }
+  } catch (cause) {
+    const timeout = cause instanceof Error && (cause.name === 'TimeoutError' || cause.name === 'AbortError');
+    return jsonError(timeout ? 'The backend took too long to respond. It may be starting up; try again shortly.' : 'Could not connect to the configured backend. Check OPSPILOT_BACKEND_URL and backend availability.', timeout ? 504 : 502);
+  }
 }
 export const GET = proxy;
 export const POST = proxy;

@@ -1,4 +1,3 @@
-export const BACKEND_ORIGIN = 'https://ops-pilot-bjmb.onrender.com';
 export const SESSION_COOKIE = 'opspilot_backend_session';
 export const MAX_REQUEST_BYTES = 11 * 1024 * 1024;
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
