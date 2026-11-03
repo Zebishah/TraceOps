@@ -39,7 +39,9 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   const upstreamUrl = new URL(`/api/v1/${path}`, BACKEND_ORIGIN);
   upstreamUrl.search = new URL(request.url).search;
   try {
-    const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(90000), cache: 'no-store' });
+    const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(90000), cache: 'no-store' });
+    // Workers support manual redirects; reject them rather than forwarding credentials.
+    if (upstream.status >= 300 && upstream.status < 400) return jsonError('The backend redirected this request. Check its configured URL.', 502);
     const responseHeaders = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     for (const key of ['retry-after', 'x-request-id']) { const value = upstream.headers.get(key); if (value) responseHeaders.set(key, value); }
     if (path === 'auth/login' && upstream.ok) {
