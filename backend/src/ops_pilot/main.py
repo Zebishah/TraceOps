@@ -14,6 +14,7 @@ from ops_pilot.api.request_context import (
 )
 from ops_pilot.api.router import api_router
 from ops_pilot.api.upload_limit import DocumentUploadLimitMiddleware
+from ops_pilot.api.voice_limit import VoiceBodyLimitMiddleware
 from ops_pilot.cache.redis import close_redis_client
 from ops_pilot.core.config import get_settings
 from ops_pilot.core.logging import configure_logging
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(DocumentUploadLimitMiddleware)
+    application.add_middleware(VoiceBodyLimitMiddleware)
     inngest_functions: list[inngest.Function[Any]] = [
         background_health_check,
         process_document_background,

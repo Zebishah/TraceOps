@@ -1,10 +1,17 @@
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate
 
+from ops_pilot.ai.finetuned_classifier import (
+    FineTunedClassifierError,
+    classify_with_finetuned_model,
+)
 from ops_pilot.ai.llm import get_chat_model
 from ops_pilot.ai.output_validation import (
     InvalidAIOutputError,
     run_with_output_retry,
 )
+from ops_pilot.core.config import get_settings
 from ops_pilot.schemas.incident_classification import IncidentClassification
 
 CLASSIFICATION_PROMPT = ChatPromptTemplate.from_messages(
@@ -62,6 +69,19 @@ async def classify_incident(
     title: str,
     description: str,
 ) -> IncidentClassification:
+    settings = get_settings()
+    if settings.incident_classifier_backend == "finetuned":
+        try:
+            return await classify_with_finetuned_model(title=title, description=description)
+        except FineTunedClassifierError:
+            if not settings.finetuned_classifier_fallback_enabled:
+                raise
+            logging.getLogger(__name__).warning("finetuned_classifier_fallback_to_groq")
+
+    return await _classify_with_groq(title=title, description=description)
+
+
+async def _classify_with_groq(*, title: str, description: str) -> IncidentClassification:
     model = get_chat_model()
 
     structured_model = model.with_structured_output(
