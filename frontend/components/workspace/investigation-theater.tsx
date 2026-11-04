@@ -1,6 +1,9 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useId, useState } from 'react';
+import { useMotionActivity } from '@/hooks/use-motion-activity';
 import { Activity, ArrowRight, BookOpen, BrainCircuit, CheckCheck, ChevronRight, CircleDot, FileText, Fingerprint, Pause, Play, ShieldCheck } from 'lucide-react';
 import { dateValue, type Approval, type Incident, type Investigation, type Job } from '@/lib/product/contracts';
 import { workflowStageStates, type StageState } from '@/lib/product/workflow-view';
@@ -21,6 +24,7 @@ const stateLabels: Record<StageState,string> = {done:'Recorded',active:'In progr
 export function InvestigationTheater({incident,job,result,approval,onInspect}:{incident:Incident;job?:Job|null;result?:Investigation|null;approval?:Approval|null;onInspect?:(tab:string)=>void}) {
   const [chosen,setChosen]=useState<InvestigationStageId|null>(null);
   const [motion,setMotion]=useState(true);
+  const { element, active }=useMotionActivity(motion);
   const labelId=useId();
   const states=workflowStageStates({incidentStatus:incident.status,jobStatus:job?.status,hasResult:Boolean(result),approvalRequired:result?.approval_required,approvalStatus:approval?.status});
   const defaultStage:InvestigationStageId=incident.status==='resolved'||approval?.status==='executed'||approval?.status==='approved'?'outcome':approval?'review':result?.needs_more_information?'report':result?'evidence':job?'analysis':'report';
@@ -36,11 +40,11 @@ export function InvestigationTheater({incident,job,result,approval,onInspect}:{i
     outcome:[['Incident state',incident.status.replaceAll('_',' ')],['Resolved at',dateValue(incident.resolved_at)],['Action execution',approval?.executed_at?'Execution recorded':'No execution recorded'],['Memory indexing',result?result.memory_indexed?'Indexed':'Not indexed in this result':'Not recorded yet']],
   };
   const summary=selection==='report'&&result?.needs_more_information?result.clarification_question:selection==='analysis'&&job?.status==='queued'?'Queued for a background worker. No model or tool substep timing is reported by this endpoint.':selection==='analysis'&&job?.status==='processing'?'The worker is processing this incident. Progress is reported for the whole investigation, rather than individual internal substeps.':selection==='analysis'&&job?.status==='failed'?job.error_message:selection==='outcome'&&incident.resolution_reason?incident.resolution_reason:null;
-  return <section className={`investigation-theater ${motion?'theater-motion':''}`} aria-label="Interactive investigation workflow">
+  return <section ref={element} className="investigation-theater theater-motion" data-motion={active?'running':'paused'} aria-label="Interactive investigation workflow">
     <header className="theater-header"><div><Fingerprint size={17}/><span>OPSPILOT / INVESTIGATION ATLAS<small>Five connected stages. One accountable workflow.</small></span></div><div>{chosen&&<button type="button" className="theater-follow" onClick={()=>setChosen(null)}>Follow current stage <ArrowRight size={12}/></button>}<span className="theater-record-state"><i/>{job?job.status.replaceAll('_',' '):'Report captured'}</span><button className="theater-motion-button" type="button" onClick={()=>setMotion(value=>!value)} aria-label={motion?'Pause workflow animation':'Resume workflow animation'}>{motion?<Pause size={14}/>:<Play size={14}/>}</button></div></header>
     <div className="theater-layout">
-      <div className="theater-universe"><div className="theater-starfield" aria-hidden="true"><SignalField animate={motion}/></div><div className="universe-grid" aria-hidden="true"/><div className="universe-caption"><span>SELECT A STAGE TO EXPLORE</span><span>ILLUSTRATED WORKFLOW</span></div>
-        <svg className="theater-connections" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true"><path d="M300 67C420 65 500 128 505 210C511 303 457 399 411 414C312 466 211 466 177 414C101 356 57 274 95 210C144 126 205 58 300 67Z"/><path className="connection-stream" d="M300 67C420 65 500 128 505 210C511 303 457 399 411 414C312 466 211 466 177 414C101 356 57 274 95 210C144 126 205 58 300 67Z"/>{['M300 67V250','M505 210L300 250','M411 414L300 250','M177 414L300 250','M95 210L300 250'].map((d,i)=><path key={d} className={selection===stages[i].id?'selected-connection':''} d={d}/>)}</svg>
+      <div className="theater-universe"><div className="theater-starfield" aria-hidden="true"><SignalField animate={active}/></div><div className="universe-grid" aria-hidden="true"/><div className="universe-caption"><span>SELECT A STAGE TO EXPLORE</span><span>ILLUSTRATED WORKFLOW</span></div>
+        <svg className="theater-connections" viewBox="0 0 600 500" preserveAspectRatio="none" aria-hidden="true"><path d="M300 67C420 65 500 128 505 210C511 303 457 399 411 414C312 466 211 466 177 414C101 356 57 274 95 210C144 126 205 58 300 67Z"/>{['M300 67V250','M505 210L300 250','M411 414L300 250','M177 414L300 250','M95 210L300 250'].map((d,i)=><path key={d} className={selection===stages[i].id?'selected-connection':''} d={d}/>)}</svg>
         <div className="theater-stage-art" key={selection}><StageArtwork stage={selection}/></div><div className="universe-coordinate" aria-hidden="true">{selected.short.toUpperCase()} / CONTEXT ENGINE</div>
         <div className="theater-nodes" role="group" aria-label="Explore investigation stages">{stages.map((stage,index)=>{const Icon=stage.icon;return <button key={stage.id} type="button" className={`theater-node node-${stage.id} node-state-${statusFor(stage.id)} ${selection===stage.id?'node-selected':''}`} aria-pressed={selection===stage.id} aria-controls={labelId} onClick={()=>setChosen(stage.id)}><span className="theater-node-glyph"><Icon size={18}/><i/></span><span className="theater-node-copy"><small>0{index+1} / {stage.short}</small><strong>{stage.title}</strong><em>{labelFor(stage.id)}</em></span></button>;})}</div>
         <div className="theater-universe-footer"><span><CircleDot size={11}/> Ambient visualization</span><span>Progress reflects saved records</span></div>
@@ -50,7 +54,7 @@ export function InvestigationTheater({incident,job,result,approval,onInspect}:{i
         {selection==='analysis'&&job&&<div className="inspector-progress"><div><span><Activity size={12}/>Worker-reported progress</span><strong>{job.progress_percent}%</strong></div><progress value={job.progress_percent} max={100} aria-label="Overall investigation progress"/></div>}
         {summary&&<p className="inspector-observation">{summary}</p>}
         <details className="inspector-method" key={`method-${selection}`} open><summary>How this stage works <ChevronRight size={13}/></summary><div>{selected.method.map(([title,text],index)=><article key={title}><span>0{index+1}</span><div><h3>{title}</h3><p>{text}</p></div></article>)}</div></details>
-        <div className="inspector-actions">{selection==='evidence'&&result&&onInspect&&<><button type="button" onClick={()=>onInspect('Evidence')}>Inspect sources <ArrowRight size={13}/></button><button type="button" onClick={()=>onInspect('Operational records')}>Tool output <ArrowRight size={13}/></button></>}{selection==='review'&&approval&&<a href={`/app/approvals/${incident.id}/${approval.id}`}>Open approval request <ArrowRight size={13}/></a>}{selection==='outcome'&&onInspect&&<button type="button" onClick={()=>onInspect('Activity')}>Recorded activity <ArrowRight size={13}/></button>}</div>
+        <div className="inspector-actions">{selection==='evidence'&&result&&onInspect&&<><button type="button" onClick={()=>onInspect('Evidence')}>Inspect sources <ArrowRight size={13}/></button><button type="button" onClick={()=>onInspect('Operational records')}>Tool output <ArrowRight size={13}/></button></>}{selection==='review'&&approval&&<Link href={`/app/approvals/${incident.id}/${approval.id}`}>Open approval request <ArrowRight size={13}/></Link>}{selection==='outcome'&&onInspect&&<button type="button" onClick={()=>onInspect('Activity')}>Recorded activity <ArrowRight size={13}/></button>}</div>
       </section>
     </div>
     <footer className="theater-footer"><span><ShieldCheck size={12}/>Organization-scoped records · Human approval for sensitive actions</span><span>{job?`RUN / ${job.id.slice(0,8)}`:'READY FOR INVESTIGATION'}</span></footer>

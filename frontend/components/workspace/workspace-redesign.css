@@ -33,7 +33,7 @@
 .dashboard .sidebar-account small{color:#877f6f;font-size:11px}
 .dashboard .sidebar-account>button{color:#989182}
 .dashboard .workspace-main{margin-left:242px}
-.dashboard .workspace-topbar{background:#fcfaf5ed;border-bottom:1px solid var(--app-border);padding:17px 32px;min-height:70px;backdrop-filter:blur(16px)}
+.dashboard .workspace-topbar{background:#fcfaf5;border-bottom:1px solid var(--app-border);padding:17px 32px;min-height:70px;backdrop-filter:none}
 .dashboard .workspace-topbar>div{font-size:13px;color:#8e8675;gap:12px}
 .dashboard .workspace-topbar strong{font-size:13px;color:#444037;font-weight:600}
 .topbar-workspace-label{display:flex;align-items:center;gap:7px}
@@ -82,7 +82,7 @@
 .dashboard .state-panel[role=status]>strong{font-size:14px;font-weight:500;color:#686255}
 .dashboard .state-panel[role=status]>span{font-size:13px}
 .loading-signal{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#f6f4f0;color:#999283;margin-bottom:8px}
-.loading-signal>svg,.is-spinning{animation:workspace-spin 1.2s linear infinite}
+.loading-signal>svg,.is-spinning{animation:workspace-spin .8s linear infinite}
 .dashboard .status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:5px;border:1px solid #eae5db;background:#f7f5f0;color:#847c6c;font-size:11px;font-weight:500;line-height:1.3;white-space:nowrap;text-transform:capitalize}
 .dashboard :is(.status-investigating,.status-processing,.status-queued){color:#857e6d;background:#f7f5f1;border-color:#ede9df}
 .dashboard :is(.status-pending,.status-awaiting_approval,.status-retry,.status-high){color:#a87525;background:#fff7e8;border-color:#f2dfb7}
@@ -155,7 +155,7 @@
 .orchestration-map{border:1px solid #ede9df;border-radius:12px;background:radial-gradient(ellipse at 51% 50%,#f6f4ef90,transparent 54%),#fcfaf5;overflow:hidden;margin-bottom:26px}
 .map-topline{display:flex;align-items:center;justify-content:space-between;padding:17px 21px;border-bottom:1px solid #f3f1eb;gap:18px}
 .map-topline>span{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.2px;font-weight:600;color:#7a7364}
-.map-topline>a{display:flex;gap:6px;align-items:center;font-size:11px;color:#968f7f}
+.map-topline a{display:flex;gap:6px;align-items:center;font-size:11px;color:#968f7f}
 .map-layout{display:grid;grid-template-columns:1fr 1.08fr 1fr;align-items:center;padding:28px 28px;gap:40px;position:relative;min-height:265px}
 .map-inputs,.map-outputs{display:flex;flex-direction:column;gap:13px;position:relative;z-index:1}
 .map-inputs:after,.map-outputs:before{content:'';height:calc(100% - 58px);width:20px;position:absolute;top:29px;border:1px solid #cfc9bc;border-left:0;border-radius:0 14px 14px 0;right:-21px;z-index:-1}
@@ -574,8 +574,8 @@
 .dashboard .metric-card>small{font-size:10px;line-height:1.8}
 .map-topline{padding:15px;gap:10px}
 .map-topline>span{font-size:9px;letter-spacing:.6px}
-.map-topline>a{font-size:10px;gap:4px}
-.map-topline>a>svg{width:10px}
+.map-topline a{font-size:10px;gap:4px}
+.map-topline a>svg{width:10px}
 .map-layout{grid-template-columns:1fr;gap:30px;padding:22px}
 .map-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .map-inputs>a{display:flex;flex-direction:column;padding:13px 7px;text-align:center;min-height:95px;gap:8px}
@@ -769,7 +769,7 @@
 .dashboard .page-heading:has(+.incident-meta) .page-actions{padding-top:22px}
 
 .dashboard .record-drawer{position:fixed;left:auto;right:0;top:0;bottom:0;margin:0;width:min(660px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;border-radius:14px 0 0 14px;padding:0;overflow:hidden;border-width:0 0 0 1px}
-.dashboard .record-drawer[open]{display:flex;flex-direction:column;animation:drawer-enter .22s ease-out}
+.dashboard .record-drawer[open]{display:flex;flex-direction:column;animation:drawer-enter .18s cubic-bezier(.2,.8,.2,1)}
 .dashboard .record-drawer>header{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-shrink:0}
 .dashboard .record-drawer h2{margin:0}
 .dashboard .record-drawer .app-eyebrow{margin-bottom:9px}
@@ -792,7 +792,7 @@ to{transform:translateX(0);opacity:1}
 .customer-id-control{padding:12px 15px;border:1px solid #efebe2;border-radius:7px;background:#fbfaf9}
 .customer-id-control>summary{font-size:11px;color:#928b7a;cursor:pointer}
 .customer-id-control>label{display:block;margin-top:15px}
-.dashboard .workspace-content{animation:workspace-enter .22s ease-out}
+.dashboard .workspace-content{animation:workspace-enter .18s cubic-bezier(.2,.8,.2,1)}
 .dashboard .record-drawer::backdrop{background:#2226203d;backdrop-filter:blur(3px)}
 @keyframes workspace-enter{from{opacity:.5;transform:translateY(5px)}
 to{opacity:1;transform:translateY(0)}
@@ -828,3 +828,19 @@ to{opacity:1;transform:translateY(0)}
 @media(max-width:1200px){.dossier-main{flex-direction:column;align-items:stretch;gap:23px}.dossier-metrics{justify-content:space-between}.dossier-metrics>button{flex:1}.dossier-heading p{max-width:none}.dashboard .map-engine{padding:25px 12px}.dashboard .map-engine h3{font-size:16px}}
 @media(max-width:650px){.incident-workspace-label{font-size:7px;letter-spacing:1.1px;gap:12px}.incident-workspace-label>span:last-child{font-size:8px;max-width:115px;text-align:right}.result-dossier>header{padding:14px 17px}.result-dossier>header>span:first-child{font-size:6px;letter-spacing:1px}.dossier-state{font-size:8px}.dossier-main{padding:22px 18px;gap:24px}.dossier-heading{gap:13px}.dossier-sigil{height:41px;width:41px;border-radius:12px}.dossier-sigil>svg{width:21px}.dossier-overline{font-size:6px;letter-spacing:1px}.dashboard .dossier-heading h2{font-size:23px;line-height:1.4}.dossier-heading p{font-size:10px}.dossier-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.dossier-metrics>button{min-width:0;padding:11px}.dossier-metrics strong{font-size:25px}.dossier-metrics small{font-size:8px}.dossier-confidence{grid-column:1/-1;flex-direction:row;gap:12px;border-left:0;border-top:1px solid #b0b8881d;margin:10px 0 0;padding:15px 0 0;justify-content:flex-start}.dossier-confidence>div{width:40px;height:40px}.dossier-confidence>div>span{font-size:13px}.dossier-confidence>span{font-size:8px;text-align:left}.result-dossier>footer{padding:13px 18px;align-items:flex-start;flex-direction:column;gap:8px;font-size:8px}.dashboard .analyst-text p{font-size:12px}.dashboard .analyst-text h3{font-size:9px}.dashboard .map-engine{padding:28px 15px}}
 .dashboard :is(.status-investigating,.status-queued,.status-processing){background:#f0e7d1;border-color:#e2d2aa;color:#9b814d}
+
+/* Small transform/opacity accents keep the workspace responsive without repainting panels. */
+.dashboard .map-controls{display:flex;align-items:center;gap:12px}
+.dashboard .map-motion-button{width:27px;height:27px;display:grid;place-items:center;padding:0;border:1px solid #c6b17945;border-radius:6px;background:#d4b47e0a;color:#ac9769;cursor:pointer}
+.dashboard .map-motion-button:hover{background:#d4b47e20}
+.map-motion{--map-play-state:running}
+.map-motion[data-motion=paused]{--map-play-state:paused}
+.dashboard .map-motion .engine-orbit:before{border-radius:50%;border-style:dashed;border-color:#d4b47e55;animation:workspace-orbit 8s linear infinite;animation-play-state:var(--map-play-state)}
+.dashboard .map-motion .engine-orbit:after{content:'';position:absolute;inset:-7px;border:1px solid #d4b47e70;border-radius:25px;pointer-events:none;animation:workspace-signal 2.1s ease-out infinite;animation-play-state:var(--map-play-state)}
+.dashboard .map-motion :is(.map-inputs,.map-outputs)>a>svg:first-child{animation:workspace-context-pulse 2.4s ease-in-out infinite;animation-play-state:var(--map-play-state)}
+.dashboard .map-motion :is(.map-inputs,.map-outputs)>a:nth-child(2)>svg:first-child{animation-delay:-.8s}
+.dashboard .map-motion :is(.map-inputs,.map-outputs)>a:nth-child(3)>svg:first-child{animation-delay:-1.6s}
+@keyframes workspace-orbit{to{transform:rotate(360deg)}}
+@keyframes workspace-signal{0%{opacity:.7;transform:scale(.95)}100%{opacity:0;transform:scale(1.25)}}
+@keyframes workspace-context-pulse{50%{opacity:.5;transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){.dashboard .map-motion *,.dashboard .map-motion *:before,.dashboard .map-motion *:after{animation:none!important}}
