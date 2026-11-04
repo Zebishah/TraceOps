@@ -21,6 +21,8 @@ const upstream=createServer(async(request,response)=>{
  if(request.url?.endsWith('/voice/speech')){response.setHeader('content-type','audio/wav');return response.end(malformed?'invalid wave':wave);}
  if(request.url?.includes('q=provider-error')){response.statusCode=429;response.setHeader('retry-after','10');return response.end(JSON.stringify({detail:'Try again later'}));}
  if(request.url?.includes('q=redirect')){response.statusCode=302;response.setHeader('location','https://must-not-follow.example');return response.end();}
+ if(request.url?.endsWith('/training/runs')&&request.method==='POST'){response.statusCode=202;return response.end(JSON.stringify({id:organization,status:'queued'}));}
+ if(request.url?.endsWith('/training/capabilities'))return response.end(JSON.stringify({enabled:true,worker_online:false}));
  if(request.url?.startsWith('/api/v1/organizations/'))return response.end(JSON.stringify({items:[],total:0,limit:20,offset:0}));
  if(request.url==='/api/v1/auth/me'&&requireVerification){response.statusCode=403;return response.end(JSON.stringify({detail:{code:'email_verification_required',message:'Verify your email before accessing your workspace.',email:'unverified@example.com'}}));}
  if(request.url==='/api/v1/auth/me')return response.end(JSON.stringify({user:{id:organization,email:'fixture@example.com',full_name:'Fixture'},memberships:[{organization_id:organization,role:'owner'}]}));
@@ -67,12 +69,15 @@ try{
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/voice/speech`,{headers})).status,405);
  const speech=()=>fetch(base+`/api/backend/organizations/${organization}/voice/speech`,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({text:'Synthetic decision brief'})});
  const spoken=await speech();assert.equal(spoken.status,200);assert.match(spoken.headers.get('content-type'),/audio\/wav/);assert.deepEqual(Buffer.from(await spoken.arrayBuffer()),wave);malformed=true;assert.equal((await speech()).status,502);
+ const training=await fetch(base+`/api/backend/organizations/${organization}/training/runs`,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({request_id:organization,dataset_jsonl:'synthetic fixture only'})});assert.equal(training.status,202);assert.equal((await training.json()).status,'queued');assert.equal(requests.at(-1).authorization,`Bearer ${token}`);assert.equal(JSON.parse(requests.at(-1).body).request_id,organization);
+ const trainingCapability=await fetch(base+`/api/backend/organizations/${organization}/training/capabilities`,{headers});assert.equal(trainingCapability.status,200);assert.equal((await trainingCapability.json()).worker_online,false);
+ const beforeWorker=requests.length;assert.equal((await fetch(base+'/api/backend/internal/training/claim',{method:'POST',headers,body:'{}'})).status,404);assert.equal(requests.length,beforeWorker);
  const before=requests.length;assert.equal((await fetch(base+'/api/backend/admin/delete-all',{headers})).status,404);assert.equal(requests.length,before);
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/voice/transcriptions`,{method:'POST',headers,body:Buffer.alloc(11*1024*1024+1)})).status,413);
  const signedInPage=await fetch(base+'/app/incidents/new',{headers});assert.equal(signedInPage.status,200);assert.match(await signedInPage.text(),/opspilot/i);
  const modelPage=await fetch(base+'/app/ai-models',{headers});assert.equal(modelPage.status,200);assert.match(await modelPage.text(),/opspilot/i);
  requireVerification=true;const unverifiedSession=await fetch(base+'/api/backend/auth/me',{headers});assert.equal(unverifiedSession.status,403);assert.match(unverifiedSession.headers.get('set-cookie'),/opspilot_backend_session=;/i);
- console.log('Production smoke passed: email verification, pages, auth, tenant forwarding, search, voice, CSRF, redirects, errors, and upload cap.');
+ console.log('Production smoke passed: email verification, pages, auth, tenant forwarding, search, voice, training control, CSRF, redirects, errors, and upload cap.');
 }finally{
  child.kill('SIGTERM');await Promise.race([once(child,'exit'),new Promise(resolve=>setTimeout(resolve,5000))]);if(child.exitCode===null)child.kill('SIGKILL');await new Promise(resolve=>upstream.close(resolve));
 }

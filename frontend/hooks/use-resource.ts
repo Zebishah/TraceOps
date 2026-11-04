@@ -1,13 +1,15 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useResource<T>(loader: ((signal: AbortSignal) => Promise<T>) | null, deps: readonly unknown[], pollMs = 0) {
+export function useResource<T>(loader: ((signal: AbortSignal) => Promise<T>) | null, deps: readonly unknown[], pollMs = 0, pollWhile?: (value: T) => boolean) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(Boolean(loader));
   const [refreshing, setRefreshing] = useState(false);
   const [version, setVersion] = useState(0);
   const saved = useRef(loader);
+  const pollingPolicy = useRef(pollWhile);
+  pollingPolicy.current = pollWhile;
   const previousDeps = useRef<readonly unknown[] | null>(null);
   const currentData = useRef<T | null>(null);
   saved.current = loader;
@@ -42,7 +44,7 @@ export function useResource<T>(loader: ((signal: AbortSignal) => Promise<T>) | n
         if (active) {
           setLoading(false);
           setRefreshing(false);
-          if (pollMs) timer = setTimeout(run, pollMs);
+          if (pollMs && (!pollingPolicy.current || (currentData.current !== null && pollingPolicy.current(currentData.current)))) timer = setTimeout(run, pollMs);
         }
       }
     }

@@ -189,3 +189,48 @@ jobs:
           name: qwen-synthetic-verification
           path: backend/finetuning/runs/qwen-verification/verification.json
           if-no-files-found: ignore
+
+  training-postgres:
+    name: Training queue PostgreSQL concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: training
+          POSTGRES_PASSWORD: training-fixture
+          POSTGRES_DB: training_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U training -d training_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg://training:training-fixture@127.0.0.1:5432/training_test
+      TRAINING_TEST_DATABASE_URL: postgresql+psycopg://training:training-fixture@127.0.0.1:5432/training_test
+      REDIS_URL: redis://127.0.0.1:6379/15
+      JWT_SECRET_KEY: synthetic-ci-jwt-secret-key-at-least-32-characters
+      AWS_ACCESS_KEY_ID: fixture
+      AWS_SECRET_ACCESS_KEY: fixture
+      AWS_REGION: us-east-1
+      S3_BUCKET_NAME: fixture
+      QDRANT_URL: http://localhost:6333
+      QDRANT_API_KEY: fixture
+      MISTRAL_API_KEY: fixture
+      VOYAGE_API_KEY: fixture
+      GROQ_API_KEY: fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install uv
+      - run: uv sync --frozen --group dev
+      - name: Apply the real migration chain
+        run: uv run alembic upgrade head
+      - name: Exercise concurrent admission and worker claims
+        run: uv run pytest tests/integration/test_training_control_postgres.py -q

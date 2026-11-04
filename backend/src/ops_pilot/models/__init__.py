@@ -35,9 +35,12 @@ from ops_pilot.models.payment_transaction import (
     PaymentTransactionStatus,
     PaymentTransactionType,
 )
+from ops_pilot.models.training_run import TrainingControl, TrainingRun
 from ops_pilot.models.user import User
 
 __all__ = [
+    "TrainingRun",
+    "TrainingControl",
     "Document",
     "DocumentStatus",
     "Membership",

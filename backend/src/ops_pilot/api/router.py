@@ -10,6 +10,8 @@ from ops_pilot.api.routes.documents import router as documents_router
 from ops_pilot.api.routes.health import router as health_router
 from ops_pilot.api.routes.incidents import router as incidents_router
 from ops_pilot.api.routes.retrieval import router as retrieval_router
+from ops_pilot.api.routes.training import router as training_router
+from ops_pilot.api.routes.training import worker_router as training_worker_router
 from ops_pilot.api.routes.voice import router as voice_router
 
 api_router = APIRouter()
@@ -45,3 +47,6 @@ api_router.include_router(
 )
 
 api_router.include_router(dashboard_router)
+
+api_router.include_router(training_router)
+api_router.include_router(training_worker_router)

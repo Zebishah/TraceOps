@@ -54,3 +54,7 @@ tmp/
 /backend/finetuning/keys/
 /backend/finetuning/worker.env
 *.private.key
+
+# Private dashboard-training work and worker credentials
+backend/finetuning/control-work/
+backend/finetuning/control-worker.env

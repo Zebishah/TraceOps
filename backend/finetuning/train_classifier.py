@@ -117,7 +117,22 @@ def _read_checkpoint(path):
     return state
 
 
+def record_progress(args, stage, steps=0, epoch=0, validation_loss=None):
+    destination = getattr(args, "progress_file", None)
+    if destination:
+        atomic_json(
+            destination,
+            {
+                "stage": stage,
+                "completed_steps": steps,
+                "epoch": epoch,
+                "validation_loss": validation_loss,
+            },
+        )
+
+
 def train(args) -> None:
+    record_progress(args, "loading")
     import torch
     from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoTokenizer
@@ -259,6 +274,7 @@ def train(args) -> None:
             )
             optimizer.step()
             steps += 1
+            record_progress(args, "training", steps, epoch + 1)
             progress_position = start + len(group)
             if steps % save_every == 0:
                 _checkpoint(
@@ -268,6 +284,7 @@ def train(args) -> None:
                     checkpoint_root,
                     state_for(epoch, start + len(group)),
                 )
+        record_progress(args, "validating", steps, epoch + 1)
         model.eval()
         losses = []
         with torch.inference_mode():
@@ -280,6 +297,7 @@ def train(args) -> None:
                     raise RuntimeError("Nonfinite validation loss; refusing to publish an adapter")
                 losses.append(loss)
         validation_loss = sum(losses) / len(losses)
+        record_progress(args, "validating", steps, epoch + 1, validation_loss)
         completed_epoch = progress_position >= len(order)
         resume_epoch = epoch + 1 if completed_epoch else epoch
         resume_position = 0 if completed_epoch else progress_position
@@ -390,6 +408,7 @@ def main() -> None:
     parser.add_argument("--save-every-steps", type=int, default=50)
     parser.add_argument("--patience", type=int, default=2, help="0 disables early stopping")
     parser.add_argument("--cpu-threads", type=int, default=2)
+    parser.add_argument("--progress-file", type=Path)
     parser.add_argument("--resume-from", type=Path)
     train(parser.parse_args())
 

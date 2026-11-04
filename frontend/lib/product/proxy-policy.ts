@@ -2,6 +2,7 @@ export const SESSION_COOKIE = 'opspilot_backend_session';
 export const MAX_REQUEST_BYTES = 11 * 1024 * 1024;
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const paths = [
+  new RegExp(`^organizations/${UUID}/training/(?:capabilities|runs(?:/${UUID}(?:/(?:cancel|retry|download))?)?)$`),
   new RegExp(`^organizations/${UUID}/voice/(?:capabilities|transcriptions|speech)$`),
   /^auth\/(login|register|me|mcp-token|verification\/(?:request|confirm))$/,
   /^health(?:\/ready)?$/,

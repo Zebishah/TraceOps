@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     aws_region: str
     s3_bucket_name: str
 
+    training_enabled: bool = False
+    training_worker_token: SecretStr | None = Field(default=None, repr=False)
+    training_qlora_enabled: bool = False
+    training_max_runtime_seconds: int = Field(default=5400, ge=60, le=14400)
+
     log_level: str = "INFO"
 
     qdrant_url: str
@@ -285,6 +290,12 @@ class Settings(BaseSettings):
                         "N8N_WEBHOOK_SECRET is required when "
                         "production n8n integration is configured"
                     )
+
+        if self.training_enabled and (
+            self.training_worker_token is None
+            or len(self.training_worker_token.get_secret_value()) < 32
+        ):
+            raise ValueError("TRAINING_WORKER_TOKEN must be at least 32 characters")
 
         return self
 

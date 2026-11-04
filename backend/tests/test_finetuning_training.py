@@ -81,6 +81,7 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     args = argparse.Namespace(
         data=data,
         output=output,
+        progress_file=tmp_path / "progress.json",
         model=str(base),
         device="cpu",
         qlora=False,
@@ -96,6 +97,10 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     weights = load_file(str(output / "adapter_model.safetensors"))
     assert any(t.abs().sum().item() > 0 for k, t in weights.items() if "lora_B" in k)
     manifest = json.loads((output / "training_manifest.json").read_text())
+    progress = json.loads((tmp_path / "progress.json").read_text())
+    assert progress["completed_steps"] == manifest["optimizer_steps"] == 1
+    assert progress["epoch"] == 1
+    assert progress["validation_loss"] == manifest["best_validation_loss"]
     assert manifest["optimizer_steps"] == 1
     assert manifest["validation"][0]["validation_loss"] > 0
     restored, restored_tokenizer = load_runtime(output)

@@ -61,9 +61,11 @@ The `/verify-email` screen supports Resend verification links, resend requests, 
 
 - **New investigation:** choose **Speak or upload audio**, or open `/app/incidents/new?input=voice`. Record up to 90 seconds or upload supported audio. Preview, transcribe, edit and explicitly confirm before adding text to the draft. Creating the incident remains a separate action. Switching input mode stops microphone capture and clears the voice studio.
 - **Saved investigation:** the decision brief includes an optional English spoken excerpt (up to 200 characters) when backend speech is enabled.
-- **AI & Models** (`/app/ai-models`): reads real classifier configuration and voice capabilities. The interactive training guide explains dataset preparation, PyTorch / PEFT LoRA and QLoRA, evaluation, signed releases and isolated serving. Training is an offline backend workflow; there is no dashboard training-job API.
+- **AI & Models** (`/app/ai-models`): reads real classifier configuration and voice capabilities. The interactive training guide explains dataset preparation, PyTorch / PEFT LoRA and QLoRA, evaluation, signed releases and isolated serving. The Training runs tab queues persistent jobs for a separately authenticated CPU/CUDA worker, with cancellation, retry, aggregate metrics and private adapter downloads. Production release approval remains separate.
 - The landing page and Developer Hub explain these capabilities. Configuration does not establish availability, quality, or the model that produced a saved result. The committed synthetic training verification does not approve a production classifier. CUDA QLoRA needs separate hardware validation.
 
 Voice uses the existing session proxy and backend `GROQ_API_KEY`. Enable `VOICE_ENABLED=true` on the backend, and optionally `VOICE_TTS_ENABLED=true`. No provider key belongs in a `NEXT_PUBLIC_*` variable. The backend capability API supplies the transcription model, allowed containers and limits. Vercel intake caps audio at 4 MiB to leave multipart headroom; other hosts use the lower of their frontend and backend limits.
 
 See the repository's [training and release runbook](../docs/finetuning-production-hardening.md) before configuring a fine-tuned worker. Groq remains the default classifier until an operator deliberately changes the backend settings.
+
+See [dashboard training control](../docs/dashboard-training-control.md) for the migration, backend settings and worker commands. No worker credential is sent to the frontend.
