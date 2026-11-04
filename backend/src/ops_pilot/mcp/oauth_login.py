@@ -1,18 +1,29 @@
-import html
+"""Browser sign-in and consent for existing MCP OAuth clients."""
 
-from mcp.server.auth.provider import (
-    construct_redirect_uri,
-)
+import re
+from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+from mcp.server.auth.provider import construct_redirect_uri
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import FormData, QueryParams
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import (
-    HTMLResponse,
-    RedirectResponse,
-    Response,
-)
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from ops_pilot.core.config import get_settings
 from ops_pilot.core.mcp_scopes import validate_mcp_scope_grant
 from ops_pilot.db.session import async_session_factory
+from ops_pilot.mcp.oauth_form import (
+    AUTHORIZATION_FIELDS,
+    FORM_LIFETIME_SECONDS,
+    browser_nonce,
+    create_form_token,
+    valid_form_token,
+)
+from ops_pilot.mcp.oauth_login_ui import render_login
+from ops_pilot.schemas.auth import LoginRequest
 from ops_pilot.services.auth import authenticate_user
 from ops_pilot.services.auth_rate_limit import (
     AuthRateLimitExceeded,
@@ -25,310 +36,243 @@ from ops_pilot.services.oauth import (
     oauth_client_redirect_uris,
 )
 
-
-def _oauth_rate_limit_response(
-    exc: AuthRateLimitExceeded | AuthRateLimitUnavailable,
-) -> HTMLResponse:
-    if isinstance(exc, AuthRateLimitExceeded):
-        return HTMLResponse(
-            "Too many requests. Please try again later.",
-            status_code=429,
-            headers={
-                "Retry-After": str(exc.retry_after_seconds),
-            },
-        )
-
-    return HTMLResponse(
-        "Authentication temporarily unavailable.",
-        status_code=503,
-    )
+_LIMITS = {
+    "client_id": 512,
+    "redirect_uri": 2048,
+    "state": 2048,
+    "scope": 256,
+    "code_challenge": 43,
+    "resource": 2048,
+    "redirect_uri_explicit": 5,
+}
+_CHALLENGE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
-async def oauth_login_page(
-    request: Request,
-) -> Response:
-    params = request.query_params
+@dataclass(frozen=True)
+class AuthorizationContext:
+    values: dict[str, str]
+    client_name: str
+    scopes: list[str]
 
-    required = [
-        "client_id",
-        "redirect_uri",
-        "scope",
-        "code_challenge",
-        "resource",
-        "redirect_uri_explicit",
-    ]
 
-    if any(not params.get(name) for name in required):
-        return HTMLResponse(
-            "Invalid OAuth authorization request.",
-            status_code=400,
-        )
-    client_id = params.get("client_id")
-    scope = params.get("scope")
-
-    if client_id is None or scope is None:
-        return HTMLResponse(
-            "Invalid OAuth authorization request.",
-            status_code=400,
-        )
-
-    async with async_session_factory() as session:
-        client = await get_oauth_client(
-            session=session,
-            client_id=client_id,
-        )
-
-    if client is None:
-        return HTMLResponse(
-            "Unknown OAuth client.",
-            status_code=400,
-        )
-
-    client_name = client.client_name or "Unknown application"
-
+def _values(data: QueryParams | FormData) -> dict[str, str] | None:
+    result: dict[str, str] = {}
+    for key in AUTHORIZATION_FIELDS:
+        if len(data.getlist(key)) > 1:
+            return None
+        value = data.get(key, "")
+        if not isinstance(value, str) or len(value) > _LIMITS[key]:
+            return None
+        if key != "state" and not value:
+            return None
+        result[key] = value
+    result["redirect_uri_explicit"] = result["redirect_uri_explicit"].lower()
+    if result["redirect_uri_explicit"] not in {"true", "false"}:
+        return None
+    if _CHALLENGE.fullmatch(result["code_challenge"]) is None:
+        return None
+    uri = result["redirect_uri"]
+    if any(ord(char) < 33 or char in "<>\"'" for char in uri):
+        return None
     try:
-        validate_mcp_scope_grant(
-            requested=scope,
-            registered=client.scope,
-        )
+        redirect = urlsplit(uri)
     except ValueError:
-        return HTMLResponse(
-            "Invalid OAuth scope.",
-            status_code=400,
-        )
-    client_name = client.client_name or "Unknown application"
-
-    try:
-        validate_mcp_scope_grant(
-            requested=scope,
-            registered=client.scope,
-        )
-    except ValueError:
-        return HTMLResponse(
-            "Invalid OAuth scope.",
-            status_code=400,
-        )
-
-    hidden_inputs = ""
-
-    for key in [
-        "client_id",
-        "redirect_uri",
-        "state",
-        "scope",
-        "code_challenge",
-        "resource",
-        "redirect_uri_explicit",
-    ]:
-        hidden_inputs += (
-            f'<input type="hidden" '
-            f'name="{html.escape(key)}" '
-            f'value="{html.escape(params.get(key, ""))}">'
-        )
-    safe_client_name = html.escape(client_name)
-    safe_scope = html.escape(scope)
-    return HTMLResponse(
-        f"""
-        <!doctype html>
-        <html>
-        <head>
-            <title>Authorize OpsPilot</title>
-        </head>
-        <body>
-            <h1>Authorize access to OpsPilot</h1>
-
-        <p>
-            <strong>{safe_client_name}</strong>
-            is requesting access to your OpsPilot account.
-        </p>
-
-        <p>
-            Requested permission:
-            <code>{safe_scope}</code>
-        </p>
-
-        <p>
-            This access allows the client to use approved
-            OpsPilot MCP tools on your behalf.
-        </p>
-
-            <form method="post" action="/oauth/login">
-                {hidden_inputs}
-
-                <label>Email</label><br>
-                <input
-                    type="email"
-                    name="email"
-                    required
-                ><br><br>
-
-                <label>Password</label><br>
-                <input
-                    type="password"
-                    name="password"
-                    required
-                ><br><br>
-
-                <button type="submit">
-                    Sign in and authorize
-                </button>
-            </form>
-        </body>
-        </html>
-        """
-    )
-
-
-async def oauth_login_submit(
-    request: Request,
-) -> Response:
-    form = await request.form()
-
-    values = {
-        key: form.get(key)
-        for key in [
-            "email",
-            "password",
-            "client_id",
-            "redirect_uri",
-            "state",
-            "scope",
-            "code_challenge",
-            "resource",
-            "redirect_uri_explicit",
-        ]
-    }
-
-    if not all(
-        isinstance(
-            values[key],
-            str,
-        )
-        and values[key]
-        for key in [
-            "email",
-            "password",
-            "client_id",
-            "redirect_uri",
-            "scope",
-            "code_challenge",
-            "resource",
-            "redirect_uri_explicit",
-        ]
+        return None
+    if (
+        not redirect.scheme
+        or redirect.fragment
+        or redirect.username
+        or redirect.password
+        or redirect.scheme.lower() in {"javascript", "data", "file", "vbscript", "blob"}
+        or (redirect.scheme in {"https", "http"} and not redirect.hostname)
     ):
-        return HTMLResponse(
-            "Invalid OAuth authorization request.",
-            status_code=400,
-        )
+        return None
+    return result
 
+
+async def _context(session: AsyncSession, values: dict[str, str]) -> AuthorizationContext | None:
+    if values["resource"] != str(get_settings().mcp_resource_url):
+        return None
+    client = await get_oauth_client(session=session, client_id=values["client_id"])
+    if client is None or values["redirect_uri"] not in oauth_client_redirect_uris(client):
+        return None
+    try:
+        scopes = validate_mcp_scope_grant(requested=values["scope"], registered=client.scope)
+    except ValueError:
+        return None
+    return AuthorizationContext(values, client.client_name or "Unnamed application", scopes)
+
+
+def _secure_cookie() -> bool:
     settings = get_settings()
+    return settings.environment == "production" or str(
+        settings.mcp_authorization_server_url
+    ).startswith("https:")
 
-    client_id = str(values["client_id"])
-    redirect_uri = str(values["redirect_uri"])
-    scope = str(values["scope"])
-    resource = str(values["resource"])
-    code_challenge = str(values["code_challenge"])
-    redirect_uri_explicit_value = str(values["redirect_uri_explicit"]).lower()
 
-    if redirect_uri_explicit_value not in {
-        "true",
-        "false",
-    }:
-        return HTMLResponse(
-            "Invalid OAuth redirect URI state.",
-            status_code=400,
-        )
+def _cookie_name() -> str:
+    return "__Host-opspilot_oauth_browser" if _secure_cookie() else "opspilot_oauth_browser"
 
-    redirect_uri_provided_explicitly = redirect_uri_explicit_value == "true"
-    state = (
-        str(values["state"])
-        if isinstance(
-            values["state"],
-            str,
-        )
-        else None
+
+def _form_response(
+    context: AuthorizationContext,
+    nonce: str,
+    *,
+    error: str = "",
+    email: str = "",
+    status_code: int = 200,
+    retry_after: int | None = None,
+) -> HTMLResponse:
+    response = render_login(
+        values=context.values,
+        client_name=context.client_name,
+        scopes=context.scopes,
+        csrf_token=create_form_token(get_settings().jwt_secret_key, nonce, context.values),
+        email=email,
+        error=error,
+        status_code=status_code,
+        retry_after=retry_after,
+    )
+    response.set_cookie(
+        _cookie_name(),
+        nonce,
+        max_age=FORM_LIFETIME_SECONDS,
+        path="/",
+        secure=_secure_cookie(),
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+def _invalid_request(*, expired: bool = False) -> HTMLResponse:
+    return render_login(
+        error=(
+            "This connection expired or changed. Return to your AI app and start again."
+            if expired
+            else "This connection request is not valid. Return to your AI app and start again."
+        ),
+        status_code=403 if expired else 400,
     )
 
-    if resource != str(settings.mcp_resource_url):
-        return HTMLResponse(
-            "Invalid OAuth resource.",
-            status_code=400,
-        )
 
+async def oauth_login_page(request: Request) -> Response:
+    values = _values(request.query_params)
+    if values is None:
+        return _invalid_request()
     async with async_session_factory() as session:
-        client = await get_oauth_client(
-            session=session,
-            client_id=client_id,
-        )
+        context = await _context(session, values)
+    if context is None:
+        return _invalid_request()
+    return _form_response(context, browser_nonce(request.cookies.get(_cookie_name())))
 
-        if client is None:
-            return HTMLResponse(
-                "Unknown OAuth client.",
-                status_code=400,
+
+async def oauth_login_submit(request: Request) -> Response:
+    try:
+        form = await request.form(max_files=0, max_fields=16, max_part_size=8192)
+    except HTTPException:
+        return _invalid_request()
+    values = _values(form)
+    if values is None or any(
+        len(form.getlist(key)) > 1 for key in ("csrf_token", "decision", "email", "password")
+    ):
+        return _invalid_request()
+    proof = form.get("csrf_token", "")
+    settings = get_settings()
+    if not isinstance(proof, str) or not valid_form_token(
+        settings.jwt_secret_key,
+        request.cookies.get(_cookie_name()),
+        values,
+        proof,
+    ):
+        return _invalid_request(expired=True)
+    # Public issuer comes from server configuration; reverse proxies may use an internal URL.
+    origin = request.headers.get("origin")
+    issuer = urlsplit(str(settings.mcp_authorization_server_url))
+    if origin is not None and origin != f"{issuer.scheme}://{issuer.netloc}":
+        return _invalid_request(expired=True)
+    decision = form.get("decision", "allow")
+    if not isinstance(decision, str) or decision not in {"allow", "deny"}:
+        return _invalid_request()
+    async with async_session_factory() as session:
+        context = await _context(session, values)
+        if context is None:
+            return _invalid_request()
+        if decision == "deny":
+            location = construct_redirect_uri(
+                values["redirect_uri"],
+                error="access_denied",
+                state=values["state"] or None,
+                iss=str(settings.mcp_authorization_server_url),
             )
-
-        if redirect_uri not in (oauth_client_redirect_uris(client)):
-            return HTMLResponse(
-                "Invalid redirect URI.",
-                status_code=400,
+        else:
+            email = form.get("email", "")
+            password = form.get("password", "")
+            if (
+                not isinstance(email, str)
+                or not isinstance(password, str)
+                or not 1 <= len(password) <= 128
+                or len(email) > 320
+            ):
+                return _form_response(
+                    context,
+                    str(request.cookies.get(_cookie_name())),
+                    error="Enter your email address and password.",
+                    status_code=422,
+                )
+            try:
+                credentials = LoginRequest(email=email.strip(), password=password)
+            except ValidationError:
+                return _form_response(
+                    context,
+                    str(request.cookies.get(_cookie_name())),
+                    error="Enter a valid email address and password.",
+                    email=email,
+                    status_code=422,
+                )
+            try:
+                await enforce_login_rate_limit(request=request, email=credentials.email)
+            except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+                limited = isinstance(exc, AuthRateLimitExceeded)
+                return _form_response(
+                    context,
+                    str(request.cookies.get(_cookie_name())),
+                    email=credentials.email,
+                    error="Too many attempts. Please try again later."
+                    if limited
+                    else "Sign-in is temporarily unavailable. Please try again shortly.",
+                    status_code=429 if limited else 503,
+                    retry_after=exc.retry_after_seconds
+                    if isinstance(exc, AuthRateLimitExceeded)
+                    else None,
+                )
+            user = await authenticate_user(session, credentials.email, credentials.password)
+            if user is None:
+                return _form_response(
+                    context,
+                    str(request.cookies.get(_cookie_name())),
+                    email=credentials.email,
+                    error="Invalid email or password.",
+                    status_code=401,
+                )
+            code = await create_authorization_code(
+                session=session,
+                client_id=values["client_id"],
+                user_id=user.id,
+                redirect_uri=values["redirect_uri"],
+                redirect_uri_provided_explicitly=values["redirect_uri_explicit"] == "true",
+                scopes=context.scopes,
+                code_challenge=values["code_challenge"],
+                resource=values["resource"],
             )
-
-        try:
-            scopes = validate_mcp_scope_grant(
-                requested=scope,
-                registered=client.scope,
+            location = construct_redirect_uri(
+                values["redirect_uri"],
+                code=code,
+                state=values["state"] or None,
+                iss=str(settings.mcp_authorization_server_url),
             )
-        except ValueError:
-            return HTMLResponse(
-                "Invalid OAuth scope.",
-                status_code=400,
-            )
-
-        try:
-            await enforce_login_rate_limit(
-                request=request,
-                email=str(values["email"]),
-            )
-        except (
-            AuthRateLimitExceeded,
-            AuthRateLimitUnavailable,
-        ) as exc:
-            return _oauth_rate_limit_response(exc)
-
-        user = await authenticate_user(
-            session,
-            str(values["email"]),
-            str(values["password"]),
-        )
-
-        if user is None:
-            return HTMLResponse(
-                "Invalid email or password.",
-                status_code=401,
-            )
-
-        code = await create_authorization_code(
-            session=session,
-            client_id=client_id,
-            user_id=user.id,
-            redirect_uri=redirect_uri,
-            redirect_uri_provided_explicitly=(redirect_uri_provided_explicitly),
-            scopes=scopes,
-            code_challenge=code_challenge,
-            resource=resource,
-        )
-
-    location = construct_redirect_uri(
-        redirect_uri,
-        code=code,
-        state=state,
-        iss=str(settings.mcp_authorization_server_url),
-    )
-
     return RedirectResponse(
-        url=location,
+        location,
         status_code=302,
-        headers={
-            "Cache-Control": "no-store",
-        },
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
