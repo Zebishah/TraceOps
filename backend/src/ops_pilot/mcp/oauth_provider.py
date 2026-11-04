@@ -1,4 +1,5 @@
 import json
+import uuid
 from urllib.parse import urlencode
 
 from mcp.server.auth.provider import (
@@ -27,6 +28,7 @@ from ops_pilot.core.security import (
 )
 from ops_pilot.db.session import async_session_factory
 from ops_pilot.models.oauth_client import OAuthClient
+from ops_pilot.services.email_verification import mcp_subject_allowed
 from ops_pilot.services.mcp_token_revocation import (
     is_mcp_access_token_revoked,
     revoke_mcp_access_token,
@@ -254,6 +256,10 @@ class OpsPilotOAuthProvider(
                 # AuthorizationCode object passed by the caller.
                 user_id = stored_code.user_id
                 trusted_scopes = stored_code.scopes.split()
+                if not await mcp_subject_allowed(session, user_id):
+                    raise TokenError(
+                        error="invalid_grant", error_description="Account verification required."
+                    )
 
                 claimed = await consume_authorization_code(
                     session=session,
@@ -363,6 +369,10 @@ class OpsPilotOAuthProvider(
                 # subject, resource or scopes.
                 trusted_user_id = stored.user_id
                 trusted_resource = stored.resource
+                if not await mcp_subject_allowed(session, trusted_user_id):
+                    raise TokenError(
+                        error="invalid_grant", error_description="Account verification required."
+                    )
 
                 revoked = await revoke_refresh_token(
                     session=session,
@@ -506,6 +516,15 @@ class OpsPilotOAuthProvider(
             int,
         ):
             return None
+
+        if get_settings().email_verification_enabled:
+            try:
+                user_id = uuid.UUID(subject)
+            except ValueError:
+                return None
+            async with async_session_factory() as session:
+                if not await mcp_subject_allowed(session, user_id):
+                    return None
 
         return AccessToken(
             token=token,

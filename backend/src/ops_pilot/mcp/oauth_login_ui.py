@@ -38,6 +38,7 @@ def render_login(
     error: str = "",
     status_code: int = 200,
     retry_after: int | None = None,
+    verification_url: str = "",
 ) -> HTMLResponse:
     nonce = secrets.token_urlsafe(18)
     esc = html.escape
@@ -54,6 +55,11 @@ def render_login(
     error_box = (
         f'<div class="form-error" role="alert" tabindex="-1">{esc(error)}</div>' if error else ""
     )
+    verification_link = (
+        f'<p class="connection-details"><a href="{esc(verification_url, quote=True)}" target="_blank" rel="noopener noreferrer">Open email verification ↗</a></p>'
+        if verification_url
+        else ""
+    )
     write_permission = (
         """<article class="permission"><span class="permission-icon">↗</span><div><strong>Investigate and request actions</strong><p>Start investigations and use permitted write tools. Sensitive actions still require human approval.</p></div><span class="permission-tag">WRITE</span></article>"""
         if "ops-pilot:write" in scopes
@@ -67,7 +73,7 @@ def render_login(
           <div class="client-card"><span class="client-icon">↗</span><div><span class="small-label">CONNECTING APPLICATION</span><strong>{esc(client_name)}</strong></div><span class="connection-dot" aria-hidden="true"></span></div>
           <div class="permissions" aria-label="Requested access"><article class="permission"><span class="permission-icon">▤</span><div><strong>Read workspace context</strong><p>Read incidents, search knowledge, and inspect records allowed by your role.</p></div><span class="permission-tag">READ</span></article>{write_permission}</div>
           <details class="connection-details"><summary>Review connection details <span aria-hidden="true">＋</span></summary><dl><dt>Return address</dt><dd><code>{esc(destination)}</code></dd><dt>Requested scopes</dt><dd><code>{esc(" ".join(scopes))}</code></dd></dl><p>Application names are supplied by the connecting app. Check that the return address belongs to the app you intended to connect.</p></details>
-          {error_box}
+          {error_box}{verification_link}
           <form method="post" action="/oauth/login" id="authorization-form">
             {hidden}<input type="hidden" name="csrf_token" value="{esc(csrf_token, quote=True)}">
             <label for="email">Email address<input id="email" type="email" name="email" required maxlength="320" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="you@company.com" value="{esc(email, quote=True)}"></label>

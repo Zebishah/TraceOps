@@ -15,7 +15,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -28,6 +28,9 @@ class UserResponse(BaseModel):
     email: EmailStr
     full_name: str
     is_active: bool
+    email_verified: bool = False
+    verification_required: bool = False
+    verification_email_sent: bool = False
 
 
 class MembershipResponse(BaseModel):
@@ -38,3 +41,20 @@ class MembershipResponse(BaseModel):
 class MeResponse(BaseModel):
     user: UserResponse
     memberships: list[MembershipResponse]
+
+
+class VerificationEmailRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
+
+
+class VerificationMessage(BaseModel):
+    message: str
+
+
+class EmailVerifiedResponse(BaseModel):
+    verified: bool = True
+    message: str = "Email verified. You can now sign in."

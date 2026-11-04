@@ -1,22 +1,28 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 
-from ops_pilot.api.dependencies import CurrentUser, DbSession
+from ops_pilot.api.dependencies import CurrentUser, DbSession, verification_required_error
+from ops_pilot.core.config import get_settings
 from ops_pilot.core.security import (
     create_access_token,
     create_mcp_access_token,
 )
 from ops_pilot.models.membership import Membership
 from ops_pilot.schemas.auth import (
+    EmailVerifiedResponse,
     LoginRequest,
     MembershipResponse,
     MeResponse,
     RegisterRequest,
     TokenResponse,
     UserResponse,
+    VerificationEmailRequest,
+    VerificationMessage,
+    VerifyEmailRequest,
 )
 from ops_pilot.services.auth import (
     authenticate_user,
+    get_user_by_email,
     register_user,
 )
 from ops_pilot.services.auth_rate_limit import (
@@ -24,9 +30,22 @@ from ops_pilot.services.auth_rate_limit import (
     AuthRateLimitUnavailable,
     enforce_login_rate_limit,
     enforce_registration_rate_limit,
+    enforce_verification_claim_limit,
+    enforce_verification_request_limit,
+)
+from ops_pilot.services.email_verification import (
+    issue_verification_email,
+    requires_email_verification,
+    verify_email_token,
 )
 
-router = APIRouter(prefix="/auth")
+
+def _no_store(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
+
+router = APIRouter(prefix="/auth", dependencies=[Depends(_no_store)])
 
 
 def _raise_rate_limit_error(
@@ -69,7 +88,13 @@ async def register(
         payload,
     )
 
+    required = requires_email_verification(user)
+    sent = await issue_verification_email(session, user) if required else False
+
     return UserResponse(
+        email_verified=user.email_verified_at is not None,
+        verification_required=required,
+        verification_email_sent=sent,
         id=user.id,
         email=user.email,
         full_name=user.full_name,
@@ -105,6 +130,9 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    if requires_email_verification(user):
+        raise verification_required_error(user.email)
 
     token = create_access_token(
         subject=str(user.id),
@@ -153,6 +181,8 @@ async def me(
             email=current_user.email,
             full_name=current_user.full_name,
             is_active=current_user.is_active,
+            email_verified=current_user.email_verified_at is not None,
+            verification_required=requires_email_verification(current_user),
         ),
         memberships=[
             MembershipResponse(
@@ -162,3 +192,46 @@ async def me(
             for membership in memberships
         ],
     )
+
+
+@router.post("/verification/request", response_model=VerificationMessage)
+async def request_email_verification(
+    payload: VerificationEmailRequest,
+    session: DbSession,
+    request: Request,
+) -> VerificationMessage:
+    if not get_settings().email_verification_enabled:
+        raise HTTPException(status_code=503, detail="Email verification is not enabled")
+    try:
+        await enforce_verification_request_limit(request=request, email=payload.email)
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+    user = await get_user_by_email(session, payload.email)
+    if user is not None:
+        await issue_verification_email(session, user)
+    # Same response for unknown, verified, disabled and delivery-failed accounts.
+    return VerificationMessage(
+        message="If this address belongs to an account awaiting verification, "
+        "a link will be sent. Check your inbox and spam folder.",
+    )
+
+
+@router.post("/verification/confirm", response_model=EmailVerifiedResponse)
+async def confirm_email_verification(
+    payload: VerifyEmailRequest,
+    session: DbSession,
+    request: Request,
+) -> EmailVerifiedResponse:
+    if not get_settings().email_verification_enabled:
+        raise HTTPException(status_code=503, detail="Email verification is not enabled")
+    try:
+        await enforce_verification_claim_limit(request=request)
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+    if not await verify_email_token(session, payload.token):
+        raise HTTPException(
+            status_code=400,
+            detail="This verification link is invalid, expired, or already used. "
+            "Try signing in if you already verified, or request a new link.",
+        )
+    return EmailVerifiedResponse()

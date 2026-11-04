@@ -1,8 +1,9 @@
+from email.utils import parseaddr
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AnyHttpUrl, Field, model_validator
+from pydantic import AnyHttpUrl, EmailStr, Field, SecretStr, TypeAdapter, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,15 @@ class Settings(BaseSettings):
     mcp_refresh_token_expire_days: int = 30
     mcp_allowed_hosts: str = "localhost,127.0.0.1"
     mcp_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+
+    # Enable only after the migration and Resend sender have been configured.
+    email_verification_enabled: bool = False
+    resend_api_key: SecretStr | None = Field(default=None, repr=False)
+    email_from: str | None = None
+    frontend_base_url: AnyHttpUrl | None = None
+    email_verification_expire_minutes: int = Field(default=60, ge=5, le=1440)
+    email_verification_daily_limit: int = Field(default=80, ge=1, le=10000)
+    email_delivery_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
     aws_access_key_id: str
     aws_secret_access_key: str
@@ -103,6 +113,32 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         environment = self.environment.lower()
+
+        if self.email_verification_enabled:
+            if not self.resend_api_key or not self.resend_api_key.get_secret_value().strip():
+                raise ValueError("EMAIL_VERIFICATION_ENABLED requires RESEND_API_KEY")
+            if not self.email_from or any(c in self.email_from for c in "\r\n"):
+                raise ValueError("EMAIL_VERIFICATION_ENABLED requires a valid EMAIL_FROM")
+            _, address = parseaddr(self.email_from)
+            TypeAdapter(EmailStr).validate_python(address)
+            if not self.frontend_base_url:
+                raise ValueError("EMAIL_VERIFICATION_ENABLED requires FRONTEND_BASE_URL")
+            frontend = urlsplit(str(self.frontend_base_url))
+            if (
+                frontend.username
+                or frontend.password
+                or frontend.query
+                or frontend.fragment
+                or frontend.path not in {"", "/"}
+                or (
+                    frontend.scheme != "https"
+                    and (
+                        environment == "production"
+                        or frontend.hostname not in {"localhost", "127.0.0.1", "::1"}
+                    )
+                )
+            ):
+                raise ValueError("FRONTEND_BASE_URL requires a public HTTPS origin or local HTTP")
 
         if self.incident_classifier_backend == "finetuned":
             if environment == "production" and not self.finetuned_classifier_release_id:

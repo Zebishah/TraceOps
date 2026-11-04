@@ -30,6 +30,7 @@ from ops_pilot.services.auth_rate_limit import (
     AuthRateLimitUnavailable,
     enforce_login_rate_limit,
 )
+from ops_pilot.services.email_verification import requires_email_verification, verification_page_url
 from ops_pilot.services.oauth import (
     create_authorization_code,
     get_oauth_client,
@@ -122,6 +123,7 @@ def _form_response(
     email: str = "",
     status_code: int = 200,
     retry_after: int | None = None,
+    verification_url: str = "",
 ) -> HTMLResponse:
     response = render_login(
         values=context.values,
@@ -132,6 +134,7 @@ def _form_response(
         error=error,
         status_code=status_code,
         retry_after=retry_after,
+        verification_url=verification_url,
     )
     response.set_cookie(
         _cookie_name(),
@@ -254,6 +257,16 @@ async def oauth_login_submit(request: Request) -> Response:
                     email=credentials.email,
                     error="Invalid email or password.",
                     status_code=401,
+                )
+            if requires_email_verification(user):
+                return _form_response(
+                    context,
+                    str(request.cookies.get(_cookie_name())),
+                    email=credentials.email,
+                    error="Verify your email before connecting. Open email verification, "
+                    "then return here to sign in again.",
+                    status_code=403,
+                    verification_url=verification_page_url(),
                 )
             code = await create_authorization_code(
                 session=session,

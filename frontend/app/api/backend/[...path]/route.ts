@@ -2,13 +2,12 @@ import { cookies } from 'next/headers';
 import { backendOrigin } from '@/lib/product/backend-config';
 import {isVoiceSpeechPath,proxyVoiceSpeechResponse} from '@/lib/product/voice-proxy';
 import { z } from 'zod';
+import { anonymousAuthPath, authInputSchema, verificationRequiredSchema } from '@/lib/product/auth-contracts';
 import { allowedBackendPath, cookieLifetime, MAX_REQUEST_BYTES, sameRequestOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
-const credentials = z.object({ email: z.string().email().max(320), password: z.string().min(1).max(128) });
-const registration = credentials.extend({ password: z.string().min(8).max(128), full_name: z.string().trim().min(1).max(200), organization_name: z.string().trim().min(1).max(200), organization_slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100) });
 const jsonError = (detail: string, status: number) => Response.json({ detail }, { status, headers: { 'Cache-Control': 'no-store' } });
 type Context = { params: Promise<{ path: string[] }> };
 async function proxy(request: Request, context: Context): Promise<Response> {
@@ -19,10 +18,10 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   const speech = isVoiceSpeechPath(path);
   if (/\/voice\//.test(path) && request.method !== (path.endsWith('/capabilities') ? 'GET' : 'POST')) return jsonError('Method not allowed', 405);
   if (write && !sameRequestOrigin(request)) return jsonError('Request origin rejected', 403);
-  if (request.method === 'GET' && (path === 'auth/login' || path === 'auth/register' || path === 'auth/mcp-token')) return jsonError('Method not allowed', 405);
+  if (request.method === 'GET' && (anonymousAuthPath(path) || path === 'auth/mcp-token')) return jsonError('Method not allowed', 405);
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const anonymous = path === 'auth/login' || path === 'auth/register' || path === 'health';
+  const anonymous = anonymousAuthPath(path) || path === 'health';
   if (!anonymous && !token) return jsonError('Sign in to your OpsPilot account', 401);
   const headers = new Headers({ Accept: speech ? 'audio/wav, application/json' : 'application/json' });
   if (token && !anonymous) headers.set('Authorization', `Bearer ${token}`);
@@ -33,10 +32,11 @@ async function proxy(request: Request, context: Context): Promise<Response> {
     if (body.byteLength > MAX_REQUEST_BYTES) return jsonError('Request exceeds the upload limit', 413);
     const contentType = request.headers.get('content-type') ?? 'application/json';
     headers.set('Content-Type', contentType);
-    if (path === 'auth/login' || path === 'auth/register') {
+    const schema = authInputSchema(path);
+    if (schema) {
       try {
         const input: unknown = JSON.parse(new TextDecoder().decode(body));
-        const parsed = (path === 'auth/login' ? credentials : registration).safeParse(input);
+        const parsed = schema.safeParse(input);
         if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? 'Invalid account information', 422);
         body = new TextEncoder().encode(JSON.stringify(parsed.data)).buffer;
       } catch { return jsonError('Invalid JSON request', 400); }
@@ -46,7 +46,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   try { origin = backendOrigin(process.env.OPSPILOT_BACKEND_URL); }
   catch (cause) { return jsonError(cause instanceof Error ? cause.message : 'Backend URL is not configured.', 503); }
   const upstreamUrl = new URL(`/api/v1/${path}`, origin);
-  upstreamUrl.search = new URL(request.url).search;
+  upstreamUrl.search = path.startsWith('auth/verification/') ? '' : new URL(request.url).search;
   try {
     const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(90000)]), cache: 'no-store' });
     // Workers support manual redirects; reject them rather than forwarding credentials.
@@ -60,6 +60,11 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       return Response.json({ authenticated: true }, { headers: responseHeaders });
     }
     if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
+    if (upstream.status === 403 && (upstream.headers.get('content-type') ?? '').includes('application/json')) {
+      const denied: unknown = await upstream.clone().json().catch(() => null);
+      if (typeof denied === 'object' && denied !== null && 'detail' in denied && verificationRequiredSchema.safeParse(denied.detail).success) cookieStore.delete(SESSION_COOKIE);
+    }
+    if (path.startsWith('auth/')) responseHeaders.set('Referrer-Policy', 'no-referrer');
     if (speech && upstream.ok) return await proxyVoiceSpeechResponse(upstream);
     if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) {
       if (upstream.status === 404) return jsonError('Not Found', 404);

@@ -17,6 +17,7 @@ from ops_pilot.schemas.mcp_auth import (
     MCPAuthenticatedContext,
     MCPOrganizationSummary,
 )
+from ops_pilot.services.email_verification import requires_email_verification
 from ops_pilot.services.mcp_token_revocation import (
     is_mcp_access_token_revoked,
 )
@@ -68,6 +69,9 @@ async def _get_authenticated_mcp_user(
 
     if user is None or not user.is_active:
         raise MCPAuthenticationError("Authenticated user is not available")
+
+    if requires_email_verification(user):
+        raise MCPAuthenticationError("Verify your email address in OpsPilot before connecting")
 
     return user
 

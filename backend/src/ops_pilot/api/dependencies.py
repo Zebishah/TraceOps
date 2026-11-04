@@ -11,6 +11,7 @@ from ops_pilot.core.security import decode_access_token
 from ops_pilot.db.session import get_db_session
 from ops_pilot.models.membership import Membership, MembershipRole
 from ops_pilot.models.user import User
+from ops_pilot.services.email_verification import requires_email_verification
 
 bearer_scheme = HTTPBearer()
 
@@ -45,6 +46,9 @@ async def get_current_user(
 
     if user is None or not user.is_active:
         raise credentials_error
+
+    if requires_email_verification(user):
+        raise verification_required_error(user.email)
 
     return user
 
@@ -188,3 +192,16 @@ ApprovalReviewerMembership = Annotated[
     Membership,
     Depends(require_approval_reviewer),
 ]
+
+
+def verification_required_error(email: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "email_verification_required",
+            "message": (
+                "Verify your email address before accessing your workspace or connecting an AI app."
+            ),
+            "email": email,
+        },
+    )

@@ -9,6 +9,8 @@ from ops_pilot.core.config import get_settings
 from ops_pilot.core.security import (
     decode_mcp_access_token,
 )
+from ops_pilot.db.session import async_session_factory
+from ops_pilot.services.email_verification import mcp_subject_allowed
 from ops_pilot.services.mcp_token_revocation import (
     is_mcp_access_token_revoked,
 )
@@ -84,6 +86,11 @@ class OpsPilotMCPTokenVerifier:
                 jti=jti,
             ):
                 return None
+
+            if settings.email_verification_enabled:
+                async with async_session_factory() as session:
+                    if not await mcp_subject_allowed(session, user_id):
+                        return None
 
             return AccessToken(
                 token=token,

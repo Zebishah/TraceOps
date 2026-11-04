@@ -124,3 +124,36 @@ async def enforce_registration_rate_limit(
         attempts=5,
         window_seconds=3600,
     )
+
+
+async def enforce_verification_request_limit(*, request: Request, email: str) -> None:
+    await _enforce_limit(
+        category="verification-ip",
+        identifier=_client_ip(request),
+        attempts=10,
+        window_seconds=3600,
+    )
+    await _enforce_limit(
+        category="verification-email",
+        identifier=email.strip().casefold(),
+        attempts=3,
+        window_seconds=3600,
+    )
+
+
+async def enforce_verification_claim_limit(*, request: Request) -> None:
+    await _enforce_limit(
+        category="verification-claim-ip",
+        identifier=_client_ip(request),
+        attempts=20,
+        window_seconds=60,
+    )
+
+
+async def enforce_verification_delivery_limit() -> None:
+    await _enforce_limit(
+        category="verification-daily",
+        identifier="application",
+        attempts=get_settings().email_verification_daily_limit,
+        window_seconds=86400,
+    )

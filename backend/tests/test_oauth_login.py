@@ -387,3 +387,24 @@ def test_form_token_rejects_future_timestamp_and_wrong_secret(monkeypatch):
     assert not oauth_form.valid_form_token("wrong", nonce, PARAMS, proof)
     monkeypatch.setattr(oauth_form.time, "time", lambda: 1969)
     assert not oauth_form.valid_form_token("secret", nonce, PARAMS, proof)
+
+
+def test_unverified_user_cannot_create_mcp_consent_code(flow, monkeypatch):
+    from ops_pilot.services import email_verification
+
+    monkeypatch.setattr(
+        email_verification,
+        "get_settings",
+        lambda: SimpleNamespace(
+            email_verification_enabled=True,
+            frontend_base_url="https://workspace.example",
+        ),
+    )
+    flow.auth.return_value.email_verified_at = None
+    _, fields = open_form(flow)
+    response = submit(flow, fields)
+    assert response.status_code == 403
+    assert "Verify your email before connecting" in response.text
+    assert 'href="https://workspace.example/verify-email"' in response.text
+    assert HiddenFields(response.text).values["state"] == PARAMS["state"]
+    flow.code.assert_not_awaited()
