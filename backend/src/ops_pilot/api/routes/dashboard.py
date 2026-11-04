@@ -293,6 +293,7 @@ async def list_resource(
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         # UUID storage differs between PostgreSQL and the SQLite test adapter.
         # Bind full identifiers as UUIDs; keep text matching for partial IDs.
+        id_match: ColumnElement[bool]
         try:
             identifier = uuid.UUID(q.strip())
         except ValueError:
