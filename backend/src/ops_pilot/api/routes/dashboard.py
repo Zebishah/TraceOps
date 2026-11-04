@@ -291,9 +291,17 @@ async def list_resource(
         predicates.append(column(model, "status") == status_filter)
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # UUID storage differs between PostgreSQL and the SQLite test adapter.
+        # Bind full identifiers as UUIDs; keep text matching for partial IDs.
+        try:
+            identifier = uuid.UUID(q.strip())
+        except ValueError:
+            id_match = cast(column(model, "id"), String).ilike(f"%{escaped}%", escape="\\")
+        else:
+            id_match = column(model, "id") == identifier
         predicates.append(
             or_(
-                cast(column(model, "id"), String).ilike(f"%{escaped}%", escape="\\"),
+                id_match,
                 *[
                     getattr(model, field).ilike(f"%{escaped}%", escape="\\")
                     for field in spec.search
