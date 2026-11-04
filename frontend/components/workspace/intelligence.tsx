@@ -58,7 +58,17 @@ export function MemoryDetail({ record }: { record: Row }) {
 }
 
 export function ApprovalCards({ rows, onSelect }: { rows: Row[]; onSelect: (row: Row) => void }) {
-  return <div className="approval-card-grid">{rows.map((row, index) => { const payload = row.action_payload && typeof row.action_payload === 'object' && !Array.isArray(row.action_payload) ? row.action_payload as Row : null; return <button key={stringValue(row.id ?? index)} className="proposal-card" onClick={() => onSelect(row)}><header><span><ShieldCheck size={17} /> HUMAN REVIEW</span><Badge value={row.status} /></header><h3>{stringValue(row.action_type).replaceAll('_', ' ')}</h3>{payload && <div className="proposal-value">{stringValue(payload.amount)} <small>{stringValue(payload.currency)}</small></div>}<p>{stringValue(row.reason)}</p><footer><span>{dateValue(row.created_at)}</span><span>Review decision <ArrowRight size={14} /></span></footer></button>; })}</div>;
+  return <div className="approval-card-grid">{rows.map((row,index)=>{
+    const payload=row.action_payload&&typeof row.action_payload==='object'&&!Array.isArray(row.action_payload)?row.action_payload as Row:null;
+    const pending=row.status==='pending';
+    return <button key={stringValue(row.id??index)} className={`proposal-card ${pending?'proposal-pending':''}`} onClick={()=>onSelect(row)}>
+      <header><span className="proposal-card-identity"><span className="proposal-card-glyph"><ShieldCheck size={20}/></span><span><small>{pending?'REVIEW REQUIRED':'RECORDED PROPOSAL'}</small><code>APR-{stringValue(row.id).slice(0,8).toUpperCase()}</code></span></span><Badge value={row.status}/></header>
+      <div className="proposal-card-heading"><h3>{stringValue(row.action_type).replaceAll('_',' ')}</h3>{payload?.amount!==undefined&&payload.amount!==null&&<span className="proposal-inline-amount">{stringValue(payload.amount)} <small>{stringValue(payload.currency)}</small></span>}</div>
+      <span className="proposal-reason-label">PROPOSAL CONTEXT</span><p>{stringValue(row.reason)}</p>
+      <div className="proposal-scope"><ShieldCheck size={12}/> Organization-scoped action <span>•</span> {pending?'Human decision needed':'Open to inspect the recorded outcome'}</div>
+      <footer><span><Clock3 size={12}/>{dateValue(row.created_at)}</span><span>{pending?'Review proposal':'Inspect decision'} <ArrowRight size={14}/></span></footer>
+    </button>;
+  })}</div>;
 }
 
 export function JobCards({ rows, onSelect }: { rows: Row[]; onSelect: (row: Row) => void }) {
