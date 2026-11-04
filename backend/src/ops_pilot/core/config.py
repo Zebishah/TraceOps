@@ -130,6 +130,8 @@ class Settings(BaseSettings):
 
         if self.voice_tts_enabled and not self.voice_enabled:
             raise ValueError("VOICE_TTS_ENABLED requires VOICE_ENABLED")
+        if self.voice_enabled and not self.groq_api_key.strip():
+            raise ValueError("VOICE_ENABLED requires a nonempty GROQ_API_KEY")
 
         if len(self.jwt_secret_key) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")

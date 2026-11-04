@@ -171,6 +171,50 @@ def test_language_validation(client):
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("active", [False, True])
+def test_voice_capabilities_allow_ui_to_discover_flags(client, enabled, monkeypatch, active):
+    enabled.voice_enabled = active
+    monkeypatch.setattr(routes, "get_settings", lambda: enabled)
+    response = client.get(f"{PATH}/capabilities")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "enabled": active,
+        "speech_enabled": active,
+        "transcription_model": "whisper-large-v3-turbo",
+        "max_audio_bytes": 10 * 1024 * 1024,
+        "requests_per_minute": 10,
+        "supported_containers": ["wav", "webm", "ogg", "flac", "mp3", "m4a"],
+        "max_speech_characters": 200,
+        "requires_confirmation": True,
+    }
+    assert "token" not in response.text
+
+
+@pytest.mark.parametrize("role", [MembershipRole.VIEWER, MembershipRole.REVIEWER])
+def test_voice_capabilities_enforce_creator_role(client, role):
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(role=role)
+    assert client.get(f"{PATH}/capabilities").status_code == 403
+
+
+def test_browser_webm_upload_and_language_are_forwarded(client, monkeypatch):
+    async def handler(request):
+        body = await request.aread()
+        assert b"recording.webm" in body
+        assert b"audio/webm" in body
+        assert b'name="language"' in body and b"ur" in body
+        return httpx.Response(200, json={"text": "Customer reports a payment issue."})
+
+    provider(monkeypatch, handler)
+    response = client.post(
+        f"{PATH}/transcriptions",
+        files={"file": ("recording.webm", b"\x1a\x45\xdf\xa3" + b"test recording", "audio/webm")},
+        data={"language": "ur"},
+    )
+    assert response.status_code == 200
+    assert response.json()["requires_confirmation"] is True
+
+
 @pytest.mark.asyncio
 async def test_voice_rate_limit_fails_closed(monkeypatch, enabled):
     redis = SimpleNamespace(eval=AsyncMock(side_effect=RuntimeError("offline")))
