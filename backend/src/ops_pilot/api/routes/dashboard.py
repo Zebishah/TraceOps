@@ -122,7 +122,7 @@ SPECS: dict[str, ResourceSpec] = {
             "created_at",
             "updated_at",
         ),
-        ("job_type", "error_message"),
+        ("job_type", "status"),
         ("queued", "processing", "succeeded", "failed"),
     ),
     "customers": ResourceSpec(
@@ -220,7 +220,7 @@ SPECS: dict[str, ResourceSpec] = {
             "created_at",
             "updated_at",
         ),
-        ("last_error",),
+        ("status",),
         ("pending", "processing", "completed", "failed"),
     ),
 }
