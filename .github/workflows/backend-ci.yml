@@ -8,6 +8,13 @@ on:
       - "frontend/components/workspace/incidents.tsx"
       - "frontend/components/workspace/intelligence.tsx"
       - "frontend/tests/classification-confidence.test.mts"
+      - "frontend/lib/product/proxy-policy.ts"
+      - "frontend/lib/product/voice-proxy.ts"
+      - "frontend/lib/product/voice-contracts.ts"
+      - "frontend/tests/voice-contracts.test.mts"
+      - "frontend/app/api/backend/**"
+      - "frontend/tests/voice-proxy.test.mts"
+      - "frontend/tests/proxy-policy.test.ts"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
@@ -16,6 +23,13 @@ on:
       - "frontend/components/workspace/incidents.tsx"
       - "frontend/components/workspace/intelligence.tsx"
       - "frontend/tests/classification-confidence.test.mts"
+      - "frontend/lib/product/proxy-policy.ts"
+      - "frontend/lib/product/voice-proxy.ts"
+      - "frontend/lib/product/voice-contracts.ts"
+      - "frontend/tests/voice-contracts.test.mts"
+      - "frontend/app/api/backend/**"
+      - "frontend/tests/voice-proxy.test.mts"
+      - "frontend/tests/proxy-policy.test.ts"
       - ".github/workflows/backend-ci.yml"
   workflow_dispatch:
     inputs:
@@ -79,7 +93,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Check types
-        run: uv run mypy
+        run: uv run mypy && uv run mypy scripts/check_ai_readiness.py
 
       - name: Run tests
         run: uv run pytest -q --junitxml=test-results.xml
@@ -119,10 +133,10 @@ jobs:
           uv sync --project finetuning --frozen
           uv run --project finetuning --frozen python -c "import torch, transformers, peft, cryptography"
       - name: Train and reload a tiny local adapter without downloading a model
-        run: uv run --project finetuning --frozen pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py tests/test_finetuning_quality.py tests/test_finetuning_artifacts.py tests/test_finetuning_process.py
+        run: uv run --project finetuning --frozen pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py tests/test_finetuning_quality.py tests/test_finetuning_artifacts.py tests/test_finetuning_process.py tests/test_signed_classifier_integration.py
 
   confidence-contract:
-    name: Frontend nullable confidence contract
+    name: Frontend AI contracts and voice proxy
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -132,10 +146,20 @@ jobs:
           node-version: "24"
       - name: Install the bounded contract-test dependency
         run: |
-          npm install --prefix "$RUNNER_TEMP/confidence-contract" --no-audit --no-fund zod@3.25.76
+          npm install --prefix "$RUNNER_TEMP/confidence-contract" --no-audit --no-fund zod@3.25.76 typescript@5.9.3 @types/node@22.19.19
           ln -s "$RUNNER_TEMP/confidence-contract/node_modules" frontend/node_modules
-      - name: Check unavailable and existing numeric confidence
-        run: node --experimental-strip-types --test frontend/tests/classification-confidence.test.mts
+      - name: Check voice, confidence and proxy contracts
+        run: node --experimental-strip-types --test frontend/tests/classification-confidence.test.mts frontend/tests/voice-proxy.test.mts frontend/tests/proxy-policy.test.ts frontend/tests/voice-contracts.test.mts
+
+      - name: Check voice module types
+        run: >-
+          "$RUNNER_TEMP/confidence-contract/node_modules/.bin/tsc"
+          --strict --noEmit --skipLibCheck --target ES2022 --module ESNext
+          --moduleResolution bundler --allowImportingTsExtensions
+          --typeRoots frontend/node_modules/@types --types node
+          frontend/lib/product/voice-proxy.ts frontend/lib/product/voice-contracts.ts
+          frontend/lib/product/proxy-policy.ts frontend/tests/voice-proxy.test.mts
+          frontend/tests/voice-contracts.test.mts
 
   qwen-verification:
     name: Optional pinned Qwen CPU verification

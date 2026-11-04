@@ -11,6 +11,17 @@ class VoiceTranscriptionResponse(BaseModel):
     requires_confirmation: Literal[True] = True
 
 
+class VoiceCapabilitiesResponse(BaseModel):
+    enabled: bool
+    speech_enabled: bool
+    transcription_model: str
+    max_audio_bytes: int
+    requests_per_minute: int
+    supported_containers: list[str]
+    max_speech_characters: int = 200
+    requires_confirmation: Literal[True] = True
+
+
 class VoiceSpeechRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

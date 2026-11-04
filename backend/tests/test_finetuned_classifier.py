@@ -10,6 +10,12 @@ from ops_pilot.schemas.incident_classification import IncidentClassification
 from tests.test_security_config import make_settings
 
 
+@pytest.mark.parametrize("key", ["", "   "])
+def test_enabled_voice_requires_nonempty_provider_key(key):
+    with pytest.raises(ValueError, match="VOICE_ENABLED requires"):
+        make_settings(voice_enabled=True, groq_api_key=key)
+
+
 @pytest.fixture
 def settings(monkeypatch):
     result = get_settings().model_copy(

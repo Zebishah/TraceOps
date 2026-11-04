@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { env } from 'cloudflare:workers';
 import { backendOrigin } from '@/lib/product/backend-config';
+import { isVoiceSpeechPath, proxyVoiceSpeechResponse } from '@/lib/product/voice-proxy';
 import { z } from 'zod';
 import { allowedBackendPath, cookieLifetime, MAX_REQUEST_BYTES, sameOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
 
@@ -56,6 +57,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
       return Response.json({ authenticated: true }, { headers: responseHeaders });
     }
     if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
+    if (upstream.ok && isVoiceSpeechPath(path)) return await proxyVoiceSpeechResponse(upstream);
     if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) {
       if (upstream.status === 404) return jsonError('Not Found', 404);
       if (upstream.status === 401) return jsonError('Your session expired. Please sign in again.', 401);
