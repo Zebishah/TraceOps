@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ops_pilot.api.dependencies import (
@@ -277,7 +278,8 @@ def test_incidents_require_organization_membership() -> None:
         app.dependency_overrides.clear()
 
 
-def test_classify_incident(monkeypatch) -> None:
+@pytest.mark.parametrize("reported_confidence", [0.98, None])
+def test_classify_incident(monkeypatch, reported_confidence) -> None:
     incident = make_incident()
 
     incident.status = IncidentStatus.INVESTIGATING
@@ -287,7 +289,7 @@ def test_classify_incident(monkeypatch) -> None:
     classification = IncidentClassification(
         category=IncidentCategory.PAYMENT,
         priority=IncidentPriority.HIGH,
-        confidence=0.98,
+        confidence=reported_confidence,
     )
 
     async def fake_classify_stored_incident(
@@ -322,7 +324,7 @@ def test_classify_incident(monkeypatch) -> None:
         assert body["status"] == "investigating"
         assert body["category"] == "payment"
         assert body["priority"] == "high"
-        assert body["confidence"] == 0.98
+        assert body["confidence"] == reported_confidence
 
     finally:
         app.dependency_overrides.clear()

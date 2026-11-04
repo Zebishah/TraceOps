@@ -141,9 +141,16 @@ async def evaluate_incident_classification() -> EvaluationSuiteResult:
                         ),
                     ),
                     EvaluationCheck(
-                        name="confidence_present",
-                        passed=(0.0 <= classification.confidence <= 1.0),
-                        details=(f"confidence={classification.confidence:.3f}"),
+                        name="confidence_valid_or_unavailable",
+                        passed=(
+                            classification.confidence is None
+                            or 0.0 <= classification.confidence <= 1.0
+                        ),
+                        details=(
+                            "confidence=unavailable"
+                            if classification.confidence is None
+                            else f"confidence={classification.confidence:.3f}"
+                        ),
                     ),
                 ],
             )

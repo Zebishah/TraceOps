@@ -25,8 +25,10 @@ class IncidentClassification(BaseModel):
         description="The operational urgency of the incident.",
     )
 
-    confidence: float = Field(
+    confidence: float | None = Field(
         ge=0.0,
         le=1.0,
-        description="Confidence in the classification from 0 to 1.",
+        description=(
+            "Provider-reported confidence from 0 to 1; null when unavailable or uncalibrated."
+        ),
     )

@@ -1,4 +1,6 @@
 from functools import lru_cache
+from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import AnyHttpUrl, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,9 +82,54 @@ class Settings(BaseSettings):
 
     health_dependency_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
 
+    # Additive voice endpoints; no audio is retained by the application.
+    voice_enabled: bool = False
+    voice_tts_enabled: bool = False
+    voice_transcription_model: Literal["whisper-large-v3-turbo", "whisper-large-v3"] = (
+        "whisper-large-v3-turbo"
+    )
+    voice_tts_voice: Literal["autumn", "diana", "hannah", "austin", "daniel", "troy"] = "troy"
+    voice_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    voice_requests_per_minute: int = Field(default=10, ge=1, le=60)
+
+    # Training/inference run separately. Existing Groq classification is the default.
+    incident_classifier_backend: Literal["groq", "finetuned"] = "groq"
+    finetuned_classifier_url: str | None = None
+    finetuned_classifier_token: str | None = None
+    finetuned_classifier_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    finetuned_classifier_fallback_enabled: bool = True
+    finetuned_classifier_release_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         environment = self.environment.lower()
+
+        if self.incident_classifier_backend == "finetuned":
+            if environment == "production" and not self.finetuned_classifier_release_id:
+                raise ValueError(
+                    "Production fine-tuned classification requires an approved release ID"
+                )
+            if not self.finetuned_classifier_url or not self.finetuned_classifier_token:
+                raise ValueError("Fine-tuned classification requires URL and token")
+            if len(self.finetuned_classifier_token) < 32:
+                raise ValueError("Fine-tuned classifier token must be at least 32 characters")
+            parsed = urlsplit(self.finetuned_classifier_url)
+            if (
+                parsed.scheme not in {"https", "http"}
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or (
+                    parsed.scheme == "http"
+                    and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                )
+            ):
+                raise ValueError("Fine-tuned classifier URL requires HTTPS or loopback HTTP")
+
+        if self.voice_tts_enabled and not self.voice_enabled:
+            raise ValueError("VOICE_TTS_ENABLED requires VOICE_ENABLED")
 
         if len(self.jwt_secret_key) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")

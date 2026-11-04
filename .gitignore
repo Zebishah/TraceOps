@@ -44,3 +44,13 @@ coverage/
 # Local temporary files
 tmp/
 .temp/
+
+# Optional ML environment and local incident datasets/model artifacts
+.venv-finetuning/
+/backend/finetuning/data/
+/backend/finetuning/adapters/
+/backend/finetuning/reports/
+/backend/finetuning/runs/
+/backend/finetuning/keys/
+/backend/finetuning/worker.env
+*.private.key

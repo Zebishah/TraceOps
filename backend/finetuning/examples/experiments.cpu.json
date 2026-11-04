@@ -1,0 +1,22 @@
+{
+  "experiments": [
+    {
+      "name": "qwen-05b-rank4",
+      "model": "Qwen/Qwen2.5-0.5B-Instruct",
+      "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "rank": 4,
+      "alpha": 8,
+      "learning_rate": 0.0001,
+      "epochs": 3
+    },
+    {
+      "name": "qwen-05b-rank8",
+      "model": "Qwen/Qwen2.5-0.5B-Instruct",
+      "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "rank": 8,
+      "alpha": 16,
+      "learning_rate": 0.0002,
+      "epochs": 3
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Separate environment only; backend/uv.lock and deployment dependencies stay unchanged.
+torch==2.15.0
+transformers==5.22.1
+peft==0.21.2
+accelerate==1.15.0
+safetensors>=0.5,<1
+cryptography==50.0.2
+# Install bitsandbytes==0.50.2 separately only when using --qlora on supported CUDA hardware.

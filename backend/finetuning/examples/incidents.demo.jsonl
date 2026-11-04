@@ -1,0 +1,32 @@
+{"category":"payment","priority":"high","title":"Duplicate order charge","description":"A customer has two successful charges for a single paid order.","group_id":"synthetic-demo-01"}
+{"category":"payment","priority":"medium","title":"Invoice amount question","description":"One customer asks why the invoice includes a listed service fee.","group_id":"synthetic-demo-02"}
+{"category":"payment","priority":"high","title":"Payouts blocked","description":"All merchant payouts have been blocked since this morning.","group_id":"synthetic-demo-03"}
+{"category":"payment","priority":"low","title":"Receipt wording","description":"A customer requests a spelling correction on their receipt label.","group_id":"synthetic-demo-04"}
+{"category":"account","priority":"low","title":"Display name update","description":"One customer cannot update their display name; other features work.","group_id":"synthetic-demo-05"}
+{"category":"account","priority":"medium","title":"Profile changes lost","description":"Saved profile edits disappear for one customer after a refresh.","group_id":"synthetic-demo-06"}
+{"category":"account","priority":"medium","title":"Account closure request","description":"A customer requests assistance closing their own account.","group_id":"synthetic-demo-07"}
+{"category":"account","priority":"high","title":"Onboarding blocked","description":"New customers cannot complete account onboarding and work is blocked.","group_id":"synthetic-demo-08"}
+{"category":"access","priority":"medium","title":"Single user login failure","description":"One user cannot sign in after resetting their password.","group_id":"synthetic-demo-09"}
+{"category":"access","priority":"high","title":"Staff permissions blocked","description":"The operations team cannot access the dashboard needed for active work.","group_id":"synthetic-demo-10"}
+{"category":"access","priority":"medium","title":"Permission denied","description":"One team member receives permission denied when viewing their assigned project.","group_id":"synthetic-demo-11"}
+{"category":"access","priority":"low","title":"Session expires early","description":"One user must sign in again after a short inactive period with no lost work.","group_id":"synthetic-demo-12"}
+{"category":"data","priority":"medium","title":"Incorrect address sync","description":"A customer address was copied incorrectly during synchronization.","group_id":"synthetic-demo-13"}
+{"category":"data","priority":"high","title":"Missing active orders","description":"Several customers cannot see active order records needed for fulfillment.","group_id":"synthetic-demo-14"}
+{"category":"data","priority":"critical","title":"Production records deleted","description":"A faulty migration deleted most production customer records.","group_id":"synthetic-demo-15"}
+{"category":"data","priority":"low","title":"Export column heading","description":"A report export contains a misspelled column heading; values remain correct.","group_id":"synthetic-demo-16"}
+{"category":"integration","priority":"high","title":"Webhook delivery failing","description":"An external provider webhook returns errors and business events are not processed.","group_id":"synthetic-demo-17"}
+{"category":"integration","priority":"medium","title":"CRM sync delayed","description":"One team's external CRM synchronization is delayed without lost records.","group_id":"synthetic-demo-18"}
+{"category":"integration","priority":"low","title":"Optional analytics disconnected","description":"An optional analytics integration is disconnected; core work is unaffected.","group_id":"synthetic-demo-19"}
+{"category":"integration","priority":"high","title":"Accounting API denied","description":"The external accounting API rejects every export and blocks financial closing.","group_id":"synthetic-demo-20"}
+{"category":"system","priority":"critical","title":"Application unavailable","description":"The entire production application is unavailable for all customers.","group_id":"synthetic-demo-21"}
+{"category":"system","priority":"high","title":"Critical worker stopped","description":"The fulfillment worker has stopped and important orders cannot be processed.","group_id":"synthetic-demo-22"}
+{"category":"system","priority":"medium","title":"Slow report generation","description":"One report takes longer to generate but completes successfully.","group_id":"synthetic-demo-23"}
+{"category":"system","priority":"low","title":"Cosmetic server warning","description":"A development server prints a harmless warning with no service impact.","group_id":"synthetic-demo-24"}
+{"category":"security","priority":"critical","title":"Active database exfiltration","description":"An attacker is currently extracting production customer data.","group_id":"synthetic-demo-25"}
+{"category":"security","priority":"high","title":"Compromised staff credential","description":"A staff member reports a stolen credential and an unrecognized sign-in.","group_id":"synthetic-demo-26"}
+{"category":"security","priority":"medium","title":"Suspicious failed login attempts","description":"One account has repeated failed login attempts with no successful unauthorized access.","group_id":"synthetic-demo-27"}
+{"category":"security","priority":"critical","title":"Active ransomware incident","description":"Production machines are being encrypted by ransomware and core operations stopped.","group_id":"synthetic-demo-28"}
+{"category":"other","priority":"low","title":"General product question","description":"A customer asks where to find the public product roadmap.","group_id":"synthetic-demo-29"}
+{"category":"other","priority":"low","title":"Feature suggestion","description":"A customer suggests a new optional theme color.","group_id":"synthetic-demo-30"}
+{"category":"other","priority":"medium","title":"Unclear operational complaint","description":"A customer reports a recurring inconvenience but provides no technical details.","group_id":"synthetic-demo-31"}
+{"category":"other","priority":"low","title":"Training material request","description":"A team asks for links to general onboarding tutorials.","group_id":"synthetic-demo-32"}
