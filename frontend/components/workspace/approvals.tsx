@@ -32,7 +32,7 @@ export function ApprovalPage({incidentId,approvalId}:{incidentId:string;approval
   }
   return <>
     <Link className="back-link" href={`/app/incidents/${incidentId}`}><ArrowLeft size={13}/> Related investigation</Link>
-    <PageHeading visual="approvals" title="Review the proposed action" description="Inspect the exact proposal, supporting reason, and recorded outcome." eyebrow={`APPROVAL / ${approvalId.slice(0,8)}`} actions={<button className="btn secondary" disabled={result.refreshing} onClick={()=>{result.refresh();resume.refresh();}}><RefreshCw size={14} className={result.refreshing?'is-spinning':''}/> Refresh status</button>}/>
+    <PageHeading visual="approvals" visualVariant="review" title="Review the proposed action" description="Inspect the exact proposal, supporting reason, and recorded outcome." eyebrow={`APPROVAL / ${approvalId.slice(0,8)}`} actions={<button className="btn secondary" disabled={result.refreshing} onClick={()=>{result.refresh();resume.refresh();}}><RefreshCw size={14} className={result.refreshing?'is-spinning':''}/> Refresh status</button>}/>
     <State loading={result.loading} error={result.error} onRetry={result.refresh}>{result.data&&<ApprovalReview key={result.data.id} approval={result.data} role={role} executionEnabled={workspace?.approval_execution_enabled??null} onConfirm={recordDecision}/>}</State>
     {resume.data&&<ApprovalRecovery data={resume.data} following={poll} onToggle={()=>setPoll(value=>!value)}/>}
     {!resume.data&&resume.error&&<section className="surface approval-recovery"><State error={resume.error} onRetry={resume.refresh}/></section>}

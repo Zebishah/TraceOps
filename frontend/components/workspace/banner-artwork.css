@@ -1,0 +1,71 @@
+/* Task-specific surroundings. These animations only change transforms and opacity. */
+.banner-atmosphere{position:absolute;inset:0;width:100%;height:100%;color:#d4b47e;stroke:currentColor;stroke-width:.8;opacity:.48;pointer-events:none;overflow:visible}
+.banner-atmosphere .scene-animated{animation-play-state:var(--banner-play,running)!important}
+.scan-reticle{transform-origin:210px 150px;animation:context-focus 2.8s ease-in-out infinite}
+.scan-band{animation:context-scan 2.1s ease-in-out infinite}.atmosphere-search .scan-band{animation-name:context-search;animation-duration:2.4s}.atmosphere-search .scan-reticle{animation-name:context-search-focus;animation-duration:3s}
+.authorization-boundary{transform-origin:210px 150px;animation:context-authorize 2.6s ease-out infinite}.authorization-seal{transform-origin:210px 150px;animation:context-seal-orbit 9s linear infinite}
+.passage-frame{animation:context-page-rise 2.6s ease-in-out infinite}.passage-1{animation-delay:-.8s}.passage-2{animation-delay:-1.6s}.atmosphere-extract .passage-frame{animation-name:context-extract;animation-duration:2.2s}
+.record-packet{animation:context-record-route 3s linear infinite}.record-packet.packet-return{animation-name:context-record-return;animation-delay:-1.4s}.visual-parcel .record-packet{animation-duration:3.5s;animation-direction:reverse}.visual-parcel .banner-atmosphere{transform:rotate(-12deg) scale(.92)}.visual-ledger .banner-atmosphere{transform:rotate(180deg) scale(.93)}.visual-ledger .record-packet{animation-duration:2.4s}
+.archive-frame{transform-origin:210px 150px;animation:context-archive 3s ease-in-out infinite}.archive-1{animation-delay:-1s}.archive-2{animation-delay:-2s}
+.bridge-packet{animation:context-bridge 2.2s linear infinite}.bridge-packet.bridge-return{animation-name:context-bridge-return;animation-delay:-1.1s}
+.branch-packet{animation:context-branch-top 2.8s linear infinite}.branch-packet.branch-bottom{animation-name:context-branch-bottom;animation-delay:-1.4s}
+.queue-packet{animation:context-queue 2.3s cubic-bezier(.3,.1,.6,.9) infinite}.queue-1{animation-delay:-.75s}.queue-2{animation-delay:-1.5s}
+.prism-sweep{transform-origin:210px 150px;animation:context-prism 4s linear infinite}
+.infrastructure-ping{transform-box:fill-box;transform-origin:center;animation:context-ping 2.3s ease-out infinite}.ping-1{animation-delay:-.75s}.ping-2{animation-delay:-1.5s}
+.circuit-signal{animation:context-circuit 1.8s ease-in-out infinite}.signal-1{animation-delay:-.45s}.signal-2{animation-delay:-.9s}.signal-3{animation-delay:-1.35s}
+.permission-boundary{transform-origin:210px 150px;animation:context-permission 3s ease-in-out infinite}
+.answer-stream{transform-origin:55px 110px;animation:context-answer-stream 1.8s ease-in-out infinite}.answer-1{animation-delay:-.6s}.answer-2{animation-delay:-1.2s}.answer-bloom{animation:context-answer-bloom 2.4s ease-in-out infinite}
+.tool-slot{transform-box:fill-box;transform-origin:center;animation:context-tool-slot 2.6s ease-in-out infinite}.slot-1{animation-delay:-.85s}.slot-2{animation-delay:-1.7s}
+.key-scope{animation:context-key-scope 2.8s ease-in-out infinite}.key-1{animation-delay:-.9s}.key-2{animation-delay:-1.8s}
+.event-wave{animation:context-event-wave 3s ease-in-out infinite}
+.recovery-loop{transform-origin:210px 150px;animation:context-recovery 3s ease-in-out infinite}.recovery-checkpoint{animation:context-checkpoint 1.8s ease-in-out infinite}
+.intake-line{animation:context-intake 1.8s ease-in-out infinite}.intake-1{animation-delay:-.6s}.intake-2{animation-delay:-1.2s}
+.stamp-frame{transform-origin:210px 150px;animation:context-stamp-frame 2.8s ease-in-out infinite}.stamp-ring{transform-origin:260px 200px;animation:context-authorize 2.4s ease-out infinite}
+.visual-authorize .banner-core-image{animation-name:context-shield-float;animation-duration:3s}.visual-pages .banner-core-image{animation-name:context-book-float;animation-duration:3.2s}.visual-records .banner-core-image{animation-name:context-records-float;animation-duration:3s}.visual-archive .banner-core-image{animation-name:context-memory-float;animation-duration:3.3s}.visual-bridge .banner-core-image{animation-name:context-bridge-float;animation-duration:2.8s}.visual-branch .banner-core-image{animation-name:context-records-float;animation-direction:reverse}.visual-queue .banner-core-image{animation-name:context-queue-float;animation-duration:2.8s}.visual-prism .banner-core-image{animation-name:context-prism-float;animation-duration:3.5s}.visual-infrastructure .banner-core-image{animation-name:context-shield-float;animation-duration:3.5s}.visual-circuit .banner-core-image{animation-name:context-processor-float;animation-duration:3s}.visual-permissions .banner-core-image{animation-name:context-key-float;animation-duration:3.4s}.visual-answer .banner-core-image{animation-name:context-book-float}.visual-parcel .banner-core-image{animation-name:context-parcel-float;animation-duration:3.2s}.visual-ledger .banner-core-image{animation-name:context-queue-float;animation-duration:3.1s}.visual-tools .banner-core-image{animation-name:context-processor-float;animation-duration:3.3s}.visual-keys .banner-core-image{animation-name:context-key-float;animation-duration:3.1s}.visual-events .banner-core-image{animation-name:context-bridge-float;animation-duration:2.9s}.visual-recovery .banner-core-image{animation-name:context-recovery-float;animation-duration:3.3s}.visual-stamp .banner-core-image{animation-name:context-stamp-float;animation-duration:2.8s}.visual-intake .banner-core-image{animation-name:context-shield-float;animation-duration:2.8s}.visual-extract .banner-core-image{animation-name:context-memory-float;animation-duration:3s}
+.visual-bridge .banner-context-node,.visual-events .banner-context-node{animation-name:context-node-link}.visual-queue .banner-context-node,.visual-intake .banner-context-node{animation-name:context-node-queue}.visual-archive .banner-context-node,.visual-extract .banner-context-node{animation-name:context-node-archive}.visual-permissions .banner-context-node,.visual-keys .banner-context-node{animation-name:context-node-permission}
+@keyframes context-focus{50%{transform:scale(.94);opacity:.35}}
+@keyframes context-scan{0%,100%{transform:translateY(-35px);opacity:.15}50%{transform:translateY(95px);opacity:1}}
+@keyframes context-search{0%,100%{transform:translate(-30px,15px);opacity:.15}50%{transform:translate(30px,65px);opacity:1}}
+@keyframes context-search-focus{50%{transform:translateX(8px) scale(.96)}}
+@keyframes context-authorize{0%{transform:scale(.94);opacity:.8}100%{transform:scale(1.13);opacity:0}}
+@keyframes context-seal-orbit{to{transform:rotate(360deg)}}
+@keyframes context-page-rise{50%{transform:translateY(-11px);opacity:.25}}
+@keyframes context-extract{50%{transform:translateX(14px);opacity:.25}}
+@keyframes context-record-route{0%{transform:translate(0,0);opacity:0}8%{opacity:1}22%{transform:translate(65px,0)}38%{transform:translate(115px,50px)}65%{transform:translate(211px,50px)}80%{transform:translate(261px,109px);opacity:1}100%{transform:translate(330px,109px);opacity:0}}
+@keyframes context-record-return{0%{transform:translate(0,0);opacity:0}10%{opacity:1}25%{transform:translate(70px,0)}40%{transform:translate(119px,-51px)}65%{transform:translate(226px,-51px)}83%{transform:translate(278px,-133px);opacity:1}100%{transform:translate(330px,-133px);opacity:0}}
+@keyframes context-archive{50%{transform:translate(-5px,-8px) scale(1.02);opacity:.25}}
+@keyframes context-bridge{0%{transform:translateX(0);opacity:0}15%,85%{opacity:1}100%{transform:translateX(273px);opacity:0}}
+@keyframes context-bridge-return{0%{transform:translateX(0);opacity:0}15%,85%{opacity:1}100%{transform:translateX(-273px);opacity:0}}
+@keyframes context-branch-top{0%{transform:translate(0,0);opacity:0}10%{opacity:1}30%{transform:translate(105px,0)}65%{transform:translate(202px,-85px)}92%{opacity:1}100%{transform:translate(330px,-85px);opacity:0}}
+@keyframes context-branch-bottom{0%{transform:translate(0,0);opacity:0}10%{opacity:1}30%{transform:translate(105px,0)}65%{transform:translate(202px,85px)}92%{opacity:1}100%{transform:translate(330px,85px);opacity:0}}
+@keyframes context-queue{0%{transform:translateX(0);opacity:0}10%,85%{opacity:1}100%{transform:translateX(292px);opacity:0}}
+@keyframes context-prism{to{transform:rotate(360deg)}}
+@keyframes context-ping{0%{transform:scale(.7);opacity:1}100%{transform:scale(2.5);opacity:0}}
+@keyframes context-circuit{50%{opacity:.12;transform:translateY(-3px)}}
+@keyframes context-permission{50%{transform:rotate(5deg) scale(1.03);opacity:.25}}
+@keyframes context-answer-stream{50%{transform:scaleX(.65) translateX(8px);opacity:.25}}
+@keyframes context-answer-bloom{50%{transform:translateX(8px);opacity:.2}}
+@keyframes context-tool-slot{50%{transform:translateY(-8px) rotate(8deg);opacity:.3}}
+@keyframes context-key-scope{50%{transform:translateX(7px);opacity:.2}}
+@keyframes context-event-wave{50%{transform:translateX(8px) scaleY(.92);opacity:.3}}
+@keyframes context-recovery{50%{transform:rotate(-16deg);opacity:.4}}
+@keyframes context-checkpoint{50%{transform:translateY(-6px);opacity:.15}}
+@keyframes context-intake{50%{transform:translateX(10px);opacity:.15}}
+@keyframes context-stamp-frame{50%{transform:scale(.97);opacity:.3}}
+@keyframes context-shield-float{50%{transform:translate(-50%,calc(-50% - 8px))}}
+@keyframes context-book-float{50%{transform:translate(-50%,calc(-50% - 6px)) rotate(-2deg)}}
+@keyframes context-records-float{50%{transform:translate(calc(-50% + 4px),calc(-50% - 5px))}}
+@keyframes context-memory-float{50%{transform:translate(calc(-50% - 3px),calc(-50% - 8px)) rotate(-1deg)}}
+@keyframes context-bridge-float{50%{transform:translate(calc(-50% + 5px),-50%)}}
+@keyframes context-queue-float{50%{transform:translate(-50%,calc(-50% - 6px)) rotate(1deg)}}
+@keyframes context-prism-float{50%{transform:translate(-50%,calc(-50% - 9px)) rotate(3deg)}}
+@keyframes context-processor-float{50%{transform:translate(-50%,calc(-50% - 7px)) rotate(-1.5deg)}}
+@keyframes context-key-float{50%{transform:translate(-50%,calc(-50% - 7px)) rotate(3deg)}}
+@keyframes context-parcel-float{50%{transform:translate(-50%,calc(-50% - 8px)) rotate(-3deg)}}
+@keyframes context-recovery-float{50%{transform:translate(-50%,calc(-50% - 6px)) rotate(-3deg)}}
+@keyframes context-stamp-float{50%{transform:translate(-50%,calc(-50% + 4px)) rotate(1deg)}}
+@keyframes context-node-link{50%{transform:translateX(4px)}}
+@keyframes context-node-queue{50%{transform:translateY(-4px)}}
+@keyframes context-node-archive{50%{transform:translate(-3px,-3px)}}
+@keyframes context-node-permission{50%{transform:translateX(-3px)}}
+@media(prefers-reduced-motion:reduce){.banner-atmosphere *,.banner-visual .banner-core-image,.banner-visual .banner-context-node{animation:none!important}}

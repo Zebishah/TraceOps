@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useState, type ReactNode } from 'react';
 import { Activity, BookOpen, BrainCircuit, CheckCheck, Database, FileSearch, Fingerprint, GitBranch, Layers3, Network, Pause, Play, ScanText, ShieldCheck, Workflow } from 'lucide-react';
 import { useMotionActivity } from '@/hooks/use-motion-activity';
+import { artworkForContext, artworkScenes, BannerSurround } from './banner-artwork';
 import './workspace-banner.css';
 
 export const bannerContent = {
@@ -23,15 +24,17 @@ export const bannerContent = {
 export type BannerKind = keyof typeof bannerContent;
 
 /** Decorative context illustration; never substitutes for recorded job progress. */
-export function WorkspaceBanner({ kind, children }: { kind:BannerKind; children?:ReactNode }) {
+export function WorkspaceBanner({ kind, variant, children }: { kind:BannerKind; variant?:string; children?:ReactNode }) {
   const [motion,setMotion] = useState(true);
   const { element,active } = useMotionActivity(motion);
   const content = bannerContent[kind];
   const Icon = content.icon;
+  const artwork = artworkForContext(kind,variant);
+  const scene = artworkScenes[artwork];
   return <section ref={element} className={`workspace-banner banner-${kind}`} data-motion={active?'running':'paused'} aria-label={`${kind} workflow overview`}>
     <div className="banner-grid" aria-hidden="true"/>
     <div className="banner-content"><span className="banner-eyebrow"><Fingerprint size={14}/> OPSPILOT / {kind==='approvals'?'HUMAN CONTROL':'WORKSPACE INTELLIGENCE'}</span><h2>{content.headline}</h2><p>{content.description}</p><div className="banner-capabilities">{content.labels.map((label,index)=><span key={label}>{index===0?<FileSearch size={12}/>:index===1?<ScanText size={12}/>:<ShieldCheck size={12}/>} {label}</span>)}</div>{children}</div>
-    <div className="banner-visual" aria-hidden="true"><div className="banner-orbit-plane"><i className="banner-orbit"/><i className="banner-orbit orbit-secondary"/></div><Image unoptimized className="banner-core-image" src="/images/workspace/neural-core.webp" width={480} height={480} alt="" decoding="async"/><div className="banner-core-emblem"><Icon size={26}/></div>{content.nodes.map((label,index)=><div key={label} className={`banner-context-node context-node-${index}`}><span>{index===0?<Database size={12}/>:index===1?<Icon size={12}/>:<BookOpen size={12}/>}</span><small>{label}</small><i/></div>)}<span className="banner-coordinate">CONTEXT / REASONING / HUMAN CONTROL</span></div>
+    <div className={`banner-visual visual-${scene}`} data-artwork={artwork} aria-hidden="true"><BannerSurround scene={scene}/><Image unoptimized className="banner-core-image" src={`/images/workspace/art/${artwork}.webp`} width={480} height={480} alt="" decoding="async"/>{content.nodes.map((label,index)=><div key={label} className={`banner-context-node context-node-${index}`}><span>{index===0?<Database size={12}/>:index===1?<Icon size={12}/>:<BookOpen size={12}/>}</span><small>{label}</small><i/></div>)}<span className="banner-coordinate">{artwork.replaceAll('-',' / ').toUpperCase()} / ILLUSTRATED CONTEXT</span></div>
     <button type="button" className="banner-motion-control" onClick={()=>setMotion(value=>!value)} aria-label={`${motion?'Pause':'Resume'} ${kind} banner animation`}>{motion?<Pause size={12}/>:<Play size={12}/>}</button>
     <span className="banner-illustration-note">WORKFLOW VISUALIZATION</span>
   </section>;
