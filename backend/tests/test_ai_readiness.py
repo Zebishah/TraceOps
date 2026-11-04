@@ -1,9 +1,23 @@
 import uuid
+from argparse import Namespace
 
 import httpx
 import pytest
 
+from scripts import check_ai_readiness
 from scripts.check_ai_readiness import bounded_request, check_voice, check_worker, safe_url
+
+
+@pytest.mark.asyncio
+async def test_missing_credentials_fail_before_transport_setup(monkeypatch):
+    monkeypatch.delenv("OPSPILOT_SMOKE_TOKEN", raising=False)
+
+    def unexpected(**kwargs):
+        pytest.fail("Transport initialized before missing credentials were checked")
+
+    monkeypatch.setattr(check_ai_readiness.httpx, "AsyncClient", unexpected)
+    with pytest.raises(ValueError, match="OPSPILOT_SMOKE_TOKEN"):
+        await check_ai_readiness.run(Namespace(api_url="https://api.example", worker_url=None))
 
 
 @pytest.mark.parametrize(

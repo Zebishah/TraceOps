@@ -155,6 +155,10 @@ async def check_worker(
 
 
 async def run(args: argparse.Namespace) -> None:
+    # Validate required credentials before constructing transports or touching the network.
+    voice_token = secret("OPSPILOT_SMOKE_TOKEN") if args.api_url else ""
+    worker_token = secret("FINETUNED_CLASSIFIER_TOKEN") if args.worker_url else ""
+    release_id = secret("FINETUNED_CLASSIFIER_RELEASE_ID") if args.worker_url else ""
     async with (
         asyncio.timeout(120),
         httpx.AsyncClient(timeout=60, follow_redirects=False) as client,
@@ -166,7 +170,7 @@ async def run(args: argparse.Namespace) -> None:
                 client,
                 api_url=args.api_url,
                 organization_id=args.organization_id,
-                token=secret("OPSPILOT_SMOKE_TOKEN"),
+                token=voice_token,
                 audio=args.audio,
                 language=args.language,
             )
@@ -174,8 +178,8 @@ async def run(args: argparse.Namespace) -> None:
             await check_worker(
                 client,
                 worker_url=args.worker_url,
-                token=secret("FINETUNED_CLASSIFIER_TOKEN"),
-                release=secret("FINETUNED_CLASSIFIER_RELEASE_ID"),
+                token=worker_token,
+                release=release_id,
             )
 
 
@@ -195,6 +199,9 @@ def main() -> None:
         asyncio.run(run(args))
     except SetupCheckError as exc:
         print(f"FAIL {exc}")
+        raise SystemExit(1) from None
+    except ImportError:
+        print("FAIL HTTP client setup. Check installed dependencies and proxy support.")
         raise SystemExit(1) from None
     except (ValueError, OSError, httpx.HTTPError, TimeoutError):
         # Neither provider bodies, environment values, transcripts nor credentials are logged.

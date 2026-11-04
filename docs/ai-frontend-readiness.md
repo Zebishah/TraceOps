@@ -136,7 +136,7 @@ It checks readiness/release identity and sends one harmless classification reque
 
 ## 5. Automated verification
 
-- Full backend: 932 passed, 16 skipped locally. Skips retain external-infrastructure/optional-ML requirements.
+- Full backend: 933 passed, 16 skipped locally. Skips retain external-infrastructure/optional-ML requirements.
 - Isolated frozen CPU ML tests: 31 passed, including actual tiny-model training/resume, process deadlines/recovery and a signed-worker-to-backend HTTP contract.
 - Frontend: 13 contract/proxy tests passed, plus strict TypeScript checks for the changed pure modules and tests.
 - Ruff and mypy passed, including the live-check script.
