@@ -37,7 +37,7 @@ try{
  let ready=false;
  for(let attempt=0;attempt<150;attempt++){if(child.exitCode!==null)throw new Error(output);try{if((await fetch(base+'/login')).ok){ready=true;break;}}catch{}await new Promise(resolve=>setTimeout(resolve,200));}
  assert.ok(ready,output);
- assert.equal((await fetch(base)).status,200);
+ const landing=await fetch(base);assert.equal(landing.status,200);const landingHtml=await landing.text();assert.match(landingHtml,/Explore voice intake/);assert.match(landingHtml,/LoRA/);assert.match(landingHtml,/PyTorch/);
  const protectedPage=await fetch(base+'/app/incidents',{redirect:'manual'});assert.equal(protectedPage.status,307);assert.ok(protectedPage.headers.get('location')?.includes('/login'));
  assert.equal((await fetch(base+'/api/backend/health')).status,200);
  assert.equal((await fetch(base+'/api/backend/auth/me')).status,401);
@@ -70,6 +70,7 @@ try{
  const before=requests.length;assert.equal((await fetch(base+'/api/backend/admin/delete-all',{headers})).status,404);assert.equal(requests.length,before);
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/voice/transcriptions`,{method:'POST',headers,body:Buffer.alloc(11*1024*1024+1)})).status,413);
  const signedInPage=await fetch(base+'/app/incidents/new',{headers});assert.equal(signedInPage.status,200);assert.match(await signedInPage.text(),/opspilot/i);
+ const modelPage=await fetch(base+'/app/ai-models',{headers});assert.equal(modelPage.status,200);assert.match(await modelPage.text(),/opspilot/i);
  requireVerification=true;const unverifiedSession=await fetch(base+'/api/backend/auth/me',{headers});assert.equal(unverifiedSession.status,403);assert.match(unverifiedSession.headers.get('set-cookie'),/opspilot_backend_session=;/i);
  console.log('Production smoke passed: email verification, pages, auth, tenant forwarding, search, voice, CSRF, redirects, errors, and upload cap.');
 }finally{

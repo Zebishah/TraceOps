@@ -1,6 +1,18 @@
-import {ApiError} from './client.ts';
+import {ApiError,api} from './client.ts';
+import {voiceTranscriptionSchema} from './voice-contracts.ts';
 export const SPEECH_MAX_CHARACTERS=200;
 export const MAX_SPEECH_BYTES=4*1024*1024;
+export function validateIncidentAudio(file:{name:string;size:number},limit:number,containers:readonly string[]):string|null {
+ if(!file.size)return 'This audio file is empty. Choose another recording.';
+ if(file.size>limit)return `This file is too large. The upload limit is ${(limit/1024/1024).toFixed(0)} MB. Choose a shorter recording.`;
+ const extension=file.name.split('.').pop()?.toLowerCase();
+ if(!extension||!containers.includes(extension==='mp4'?'m4a':extension))return 'Choose WAV, WebM, Ogg, FLAC, MP3, or M4A audio.';
+ return null;
+}
+export async function requestTranscription(organizationId:string,file:File,language:string,signal:AbortSignal){
+ const body=new FormData();body.set('file',file);if(language)body.set('language',language);
+ return api(`organizations/${organizationId}/voice/transcriptions`,voiceTranscriptionSchema,{method:'POST',body,signal});
+}
 export function speechText(value:string):string {
  const text=value.trim();
  if(!text||Array.from(text).length>SPEECH_MAX_CHARACTERS)throw new Error('Choose a spoken excerpt between 1 and 200 characters.');

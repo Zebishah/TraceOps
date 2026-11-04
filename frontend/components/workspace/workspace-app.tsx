@@ -11,6 +11,7 @@ import './workspace-redesign.css';
 import { State } from './ui';
 import {IncidentSearch} from './incident-search';
 import { OverviewPage, ResourcePage, OperationsPage, JobsPage, SystemPage, QualityPage, DeveloperPage, McpPage, SettingsPage } from './workspace-pages';
+import {AiModelsPage} from './ai-models';
 import { IncidentPage, CreateIncidentPage } from './incidents';
 import { KnowledgePage, DocumentPage } from './knowledge';
 import { ApprovalPage } from './approvals';
@@ -18,7 +19,7 @@ import { ApprovalPage } from './approvals';
 const navigation = [
   { group: 'Workspace', items: [['Command center', '', LayoutDashboard], ['Incidents', 'incidents', ClipboardList], ['Approvals', 'approvals', CheckCheck], ['Knowledge', 'knowledge', BookOpen], ['Operations', 'operations', Boxes], ['Incident Memory', 'memory', Activity]] },
   { group: 'Platform', items: [['MCP Connections', 'mcp', Command], ['Automations', 'automations', Workflow], ['Jobs & Recovery', 'jobs', Wrench]] },
-  { group: 'Engineering', items: [['Quality & Evaluations', 'quality', FileCheck], ['System & Integrations', 'system', ShieldCheck], ['Developer Hub', 'developer', Command], ['Settings', 'settings', Settings]] },
+  { group: 'Engineering', items: [['AI & Models', 'ai-models', BrainCircuit], ['Quality & Evaluations', 'quality', FileCheck], ['System & Integrations', 'system', ShieldCheck], ['Developer Hub', 'developer', Command], ['Settings', 'settings', Settings]] },
 ] as const;
 
 export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes = 10*1024*1024 }: { children?: ReactNode; backendOrigin?: string | null; uploadLimitBytes?:number }) {
@@ -87,7 +88,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
       : section === 'operations' ? <OperationsPage /> : section === 'memory' ? <ResourcePage resource="memories" />
       : section === 'automations' ? <ResourcePage resource="automations" /> : section === 'jobs' ? <JobsPage />
       : section === 'mcp' ? <McpPage /> : section === 'quality' ? <QualityPage /> : section === 'system' ? <SystemPage />
-      : section === 'developer' ? <DeveloperPage /> : section === 'settings' ? <SettingsPage />
+      : section === 'ai-models' ? <AiModelsPage /> : section === 'developer' ? <DeveloperPage /> : section === 'settings' ? <SettingsPage />
       : <div className="state-panel"><h1>Page not found</h1><a href="/app">Return to overview</a></div>;
     content = <Session.Provider value={{ me: auth.data, organizationId: selectedOrganization, role: membership.role, workspace: workspace.data, backendOrigin, uploadLimitBytes, notify: setMessage }}>
       {workspace.error && <div className="workspace-connection-banner" role="status"><div><strong>Workspace metadata is unavailable</strong><p>{workspace.error.message}</p></div><button className="btn secondary" onClick={workspace.refresh}>Retry</button></div>}
