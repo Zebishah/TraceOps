@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: opspilot-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build:node
+    startCommand: pnpm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: OPSPILOT_BACKEND_URL
+        sync: false

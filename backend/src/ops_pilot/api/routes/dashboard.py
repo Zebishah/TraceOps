@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import ScalarSelect
@@ -122,7 +122,7 @@ SPECS: dict[str, ResourceSpec] = {
             "created_at",
             "updated_at",
         ),
-        (),
+        ("job_type", "error_message"),
         ("queued", "processing", "succeeded", "failed"),
     ),
     "customers": ResourceSpec(
@@ -220,7 +220,7 @@ SPECS: dict[str, ResourceSpec] = {
             "created_at",
             "updated_at",
         ),
-        (),
+        ("last_error",),
         ("pending", "processing", "completed", "failed"),
     ),
 }
@@ -289,11 +289,15 @@ async def list_resource(
         if status_filter not in spec.statuses:
             raise HTTPException(422, "Unsupported status for this resource")
         predicates.append(column(model, "status") == status_filter)
-    if q.strip() and spec.search:
+    if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         predicates.append(
             or_(
-                *[getattr(model, field).ilike(f"%{escaped}%", escape="\\") for field in spec.search]
+                cast(column(model, "id"), String).ilike(f"%{escaped}%", escape="\\"),
+                *[
+                    getattr(model, field).ilike(f"%{escaped}%", escape="\\")
+                    for field in spec.search
+                ],
             )
         )
     if incident_id is not None:
@@ -498,6 +502,20 @@ async def workspace(
         "integrations": integrations,
         "approval_execution_enabled": settings.approval_recovery_execution_enabled,
         "mcp_resource_url": str(settings.mcp_resource_url),
+        "voice": {
+            "enabled": settings.voice_enabled,
+            "tts_enabled": settings.voice_tts_enabled,
+            "transcription_model": settings.voice_transcription_model,
+            "tts_voice": settings.voice_tts_voice,
+        },
+        "classifier": {
+            "backend": settings.incident_classifier_backend,
+            "finetuned_configured": bool(
+                settings.finetuned_classifier_url and settings.finetuned_classifier_token
+            ),
+            "fallback_enabled": settings.finetuned_classifier_fallback_enabled,
+            "release_id": settings.finetuned_classifier_release_id,
+        },
     }
 
 

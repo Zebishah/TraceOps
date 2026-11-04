@@ -12,3 +12,8 @@ export function backendOrigin(value: unknown): string {
   }
   return url.origin;
 }
+
+/** Leave room for multipart metadata below Vercel's 4.5 MB function payload limit. */
+export function frontendUploadLimit(vercel: unknown): number {
+  return (vercel === '1' ? 4 : 10) * 1024 * 1024;
+}

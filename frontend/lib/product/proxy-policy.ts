@@ -25,3 +25,13 @@ export function cookieLifetime(token: string): number {
   } catch { /* The upstream remains responsible for verifying the token. */ }
   return 3600;
 }
+
+/** Compare the browser Origin with the HTTP Host, not Next's internal server URL.
+ * Host is supplied by the HTTP server and cannot be set by cross-origin browser JS.
+ * Never trust a client-supplied forwarded host for this decision.
+ */
+export function sameRequestOrigin(request: Request): boolean {
+ const origin=request.headers.get('origin');const host=request.headers.get('host');
+ if(!origin||!host)return false;
+ try{const parsed=new URL(origin);return ['https:','http:'].includes(parsed.protocol)&&parsed.origin===origin&&parsed.host===host;}catch{return false;}
+}

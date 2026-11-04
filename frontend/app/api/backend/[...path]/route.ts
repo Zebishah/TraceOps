@@ -1,11 +1,12 @@
 import { cookies } from 'next/headers';
-import { env } from 'cloudflare:workers';
 import { backendOrigin } from '@/lib/product/backend-config';
-import { isVoiceSpeechPath, proxyVoiceSpeechResponse } from '@/lib/product/voice-proxy';
+import {isVoiceSpeechPath,proxyVoiceSpeechResponse} from '@/lib/product/voice-proxy';
 import { z } from 'zod';
-import { allowedBackendPath, cookieLifetime, MAX_REQUEST_BYTES, sameOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
+import { allowedBackendPath, cookieLifetime, MAX_REQUEST_BYTES, sameRequestOrigin, SESSION_COOKIE } from '@/lib/product/proxy-policy';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 120;
 const credentials = z.object({ email: z.string().email().max(320), password: z.string().min(1).max(128) });
 const registration = credentials.extend({ password: z.string().min(8).max(128), full_name: z.string().trim().min(1).max(200), organization_name: z.string().trim().min(1).max(200), organization_slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100) });
 const jsonError = (detail: string, status: number) => Response.json({ detail }, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -15,13 +16,15 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   const path = parts.join('/');
   if (!allowedBackendPath(path)) return jsonError('Unsupported API operation', 404);
   const write = request.method !== 'GET';
-  if (write && !sameOrigin(request.url, request.headers.get('origin'))) return jsonError('Request origin rejected', 403);
+  const speech = isVoiceSpeechPath(path);
+  if (/\/voice\//.test(path) && request.method !== (path.endsWith('/capabilities') ? 'GET' : 'POST')) return jsonError('Method not allowed', 405);
+  if (write && !sameRequestOrigin(request)) return jsonError('Request origin rejected', 403);
   if (request.method === 'GET' && (path === 'auth/login' || path === 'auth/register' || path === 'auth/mcp-token')) return jsonError('Method not allowed', 405);
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const anonymous = path === 'auth/login' || path === 'auth/register' || path === 'health';
   if (!anonymous && !token) return jsonError('Sign in to your OpsPilot account', 401);
-  const headers = new Headers({ Accept: 'application/json' });
+  const headers = new Headers({ Accept: speech ? 'audio/wav, application/json' : 'application/json' });
   if (token && !anonymous) headers.set('Authorization', `Bearer ${token}`);
   let body: ArrayBuffer | undefined;
   if (write) {
@@ -40,12 +43,12 @@ async function proxy(request: Request, context: Context): Promise<Response> {
     }
   }
   let origin: string;
-  try { origin = backendOrigin(env.OPSPILOT_BACKEND_URL); }
+  try { origin = backendOrigin(process.env.OPSPILOT_BACKEND_URL); }
   catch (cause) { return jsonError(cause instanceof Error ? cause.message : 'Backend URL is not configured.', 503); }
   const upstreamUrl = new URL(`/api/v1/${path}`, origin);
   upstreamUrl.search = new URL(request.url).search;
   try {
-    const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(90000), cache: 'no-store' });
+    const upstream = await fetch(upstreamUrl, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(90000)]), cache: 'no-store' });
     // Workers support manual redirects; reject them rather than forwarding credentials.
     if (upstream.status >= 300 && upstream.status < 400) return jsonError('The backend redirected this request. Check its configured URL.', 502);
     const responseHeaders = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -53,11 +56,11 @@ async function proxy(request: Request, context: Context): Promise<Response> {
     if (path === 'auth/login' && upstream.ok) {
       const parsed = z.object({ access_token: z.string().min(1) }).safeParse(await upstream.json());
       if (!parsed.success) return jsonError('The backend returned an invalid session', 502);
-      cookieStore.set(SESSION_COOKIE, parsed.data.access_token, { httpOnly: true, secure: new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: cookieLifetime(parsed.data.access_token) });
+      cookieStore.set(SESSION_COOKIE, parsed.data.access_token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' || new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: cookieLifetime(parsed.data.access_token) });
       return Response.json({ authenticated: true }, { headers: responseHeaders });
     }
     if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
-    if (upstream.ok && isVoiceSpeechPath(path)) return await proxyVoiceSpeechResponse(upstream);
+    if (speech && upstream.ok) return await proxyVoiceSpeechResponse(upstream);
     if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) {
       if (upstream.status === 404) return jsonError('Not Found', 404);
       if (upstream.status === 401) return jsonError('Your session expired. Please sign in again.', 401);

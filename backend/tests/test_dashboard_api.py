@@ -367,3 +367,56 @@ async def test_evaluation_report_requires_privileged_role(dashboard_client):
     app.dependency_overrides[get_current_membership] = viewer
     response = await client.get(f"/api/v1/organizations/{orgs[0]}/dashboard/evaluations")
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_workspace_exposes_voice_and_classifier_settings_without_secrets(
+    dashboard_client, monkeypatch
+):
+    from ops_pilot.api.routes import dashboard
+
+    client, orgs, *_ = dashboard_client
+    settings = dashboard.get_settings().model_copy(
+        update={
+            "voice_enabled": True,
+            "voice_tts_enabled": True,
+            "incident_classifier_backend": "finetuned",
+            "finetuned_classifier_url": "https://private-classifier.example/predict",
+            "finetuned_classifier_token": "secret-classifier-token-value",
+            "finetuned_classifier_release_id": "a" * 64,
+        }
+    )
+    monkeypatch.setattr(dashboard, "get_settings", lambda: settings)
+    response = await client.get(f"/api/v1/organizations/{orgs[0]}/dashboard/workspace")
+    assert response.status_code == 200
+    assert response.json()["voice"]["enabled"] is True
+    assert response.json()["voice"]["tts_enabled"] is True
+    assert response.json()["classifier"] == {
+        "backend": "finetuned",
+        "finetuned_configured": True,
+        "fallback_enabled": settings.finetuned_classifier_fallback_enabled,
+        "release_id": "a" * 64,
+    }
+    assert "private-classifier.example" not in response.text
+    assert "secret-classifier-token-value" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_resource_search_matches_id_and_job_type(dashboard_client):
+    client, orgs, *_ = dashboard_client
+    base = f"/api/v1/organizations/{orgs[0]}/dashboard/resources"
+    for resource in ("incidents", "jobs", "recovery"):
+        response = await client.get(f"{base}/{resource}?q=does-not-match-any-record")
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+        all_rows = (await client.get(f"{base}/{resource}")).json()["items"]
+        if all_rows:
+            row = all_rows[0]
+            found = (await client.get(f"{base}/{resource}", params={"q": row["id"]})).json()
+            assert found["total"] == 1
+            assert found["items"][0]["id"] == row["id"]
+    jobs = (await client.get(f"{base}/jobs")).json()["items"]
+    assert jobs
+    found = (await client.get(f"{base}/jobs", params={"q": jobs[0]["job_type"]})).json()
+    assert found["total"] >= 1
+    assert all(jobs[0]["job_type"] in row["job_type"] for row in found["items"])

@@ -9,6 +9,7 @@ import { useResource } from '@/hooks/use-resource';
 import { Session } from './context';
 import './workspace-redesign.css';
 import { State } from './ui';
+import {IncidentSearch} from './incident-search';
 import { OverviewPage, ResourcePage, OperationsPage, JobsPage, SystemPage, QualityPage, DeveloperPage, McpPage, SettingsPage } from './workspace-pages';
 import { IncidentPage, CreateIncidentPage } from './incidents';
 import { KnowledgePage, DocumentPage } from './knowledge';
@@ -20,7 +21,7 @@ const navigation = [
   { group: 'Engineering', items: [['Quality & Evaluations', 'quality', FileCheck], ['System & Integrations', 'system', ShieldCheck], ['Developer Hub', 'developer', Command], ['Settings', 'settings', Settings]] },
 ] as const;
 
-export function WorkspaceApp({ children, backendOrigin = null }: { children?: ReactNode; backendOrigin?: string | null }) {
+export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes = 10*1024*1024 }: { children?: ReactNode; backendOrigin?: string | null; uploadLimitBytes?:number }) {
   const pathname = usePathname();
   const router = useRouter();
   const auth = useResource(signal => api('auth/me', meSchema, { signal }), []);
@@ -31,12 +32,12 @@ export function WorkspaceApp({ children, backendOrigin = null }: { children?: Re
   const [mobile, setMobile] = useState(false);
   const [message, setMessage] = useState('');
   const searchDialog = useRef<HTMLDialogElement>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchOpen,setSearchOpen]=useState(false);
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       const target = event.target;
       const editing = target instanceof HTMLElement && (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable);
-      if (!editing && (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'))) { event.preventDefault(); searchDialog.current?.showModal(); }
+      if (!editing && (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'))) { event.preventDefault(); setSearchOpen(true);searchDialog.current?.showModal(); }
     };
     document.addEventListener('keydown', openSearch);
     return () => document.removeEventListener('keydown', openSearch);
@@ -88,7 +89,7 @@ export function WorkspaceApp({ children, backendOrigin = null }: { children?: Re
       : section === 'mcp' ? <McpPage /> : section === 'quality' ? <QualityPage /> : section === 'system' ? <SystemPage />
       : section === 'developer' ? <DeveloperPage /> : section === 'settings' ? <SettingsPage />
       : <div className="state-panel"><h1>Page not found</h1><a href="/app">Return to overview</a></div>;
-    content = <Session.Provider value={{ me: auth.data, organizationId: selectedOrganization, role: membership.role, workspace: workspace.data, backendOrigin, notify: setMessage }}>
+    content = <Session.Provider value={{ me: auth.data, organizationId: selectedOrganization, role: membership.role, workspace: workspace.data, backendOrigin, uploadLimitBytes, notify: setMessage }}>
       {workspace.error && <div className="workspace-connection-banner" role="status"><div><strong>Workspace metadata is unavailable</strong><p>{workspace.error.message}</p></div><button className="btn secondary" onClick={workspace.refresh}>Retry</button></div>}
       {page}
     </Session.Provider>;
@@ -103,11 +104,11 @@ export function WorkspaceApp({ children, backendOrigin = null }: { children?: Re
       <div className="sidebar-account"><div className="avatar">{auth.data ? auth.data.user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : '◈'}</div><div><strong>{auth.data?.user.full_name ?? (auth.loading ? 'Loading account…' : 'Account unavailable')}</strong><small>{auth.data?.user.email ?? 'Your secure workspace'}</small></div><button aria-label="Sign out" onClick={async () => { await fetch('/api/session', { method: 'DELETE' }); window.location.assign('/login'); }}><LogOut size={16} /></button></div>
     </aside>
     {mobile && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
-    <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span className="topbar-workspace-label"><Shield size={12}/> Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => searchDialog.current?.showModal()}><Search size={14} /><span>Search incidents</span><kbd>⌘ K</kbd></button><a href="/">Product website <ArrowUpRight size={12}/></a></div></header>
+    <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span className="topbar-workspace-label"><Shield size={12}/> Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => {setSearchOpen(true);searchDialog.current?.showModal();}}><Search size={14} /><span>Search incidents</span><kbd>⌘ K</kbd></button><a href="/">Product website <ArrowUpRight size={12}/></a></div></header>
       <main className="workspace-content" key={selectedOrganization + pathname}>{content}{children}</main>
       <footer className="workspace-footer"><span>OpsPilot / Evidence · Oversight · Follow-through</span><span>{workspace.data?.environment ?? 'Backend workspace'} · Internal-ledger refund simulation</span></footer>
     </div>
-    <dialog ref={searchDialog} className="workspace-dialog command-search-dialog" aria-label="Search incidents"><form onSubmit={event => { event.preventDefault(); searchDialog.current?.close(); router.push(`/app/incidents?q=${encodeURIComponent(searchTerm.trim())}`); }}><div className="command-search-input"><Search size={20}/><label className="sr-only" htmlFor="command-search">Search incidents</label><input id="command-search" autoFocus value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Find an incident…" maxLength={200}/><button type="button" aria-label="Close search" onClick={() => searchDialog.current?.close()}><X size={18}/></button></div><p>Search incident titles and descriptions in your selected workspace.</p><div className="command-search-footer"><span>Organization-scoped search</span><button className="btn primary-action">Search incidents <ArrowUpRight size={14}/></button></div></form></dialog>
+    <dialog ref={searchDialog} className="workspace-dialog command-search-dialog" aria-label="Search incidents" onClose={()=>setSearchOpen(false)}><IncidentSearch key={selectedOrganization} active={searchOpen} organizationId={selectedOrganization} onClose={()=>searchDialog.current?.close()} onNavigate={path=>{searchDialog.current?.close();router.push(path);}}/></dialog>
     {message && <div className="toast" role="status">{message}<button aria-label="Dismiss notification" onClick={() => setMessage('')}>×</button></div>}
   </div>;
 }

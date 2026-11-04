@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export class ApiError extends Error { constructor(message:string,public status:number,public requestId:string|null=null){super(message);this.name='ApiError';} }
+export class ApiError extends Error { status:number;requestId:string|null;constructor(message:string,status:number,requestId:string|null=null){super(message);this.name='ApiError';this.status=status;this.requestId=requestId;} }
 export async function api<T>(path:string,schema:z.ZodType<T,z.ZodTypeDef,unknown>,init:RequestInit={}):Promise<T>{
  const headers=new Headers(init.headers);
  if(init.body && !(init.body instanceof FormData))headers.set('Content-Type','application/json');

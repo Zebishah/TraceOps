@@ -1,0 +1,55 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {Mic,Square,Volume2,Upload} from 'lucide-react';
+import {voiceCapabilitiesSchema,voiceTranscriptionSchema} from '@/lib/product/voice-contracts';
+import {useResource} from '@/hooks/use-resource';
+import {api} from '@/lib/product/client';
+import {can} from '@/lib/product/contracts';
+import {requestSpeech,SPEECH_MAX_CHARACTERS} from '@/lib/product/voice';
+import {useSession} from './context';
+import {Panel} from './ui';
+function useVoiceCapabilities(){const {organizationId,role}=useSession();return useResource(can(role,'create')?signal=>api(`organizations/${organizationId}/voice/capabilities`,voiceCapabilitiesSchema,{signal}):null,[organizationId,role]);}
+const audioTypes=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];
+
+export function VoiceCapture({onConfirm}:{onConfirm:(text:string)=>void}){
+ const {organizationId,uploadLimitBytes=10*1024*1024}=useSession();
+ const [file,setFile]=useState<File|null>(null);const [text,setText]=useState('');const [hasTranscript,setHasTranscript]=useState(false);const [confirmed,setConfirmed]=useState(false);const [language,setLanguage]=useState('');
+ const [state,setState]=useState<'idle'|'permission'|'recording'|'transcribing'>('idle');const [error,setError]=useState('');
+ const request=useRef<AbortController|null>(null);const recorder=useRef<MediaRecorder|null>(null);const stream=useRef<MediaStream|null>(null);const timer=useRef<ReturnType<typeof setTimeout>|null>(null);const generation=useRef(0);
+ const capabilities=useVoiceCapabilities();const enabled=capabilities.data?.enabled===true;const limit=Math.min(uploadLimitBytes,capabilities.data?.max_audio_bytes??10*1024*1024);
+ useEffect(()=>()=>{generation.current++;request.current?.abort();if(timer.current)clearTimeout(timer.current);if(recorder.current){recorder.current.onstop=null;recorder.current.onerror=null;recorder.current.ondataavailable=null;if(recorder.current.state!=='inactive')recorder.current.stop();}stream.current?.getTracks().forEach(track=>track.stop());},[organizationId]);
+ function choose(value:File|null){request.current?.abort();setFile(value);setText('');setHasTranscript(false);setConfirmed(false);setError('');}
+ function stop(){if(recorder.current?.state==='recording')recorder.current.stop();}
+ async function record(){
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){setError('Recording is unavailable in this browser. Upload an audio file instead.');return;}
+  const current=++generation.current;setState('permission');setError('');
+  try{
+   const tracks=await navigator.mediaDevices.getUserMedia({audio:true});
+   if(current!==generation.current){tracks.getTracks().forEach(track=>track.stop());return;}
+   stream.current=tracks;const mimeType=audioTypes.find(type=>MediaRecorder.isTypeSupported(type));const recording=new MediaRecorder(tracks,mimeType?{mimeType}:undefined);recorder.current=recording;
+   const chunks:Blob[]=[];let bytes=0;let oversized=false;let failed=false;
+   recording.ondataavailable=event=>{if(event.data.size){bytes+=event.data.size;if(bytes>limit){oversized=true;stop();}else chunks.push(event.data);}};
+   recording.onerror=()=>{failed=true;tracks.getTracks().forEach(track=>track.stop());if(timer.current)clearTimeout(timer.current);if(current!==generation.current)return;setError('Recording failed. Try uploading an audio file.');setState('idle');stop();};
+   recording.onstop=()=>{tracks.getTracks().forEach(track=>track.stop());if(timer.current)clearTimeout(timer.current);if(current!==generation.current)return;setState('idle');if(failed)return;if(oversized){setError('Recording reached the upload limit. Record a shorter clip.');return;}const type=recording.mimeType||chunks[0]?.type||'audio/webm';const extension=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm';choose(new File(chunks,`incident-recording.${extension}`,{type}));};
+   setFile(null);setText('');setHasTranscript(false);setConfirmed(false);recording.start(1000);setState('recording');timer.current=setTimeout(stop,90000);
+  }catch(cause){stream.current?.getTracks().forEach(track=>track.stop());if(current===generation.current){setState('idle');setError(cause instanceof Error?cause.message:'Microphone access failed.');}}
+ }
+ async function transcribe(){
+  if(!file)return;if(!file.size||file.size>limit){setError(`Choose audio between 1 byte and ${limit/1024/1024} MB.`);return;}
+  request.current?.abort();const controller=new AbortController();request.current=controller;setState('transcribing');setError('');setText('');setHasTranscript(false);setConfirmed(false);
+  try{const body=new FormData();body.set('file',file);if(language)body.set('language',language);const result=await api(`organizations/${organizationId}/voice/transcriptions`,voiceTranscriptionSchema,{method:'POST',body,signal:controller.signal});if(!controller.signal.aborted){setText(result.text);setHasTranscript(true);}}
+  catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Transcription failed.');}
+  finally{if(!controller.signal.aborted)setState('idle');}
+ }
+ const busy=state!=='idle';
+ return <Panel title="Describe it with your voice" aside={<Mic size={16}/>}><div className="voice-controls"><p>Record up to 90 seconds, or upload WAV, WebM, Ogg, FLAC, MP3, or M4A. Audio is sent to the configured voice provider for transcription.</p>{capabilities.error?<p className="context-note">{capabilities.error.message} <button type="button" className="btn subtle" onClick={capabilities.refresh}>Retry voice settings</button></p>:!enabled&&<p className="notice">{capabilities.loading?'Checking voice availability…':'Voice is disabled on this backend. You can type the incident description.'}</p>}<div className="button-row">{state==='recording'?<button type="button" className="btn secondary" onClick={stop}><Square size={14}/> Stop recording</button>:<button type="button" className="btn secondary" disabled={busy||!enabled} onClick={()=>void record()}><Mic size={14}/>{state==='permission'?'Allow microphone…':'Record brief'}</button>}<label className="btn secondary voice-upload"><Upload size={14}/> Upload audio<input type="file" aria-label="Upload incident audio" accept="audio/wav,audio/webm,audio/ogg,audio/flac,audio/mpeg,audio/mp4,.wav,.webm,.ogg,.flac,.mp3,.m4a" disabled={busy||!enabled} onChange={event=>{choose(event.target.files?.[0]??null);event.target.value='';}}/></label></div>{state==='recording'&&<p role="status" className="voice-recording">● Recording · Stops automatically at 90 seconds</p>}{file&&<p>{file.name} · {(file.size/1024).toFixed(0)} KB</p>}<label>Audio language<select value={language} disabled={busy} onChange={event=>setLanguage(event.target.value)}><option value="">Detect automatically</option><option value="en">English</option><option value="ur">Urdu</option></select></label><button type="button" className="btn secondary" disabled={busy||!file||!enabled} onClick={()=>void transcribe()}>{state==='transcribing'?'Transcribing…':'Transcribe audio'}</button>{error&&<p role="alert" className="form-error">{error}</p>}{hasTranscript&&<div className="voice-transcript"><label>Review and edit the transcript<textarea aria-label="Review voice transcript" value={text} maxLength={50000} rows={5} onChange={event=>{setText(event.target.value);setConfirmed(false);}}/></label><label className="voice-confirm"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/> I reviewed this transcript and want to add it to the description.</label><button type="button" className="btn primary-action" disabled={!confirmed||!text.trim()} onClick={()=>{onConfirm(text.trim());setText('');setHasTranscript(false);setFile(null);setConfirmed(false);}}>Add to incident draft</button></div>}<small>Nothing is created or approved by transcription. Recordings stay in this page’s memory and are cleared when you leave. Maximum upload: {limit/1024/1024} MB.</small></div></Panel>;
+}
+
+export function SpeechBrief({text}:{text:string}){
+ const {organizationId,role}=useSession();const capabilities=useVoiceCapabilities();const [excerpt,setExcerpt]=useState(()=>Array.from(text.trim()).length<=SPEECH_MAX_CHARACTERS?text.trim():'');const [url,setUrl]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const audioUrl=useRef('');const request=useRef<AbortController|null>(null);
+ useEffect(()=>()=>{request.current?.abort();if(audioUrl.current)URL.revokeObjectURL(audioUrl.current);},[organizationId,text]);
+ if(!can(role,'create'))return null;
+ async function speak(){request.current?.abort();const controller=new AbortController();request.current=controller;setBusy(true);setError('');setUrl('');if(audioUrl.current){URL.revokeObjectURL(audioUrl.current);audioUrl.current='';}try{const blob=await requestSpeech(organizationId,excerpt,controller.signal);if(!controller.signal.aborted){audioUrl.current=URL.createObjectURL(blob);setUrl(audioUrl.current);}}catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Speech failed.');}finally{if(!controller.signal.aborted)setBusy(false);}}
+ const length=Array.from(excerpt.trim()).length;
+ return <details className="speech-brief"><summary><Volume2 size={14}/> Listen to a short brief</summary><p>Choose an English excerpt, up to 200 characters. It is sent to the voice provider only when you generate audio.</p>{capabilities.data?.speech_enabled!==true&&<p className="context-note">Spoken briefs are unavailable until voice capabilities confirm they are enabled.</p>}<label>Spoken excerpt<textarea aria-label="Spoken excerpt" rows={3} value={excerpt} onChange={event=>setExcerpt(event.target.value)}/></label><small>{length} / 200 characters · No text is automatically shortened.</small><button type="button" className="btn secondary" disabled={busy||length<1||length>200||capabilities.data?.speech_enabled!==true} onClick={()=>void speak()}>{busy?'Generating audio…':'Generate spoken brief'}</button>{error&&<p role="alert" className="form-error">{error}</p>}{url&&<audio controls src={url} preload="metadata" aria-label="Spoken investigation brief"/>}</details>;
+}
