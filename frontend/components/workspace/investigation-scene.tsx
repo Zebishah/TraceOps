@@ -1,9 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Activity, BookOpen, Database, Fingerprint, Layers3, Pause, Play, ShieldCheck } from 'lucide-react';
-import type { Job } from '@/lib/product/contracts';
-import './investigation-scene.css';
+import { useEffect, useRef } from 'react';
 
 type Particle = { x: number; y: number; z: number; size: number };
 const particleCount = 132;
@@ -15,7 +12,7 @@ const sphere: Particle[] = Array.from({ length: particleCount }, (_, index) => {
 });
 
 /** A decorative signal field. It does not represent agent traces or measured activity. */
-function SignalField({ animate }: { animate: boolean }) {
+export function SignalField({ animate }: { animate: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const element = canvas.current;
@@ -38,7 +35,7 @@ function SignalField({ animate }: { animate: boolean }) {
       const centerY = height * .5;
       const radius = Math.min(width * .32, height * .33, 126);
       const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 1.7);
-      glow.addColorStop(0, 'rgba(212,180,126,.11)');
+      glow.addColorStop(0, 'rgba(212,180,126,.18)');
       glow.addColorStop(.5, 'rgba(212,180,126,.045)');
       glow.addColorStop(1, 'rgba(212,180,126,0)');
       context.fillStyle = glow;
@@ -61,7 +58,7 @@ function SignalField({ animate }: { animate: boolean }) {
           context.beginPath();
           context.moveTo(point.x, point.y);
           context.lineTo(other.x, other.y);
-          context.strokeStyle = `rgba(212,180,126,${.025 + ((point.depth + 1) / 2) * .12})`;
+          context.strokeStyle = `rgba(212,180,126,${.06 + ((point.depth + 1) / 2) * .20})`;
           context.lineWidth = .6;
           context.stroke();
         }
@@ -119,22 +116,3 @@ function SignalField({ animate }: { animate: boolean }) {
   return <canvas ref={canvas} className="signal-field" aria-hidden="true" />;
 }
 
-export function InvestigationScene({ job }: { job?: Job | null }) {
-  const [motion, setMotion] = useState(true);
-  const queued = job?.status === 'queued';
-  const processing = job?.status === 'processing';
-  const failed = job?.status === 'failed';
-  const completed = job?.status === 'succeeded';
-  const active = queued || processing;
-  const animate = active && motion;
-  const heading = queued ? ['Your report.', 'A new perspective.'] : processing ? ['Connecting context.', 'Building clarity.'] : failed ? ['A signal needs', 'your attention.'] : completed ? ['Worker complete.', 'A saved result to review.'] : ['Every signal.', 'A clearer decision.'];
-  return <section className={`intelligence-canvas ${active ? 'is-active' : ''} ${animate ? 'motion-on' : ''} ${failed ? 'has-failed' : ''}`} aria-label="AI investigation workspace">
-    <div className="canvas-noise" aria-hidden="true" />
-    <header className="canvas-header"><span><Fingerprint size={15} /> OPSPILOT / INVESTIGATION ENGINE</span><div><span className={`canvas-state ${active ? 'active' : ''}`}><i />{queued ? 'Queued' : processing ? 'Processing' : failed ? 'Needs attention' : completed ? 'Worker completed' : 'Ready to investigate'}</span>{active && <button type="button" className="motion-toggle" onClick={() => setMotion(value => !value)} aria-label={motion ? 'Pause visual motion' : 'Resume visual motion'}>{motion ? <Pause size={13} /> : <Play size={13} />}</button>}</div></header>
-    <div className="canvas-main"><div className="canvas-narrative"><span className="canvas-overline">EVIDENCE. REASONING. HUMAN CONTROL.</span><h2>{heading[0]}<br /><em>{heading[1]}</em></h2><p>{queued ? 'Your incident is saved and waiting for a background worker. The investigation will connect company knowledge with the available operational records.' : processing ? 'The background investigation is running. Its saved findings, source evidence, and recommended next step will appear here when ready.' : failed ? 'The worker could not finish this run. Inspect the recorded error and retry the investigation when the underlying issue is resolved.' : completed ? 'The worker has finished this investigation. Its saved result and supporting records are available according to your workspace permissions.' : 'Bring policy, operational records, and relevant history into one investigation. Review the evidence before deciding what happens next.'}</p><div className="canvas-context-tags"><span><BookOpen size={12} /> Company policy</span><span><Database size={12} /> Operational records</span><span><Layers3 size={12} /> Incident memory</span></div></div>
-      <div className="canvas-visual" aria-hidden="true"><SignalField animate={animate} /><div className="canvas-orbit orbit-one" /><div className="canvas-orbit orbit-two" /><div className="canvas-core"><Fingerprint size={29} /></div><span className="visual-coordinate coordinate-top">CONTEXT / INTELLIGENCE</span><span className="visual-coordinate coordinate-bottom">GROUNDED IN YOUR WORKSPACE</span><span className="canvas-satellite satellite-a"><BookOpen size={13} /><span>Knowledge</span></span><span className="canvas-satellite satellite-b"><Database size={13} /><span>Records</span></span><span className="canvas-satellite satellite-c"><ShieldCheck size={13} /><span>Human review</span></span><svg className="canvas-signal-paths" viewBox="0 0 500 350" preserveAspectRatio="none"><path d="M84 100C160 100 130 175 250 175M420 135C340 135 365 175 250 175M370 280C325 280 340 175 250 175" /><path className="signal-travel" d="M84 100C160 100 130 175 250 175M420 135C340 135 365 175 250 175M370 280C325 280 340 175 250 175" /></svg></div>
-    </div>
-    <footer className="canvas-runtime"><div className="runtime-status"><Activity size={16} /><div><small>RECORDED JOB STATE</small><strong>{queued ? 'Waiting for an available worker' : processing ? 'Background worker processing' : failed ? 'Worker reported a failure' : completed ? 'Worker completed successfully' : 'Start the investigation when ready'}</strong></div></div>{job && <div className="runtime-progress"><div><span>Worker progress</span><strong>{job.progress_percent}%</strong></div><progress value={job.progress_percent} max={100} aria-label="Worker-reported investigation progress" /></div>}<div className="runtime-guardrail"><ShieldCheck size={14} /><span>Human approval<br /><strong>for sensitive actions</strong></span></div></footer>
-    <div className="canvas-meta"><span>{job ? `RUN / ${job.id}` : 'DURABLE BACKGROUND INVESTIGATION'}</span><span>Signal animation is illustrative · progress comes from the worker</span></div>
-  </section>;
-}

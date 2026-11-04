@@ -3,8 +3,8 @@
 import { Activity, ArrowRight, BookOpen, BrainCircuit, Check, CheckCheck, CircleDot, Clock3, Database, FileText, GitBranch, Layers3, ShieldCheck, Terminal, Workflow } from 'lucide-react';
 import { dateValue, stringValue, type Approval, type Incident, type Investigation, type Job, type Row, type Workspace } from '@/lib/product/contracts';
 import { Badge } from './ui';
-import {workflowStageStates,savedResultLabel} from '@/lib/product/workflow-view';
-import {InvestigationScene} from './investigation-scene';
+import {savedResultLabel} from '@/lib/product/workflow-view';
+import {InvestigationTheater} from './investigation-theater';
 
 export function SignalMark({ small = false }: { small?: boolean }) {
   return <span className={`signal-mark ${small ? 'small' : ''}`} aria-hidden="true"><BrainCircuit size={small ? 17 : 25} /></span>;
@@ -23,20 +23,8 @@ export function WorkflowMap({ workspace, counts }: { workspace?: Workspace | nul
   </section>;
 }
 
-export function InvestigationStages({ incident, job, result, approval }: { incident: Incident; job?: Job | null; result?: Investigation | null; approval?: Approval | null }) {
-  const states=workflowStageStates({incidentStatus:incident.status,jobStatus:job?.status,hasResult:Boolean(result),approvalRequired:result?.approval_required,approvalStatus:approval?.status});
-  const steps = [
-    { title: 'Report captured', detail: 'Customer context & issue', state: 'done', icon: FileText },
-    { title: 'AI investigation', detail: job?.status === 'processing' ? `${job.progress_percent}% · worker processing` : job?.status === 'queued' ? 'Waiting for a worker' : job?.status === 'failed' ? 'Worker needs attention' : job?.status === 'succeeded' ? 'Saved investigation ready' : 'Start when ready', state: states.investigation, icon: BrainCircuit },
-    { title: result?.needs_more_information ? 'Clarification needed' : 'Evidence & findings', detail: result ? `${result.evidence.length} ${result.evidence.length===1?'source':'sources'} · ${result.tool_results.length} tool ${result.tool_results.length===1?'result':'results'}` : 'Available after investigation', state: states.evidence, icon: BookOpen },
-    { title: 'Human review', detail: approval ? approval.status.replaceAll('_', ' ') : result ? (result.approval_required ? 'Review required' : 'No proposal in this result') : 'When a sensitive action is proposed', state: states.review, icon: ShieldCheck },
-    { title: 'Outcome', detail: incident.status === 'resolved' ? 'Incident resolved' : approval?.executed_at ? 'Action executed · inspect incident state' : 'Resolution tracked separately', state: states.outcome, icon: CheckCheck },
-  ];
-  return <section className="investigation-stages" aria-label="Recorded investigation stages">{steps.map(({ title, detail, state, icon: Icon }, index) => <div className={`investigation-stage ${state}`} key={title}><div className="stage-track"><span>{state === 'done' ? <Check size={16} /> : <Icon size={16} />}</span><i /></div><small>0{index + 1}</small><strong>{title}</strong><p>{detail}</p></div>)}</section>;
-}
-
-export function InvestigationWaiting({ job }: { job?: Job | null }) {
-  return <InvestigationScene job={job}/>;
+export function InvestigationStages(props: { incident: Incident; job?: Job | null; result?: Investigation | null; approval?: Approval | null; onInspect?: (tab: string) => void }) {
+  return <InvestigationTheater {...props}/>;
 }
 
 export function InvestigationSummary({ result, approval, job, onInspect }: { result: Investigation; approval?: Approval|null; job?: Job|null; onInspect?: (tab: string) => void }) {
@@ -75,7 +63,7 @@ export function DeliveryCards({ rows, onSelect }: { rows: Row[]; onSelect: (row:
 
 export function AnalystText({ text, onCitation }: { text: string; onCitation: (kind: string, index: number) => void }) {
   const sections = text.split(/\n\s*\n/).filter(Boolean);
-  return <div className="analyst-text">{sections.map((section, index) => { const lines = section.split('\n'); const first = lines[0].replace(/^#+\s*|\*\*/g, '').trim(); const isHeading = lines.length > 1 && ['findings', 'uncertainty', 'current state', 'recommendation', 'recommended action'].includes(first.toLowerCase()); const body = isHeading ? lines.slice(1).join('\n') : section; return <section key={index}>{isHeading && <h3>{first}</h3>}<p>{body.split(/(\[(?:SOURCE|TOOL|MEMORY|DETECTION)\s+\d+\])/g).map((part, n) => { const match = part.match(/^\[(SOURCE|TOOL|MEMORY|DETECTION)\s+(\d+)\]$/); return match && match[1] !== 'DETECTION' ? <button className="citation" key={n} onClick={() => onCitation(match[1], Number(match[2]) - 1)}>{part}</button> : <span key={n}>{part.replaceAll('**', '')}</span>; })}</p></section>; })}</div>;
+  return <div className="analyst-text">{sections.map((section, index) => { const lines = section.split('\n'); const first = lines[0].replace(/^#+\s*|\*\*/g, '').trim(); const isHeading = lines.length > 1 && ['findings', 'uncertainty', 'current state', 'recommendation', 'recommended action'].includes(first.toLowerCase()); const body = isHeading ? lines.slice(1).join('\n') : section; return <section className={`analysis-part ${isHeading?'analysis-'+first.toLowerCase().replaceAll(' ','-'):''}`} key={index}>{isHeading && <div className="analysis-part-heading"><span className="analysis-part-index">{String(index+1).padStart(2,'0')}</span><h3>{first}</h3><small>{first.toLowerCase()==='uncertainty'?'REQUIRES JUDGMENT':first.toLowerCase()==='current state'?'SAVED CONTEXT':'INVESTIGATOR SYNTHESIS'}</small></div>}<p>{body.split(/(\[(?:SOURCE|TOOL|MEMORY|DETECTION)\s+\d+\])/g).map((part, n) => { const match = part.match(/^\[(SOURCE|TOOL|MEMORY|DETECTION)\s+(\d+)\]$/); return match && match[1] !== 'DETECTION' ? <button className="citation" key={n} onClick={() => onCitation(match[1], Number(match[2]) - 1)}>{part}</button> : <span key={n}>{part.replaceAll('**', '')}</span>; })}</p></section>; })}</div>;
 }
 
 export function ContextReadiness({ hasCustomer }: { hasCustomer: boolean }) {
