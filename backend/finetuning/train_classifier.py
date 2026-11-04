@@ -19,6 +19,7 @@ from finetuning.artifacts import (
     resolve_reference,
     write_artifact,
 )
+from finetuning.label_decoding import FINITE_LABEL_POLICY
 from ops_pilot.ai.finetuned_classifier import ClassifierLabels
 from ops_pilot.finetuning.dataset import (
     CLASSIFIER_SYSTEM_PROMPT,
@@ -327,6 +328,7 @@ def train(args) -> None:
         "base_model": reference.model_id,
         "base_revision": reference.revision,
         "method": "qlora" if args.qlora else "lora",
+        "output_policy": FINITE_LABEL_POLICY,
         "seed": args.seed,
         "optimizer_steps": steps,
         "validation": history,
@@ -363,6 +365,7 @@ def train(args) -> None:
             }
         ),
         max_input_tokens=args.max_tokens - 64,
+        output_policy=FINITE_LABEL_POLICY,
         training={**settings, "optimizer_steps": steps, "best_validation_loss": best_loss},
     )
 

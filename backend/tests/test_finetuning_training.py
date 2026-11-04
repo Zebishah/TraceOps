@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from ops_pilot.models.incident import IncidentPriority
+from ops_pilot.schemas.incident_classification import IncidentCategory
+
 torch = pytest.importorskip("torch")
 pytest.importorskip("transformers")
 pytest.importorskip("peft")
@@ -13,7 +16,7 @@ pytest.importorskip("peft")
 
 def test_train_and_reload_real_lora_adapter(tmp_path):
     from safetensors.torch import load_file
-    from tokenizers import Tokenizer, models, pre_tokenizers, trainers
+    from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
     from transformers import GPT2Config, GPT2LMHeadModel, PreTrainedTokenizerFast
 
     from finetuning.model_runtime import load_runtime
@@ -36,6 +39,7 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     ]
     raw = Tokenizer(models.BPE(unk_token="[UNK]"))
     raw.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    raw.decoder = decoders.ByteLevel()
     raw.train_from_iterator(
         texts,
         trainers.BpeTrainer(
@@ -94,14 +98,47 @@ def test_train_and_reload_real_lora_adapter(tmp_path):
     manifest = json.loads((output / "training_manifest.json").read_text())
     assert manifest["optimizer_steps"] == 1
     assert manifest["validation"][0]["validation_loss"] > 0
-    restored, _ = load_runtime(output)
+    restored, restored_tokenizer = load_runtime(output)
     assert not any(p.requires_grad for p in restored.parameters())
+
+    from finetuning.model_runtime import predict_labels
+
+    assert restored.opspilot_manifest.output_policy == "finite-labels-v1"
+    # Exercise actual Transformers generation with a real adapter and the token constraint.
+    generated = predict_labels(
+        restored,
+        restored_tokenizer,
+        title="Service reports storage pressure",
+        description="A full disk is blocking the important dispatch workflow.",
+    )
+    assert generated.category in set(IncidentCategory)
+    assert generated.priority in set(IncidentPriority)
 
     from finetuning.artifacts import verify_artifact
 
     artifact = verify_artifact(output)
     assert artifact.base.local_sha256
     assert artifact.test_sha256 and artifact.test_cases_sha256
+    from finetuning.artifacts import ARTIFACT_FILE, atomic_json, export_artifact
+    from finetuning.constrain_classifier import constrain_artifact
+
+    legacy_path = tmp_path / "legacy-package"
+    export_artifact(output, legacy_path)
+    legacy_manifest = artifact.model_dump(mode="json")
+    legacy_manifest.pop("output_policy")
+    legacy_manifest.pop("derived_from_artifact_sha256")
+    atomic_json(legacy_path / ARTIFACT_FILE, legacy_manifest)
+    parent, derived = constrain_artifact(legacy_path, tmp_path / "converted-package")
+    assert parent == verify_artifact(legacy_path).fingerprint()
+    assert derived != parent
+    converted_model, converted_tokenizer = load_runtime(tmp_path / "converted-package")
+    converted_prediction = predict_labels(
+        converted_model,
+        converted_tokenizer,
+        title="Storage warning",
+        description="A test disk warning has no actual service impact.",
+    )
+    assert converted_prediction.category in set(IncidentCategory)
     checkpoint = Path(json.loads((output / "latest_checkpoint.json").read_text())["path"])
     state = json.loads((checkpoint / "checkpoint.json").read_text())
     assert state["epoch"] == 0 and state["next_start"] == 1
