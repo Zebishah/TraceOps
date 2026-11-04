@@ -19,8 +19,23 @@ Run these commands from `frontend/`. Set `OPSPILOT_BACKEND_URL` in `.env.local` 
 
 1. Import this repository and select **frontend** as Root Directory.
 2. Select Next.js and Node 22.x. `vercel.json` supplies the install and build commands.
-3. Add `OPSPILOT_BACKEND_URL` in the project's environment variables for Production and Preview, then deploy.
+3. Add `OPSPILOT_BACKEND_URL` and `ENABLE_EXPERIMENTAL_COREPACK=1` in the project's environment variables for Production and Preview, then deploy.
 4. Use Fluid compute / a function duration that permits the proxy's exported 120-second maximum. Background investigation is asynchronous; the browser polls the saved job.
+
+The repository-root `package.json` supplies Vercel's Corepack bootstrap metadata, even though Root Directory is `frontend`. Both root and frontend manifests pin `pnpm@11.25.0` and Node `22.x`. Keep the root manifest; it does not make the Python backend part of the frontend build.
+
+`vercel.json` explicitly invokes the pinned CLI, so an older globally installed pnpm cannot misread the lockfile:
+
+| Vercel setting | Value |
+| --- | --- |
+| Root Directory | `frontend` |
+| Framework | Next.js |
+| Install Command | `npx --yes pnpm@11.25.0 install --frozen-lockfile` |
+| Build Command | `npx --yes pnpm@11.25.0 run build:node` |
+| Output Directory | Default (override disabled) |
+| Node.js | `22.x` |
+
+The install log should show pnpm 11.25.0. Keep the frozen install and existing lockfile. If you previously set dashboard overrides, align them with the table above; the tracked `vercel.json` is authoritative. Deploy a commit containing this fix rather than retrying the old failed commit.
 
 Vercel functions have a 4.5 MB request/response payload limit. Document and audio file inputs therefore enforce a **4 MiB** frontend cap on Vercel, leaving space for multipart metadata. Choose Render if you need the backend's full **10 MiB** upload allowance. Speech responses are limited to 4 MiB. Files rejected by the host cannot reach the proxy.
 
