@@ -93,7 +93,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Check types
-        run: uv run mypy && uv run mypy scripts/check_ai_readiness.py
+        run: uv run mypy && uv run mypy scripts/check_ai_readiness.py && uv run mypy finetuning/label_decoding.py
 
       - name: Run tests
         run: uv run pytest -q --junitxml=test-results.xml
@@ -133,7 +133,7 @@ jobs:
           uv sync --project finetuning --frozen
           uv run --project finetuning --frozen python -c "import torch, transformers, peft, cryptography"
       - name: Train and reload a tiny local adapter without downloading a model
-        run: uv run --project finetuning --frozen pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py tests/test_finetuning_quality.py tests/test_finetuning_artifacts.py tests/test_finetuning_process.py tests/test_signed_classifier_integration.py
+        run: uv run --project finetuning --frozen pytest -q tests/test_finetuning_training.py tests/test_classifier_worker.py tests/test_finetuning_quality.py tests/test_finetuning_artifacts.py tests/test_finetuning_process.py tests/test_signed_classifier_integration.py tests/test_finite_label_decoding.py
 
   confidence-contract:
     name: Frontend AI contracts and voice proxy

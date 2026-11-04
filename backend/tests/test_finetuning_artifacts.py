@@ -101,3 +101,24 @@ def test_packaging_excludes_optimizer_and_unlisted_files(evidence, tmp_path):
     assert not (destination / "checkpoints").exists()
     with pytest.raises(ValueError, match="must not exist"):
         export_artifact(source, destination)
+
+
+def test_old_release_does_not_authorize_a_changed_decoding_policy(evidence, tmp_path, monkeypatch):
+    from finetuning import constrain_classifier
+    from finetuning.label_decoding import FiniteLabelDecoder
+    from tests.test_finite_label_decoding import ByteTokenizer
+
+    key = Ed25519PrivateKey.generate()
+    release_path, identity = approve(evidence, tmp_path, key)
+    assert (
+        verify_release(evidence[0], release_path, key.public_key().public_bytes_raw()) == identity
+    )
+
+    def validate(path, budget):
+        FiniteLabelDecoder(ByteTokenizer(), max_new_tokens=budget)
+
+    monkeypatch.setattr(constrain_classifier, "validate_tokenizer", validate)
+    destination = tmp_path / "different-policy"
+    constrain_classifier.constrain_artifact(evidence[0], destination)
+    with pytest.raises(ValueError, match="does not authorize"):
+        verify_release(destination, release_path, key.public_key().public_bytes_raw())

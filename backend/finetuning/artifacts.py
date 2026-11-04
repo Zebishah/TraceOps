@@ -123,6 +123,8 @@ class ArtifactManifest(StrictRecord):
     test_cases_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     max_input_tokens: int = Field(ge=64, le=8192)
     max_new_tokens: int = Field(default=64, ge=16, le=256)
+    output_policy: Literal["finite-labels-v1"] | None = None
+    derived_from_artifact_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     files: dict[str, str]
     training: dict[str, str | int | float | bool]
 
@@ -139,7 +141,12 @@ class ArtifactManifest(StrictRecord):
         return self
 
     def fingerprint(self) -> str:
-        return canonical_hash(self.model_dump(mode="json"))
+        payload = self.model_dump(mode="json")
+        # Preserve fingerprints and release bindings of all pre-policy artifacts.
+        for name in ("output_policy", "derived_from_artifact_sha256"):
+            if payload[name] is None:
+                payload.pop(name)
+        return canonical_hash(payload)
 
 
 def verify_artifact(path: Path) -> ArtifactManifest:
