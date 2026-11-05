@@ -141,7 +141,8 @@ async def login(
             _raise_rate_limit_error(exc)
         sent = await issue_verification_code(session, user)
         error = verification_required_error(user.email)
-        error.detail["verification_email_sent"] = sent
+        if isinstance(error.detail, dict):
+            error.detail["verification_email_sent"] = sent
         raise error
 
     token = create_access_token(
