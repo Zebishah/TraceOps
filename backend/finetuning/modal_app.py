@@ -3,6 +3,7 @@
 Run from the backend directory after importing the adapter artifact locally:
     modal deploy --env main finetuning/modal_app.py
 """
+
 from pathlib import Path
 
 import modal

@@ -156,4 +156,3 @@ def test_resolution_requires_explanation():
 
     session.execute.assert_not_awaited()
     session.commit.assert_not_awaited()
-
