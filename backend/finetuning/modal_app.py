@@ -58,7 +58,7 @@ image = (
     secrets=[modal.Secret.from_name("opspilot-classifier-demo")],
     timeout=900,
     startup_timeout=900,
-    scaledown_window=15,
+    scaledown_window=600,
     max_containers=1,
 )
 @modal.asgi_app()
