@@ -1,7 +1,7 @@
 """Modal GPU endpoint for the OpsPilot QLoRA classifier demo.
 
 Run from the backend directory after importing the adapter artifact locally:
-    modal deploy finetuning/modal_app.py
+    modal deploy --env main finetuning/modal_app.py
 """
 from pathlib import Path
 
@@ -13,14 +13,17 @@ REMOTE_BACKEND = "/root/backend"
 
 app = modal.App(APP_NAME)
 
-# Fail locally before deployment if the ignored, locally imported adapter is absent.
-if not (ADAPTER_DIR / "artifact_manifest.json").is_file():
-    raise FileNotFoundError(
-        f"Missing {ADAPTER_DIR}/artifact_manifest.json. "
-        "Import and verify your QLoRA adapter before deploying."
-    )
-if not (ADAPTER_DIR / "adapter_model.safetensors").is_file():
-    raise FileNotFoundError(f"Missing adapter weights in {ADAPTER_DIR}")
+# This artifact lives in the local checkout and is uploaded into the image below.
+# Modal imports this module in both the deploy process and the remote container,
+# so only validate the local checkout during deployment initialization.
+if modal.is_local():
+    if not (ADAPTER_DIR / "artifact_manifest.json").is_file():
+        raise FileNotFoundError(
+            f"Missing {ADAPTER_DIR}/artifact_manifest.json. "
+            "Import and verify your QLoRA adapter before deploying."
+        )
+    if not (ADAPTER_DIR / "adapter_model.safetensors").is_file():
+        raise FileNotFoundError(f"Missing adapter weights in {ADAPTER_DIR}")
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
