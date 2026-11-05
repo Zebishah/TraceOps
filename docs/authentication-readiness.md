@@ -52,6 +52,7 @@ Turning the setting off restores the previous access policy and can allow previo
 ## User flow
 
 - Signup creates the account, organization, and owner membership. With verification enabled, the response includes `verification_required=true`; the browser does not attempt login or receive a session token yet.
+- Workspace signup shows two steps: workspace details, then email verification. After registration, the confirmation step shows the signup email and a resend action without asking users to enter their address again. The login screen only offers sign-in and workspace creation; an unverified sign-in attempt opens the verification step for that account.
 - The confirmation email uses the app's ivory, forest, and gold theme and has HTML and plain-text versions. The frontend handles provider failure explicitly after signup and lets the user request another link without recreating the account.
 - Correct login credentials for an unverified account return `403` with `detail.code=email_verification_required`. Wrong credentials retain the generic invalid-email-or-password error.
 - Opening a link renders a confirmation screen. Only pressing **Verify my email** sends the confirmation POST. Success does not sign the user in automatically.
