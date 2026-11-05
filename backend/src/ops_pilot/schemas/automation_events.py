@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 
 class IncidentResolvedPayload(BaseModel):
+    resolution_reason: str | None = None
     incident_id: uuid.UUID
     title: str
     category: str | None

@@ -25,7 +25,7 @@ class FakeResult:
 
 def make_session(*values):
     session = AsyncMock()
-    session.execute.side_effect = [FakeResult(value) for value in values]
+    session.execute.side_effect = [FakeResult(value) for value in values] + [FakeResult(None)]
     session.refresh = AsyncMock()
     return session
 
@@ -156,3 +156,4 @@ def test_resolution_requires_explanation():
 
     session.execute.assert_not_awaited()
     session.commit.assert_not_awaited()
+

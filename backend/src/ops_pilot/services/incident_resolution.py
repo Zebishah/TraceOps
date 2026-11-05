@@ -8,6 +8,7 @@ from ops_pilot.models.approval import (
     ApprovalRequest,
     ApprovalStatus,
 )
+from ops_pilot.models.background_job import BackgroundJob, BackgroundJobStatus, BackgroundJobType
 from ops_pilot.models.incident import Incident, IncidentStatus
 from ops_pilot.services.automation_events import (
     build_incident_resolved_event,
@@ -15,6 +16,7 @@ from ops_pilot.services.automation_events import (
 from ops_pilot.services.automation_outbox import (
     enqueue_automation_in_session,
 )
+from ops_pilot.services.incident_resolution_record import format_resolution_record
 
 
 class IncidentResolutionConflict(Exception):
@@ -32,11 +34,16 @@ async def resolve_incident_without_action(
     incident_id: uuid.UUID,
     resolved_by_user_id: uuid.UUID,
     reason: str,
+    outcome: str | None = None,
+    customer_message: str | None = None,
+    next_steps: str | None = None,
 ) -> Incident:
-    reason = reason.strip()
-
-    if len(reason) < 10:
-        raise ValueError("Resolution reason must contain at least 10 characters")
+    reason = format_resolution_record(
+        reason=reason,
+        outcome=outcome,
+        customer_message=customer_message,
+        next_steps=next_steps,
+    )
 
     try:
         result = await session.execute(
@@ -79,6 +86,21 @@ async def resolve_incident_without_action(
                 "Cannot resolve without action while a pending, "
                 "approved, or executed approval exists"
             )
+
+        job_result = await session.execute(
+            select(BackgroundJob.id)
+            .where(
+                BackgroundJob.organization_id == organization_id,
+                BackgroundJob.resource_id == incident_id,
+                BackgroundJob.job_type == BackgroundJobType.INCIDENT_ANALYSIS,
+                BackgroundJob.status.in_(
+                    [BackgroundJobStatus.QUEUED, BackgroundJobStatus.PROCESSING]
+                ),
+            )
+            .limit(1)
+        )
+        if job_result.scalar_one_or_none() is not None:
+            raise IncidentResolutionConflict("Wait for the active investigation before resolving")
 
         incident.status = IncidentStatus.RESOLVED
         incident.resolved_by_user_id = resolved_by_user_id

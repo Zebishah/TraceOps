@@ -290,6 +290,15 @@ async def resolve_no_action_endpoint(
             incident_id=incident_id,
             resolved_by_user_id=current_user.id,
             reason=payload.reason,
+            **(
+                {
+                    "outcome": payload.outcome,
+                    "customer_message": payload.customer_message,
+                    "next_steps": payload.next_steps,
+                }
+                if payload.outcome is not None
+                else {}
+            ),
         )
     except IncidentResolutionNotFound as exc:
         raise HTTPException(

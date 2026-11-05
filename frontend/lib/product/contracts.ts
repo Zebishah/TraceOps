@@ -3,7 +3,7 @@ export const membershipSchema = z.object({ organization_id: z.string().uuid(), r
 export const meSchema = z.object({ user: z.object({ id:z.string(),email:z.string(),full_name:z.string(),is_active:z.boolean() }), memberships:z.array(membershipSchema) });
 export type Me = z.infer<typeof meSchema>;
 export type Role = z.infer<typeof membershipSchema>['role'];
-export const incidentSchema = z.object({id:z.string(),organization_id:z.string(),title:z.string(),description:z.string(),status:z.string(),category:z.string().nullable(),priority:z.string().nullable(),subject_customer_id:z.string().nullable(),created_at:z.string(),updated_at:z.string(),resolution_reason:z.string().nullable().optional(),resolved_at:z.string().nullable().optional()});
+export const incidentSchema = z.object({id:z.string(),organization_id:z.string(),title:z.string(),description:z.string(),status:z.string(),category:z.string().nullable(),priority:z.string().nullable(),subject_customer_id:z.string().nullable(),created_at:z.string(),updated_at:z.string(),resolved_by_user_id:z.string().nullable().optional(),resolution_reason:z.string().nullable().optional(),resolved_at:z.string().nullable().optional()});
 export type Incident = z.infer<typeof incidentSchema>;
 export const jobSchema = z.object({id:z.string(),organization_id:z.string(),job_type:z.string(),status:z.string(),resource_id:z.string().nullable(),progress_percent:z.number(),error_message:z.string().nullable(),created_at:z.string(),started_at:z.string().nullable(),completed_at:z.string().nullable(),updated_at:z.string()});
 export type Job = z.infer<typeof jobSchema>;
@@ -40,3 +40,4 @@ export function dateValue(value:unknown):string {if(typeof value!=='string')retu
 export function classificationConfidenceLabel(value: number | null): string {
   return value === null ? "Unavailable" : `${Math.round(value * 100)}%`;
 }
+

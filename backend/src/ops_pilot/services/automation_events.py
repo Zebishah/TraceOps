@@ -74,6 +74,7 @@ async def build_incident_resolved_event(
             customer_name = customer.full_name
 
     payload = IncidentResolvedPayload(
+        resolution_reason=getattr(incident, "resolution_reason", None),
         incident_id=incident.id,
         title=incident.title,
         category=incident.category,
