@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute
@@ -13,6 +13,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import ScalarSelect
 
 from ops_pilot.api.dependencies import CurrentMembership, DbSession
+from ops_pilot.cache.dashboard import dashboard_cached
 from ops_pilot.core.config import get_settings
 from ops_pilot.db.base import Base
 from ops_pilot.evaluation.reporting import load_organization_report
@@ -268,7 +269,9 @@ def public_row(row: object, fields: tuple[str, ...]) -> dict[str, object]:
 
 
 @router.get("/resources/{resource}", response_model=ResourcePage)
+@dashboard_cached
 async def list_resource(
+    request: Request,
     organization_id: uuid.UUID,
     resource: Resource,
     membership: CurrentMembership,
@@ -357,7 +360,9 @@ async def list_resource(
 
 
 @router.get("/resources/{resource}/{resource_id}", response_model=dict[str, object])
+@dashboard_cached
 async def get_resource(
+    request: Request,
     organization_id: uuid.UUID,
     resource: Resource,
     resource_id: uuid.UUID,
@@ -378,7 +383,9 @@ async def get_resource(
 
 
 @router.get("/overview", response_model=dict[str, int])
+@dashboard_cached
 async def overview(
+    request: Request,
     organization_id: uuid.UUID,
     membership: CurrentMembership,
     session: DbSession,
@@ -417,7 +424,9 @@ async def overview(
 
 
 @router.get("/incidents/{incident_id}/latest", response_model=LatestInvestigation)
+@dashboard_cached
 async def latest_investigation(
+    request: Request,
     organization_id: uuid.UUID,
     incident_id: uuid.UUID,
     membership: CurrentMembership,

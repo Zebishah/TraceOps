@@ -9,6 +9,8 @@ class VoiceTranscriptionResponse(BaseModel):
     text: str
     model: str
     requires_confirmation: Literal[True] = True
+    detected_language: str | None = None
+    warning: str | None = None
 
 
 class VoiceCapabilitiesResponse(BaseModel):

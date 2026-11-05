@@ -25,6 +25,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   if (!anonymous && !token) return jsonError('Sign in to your OpsPilot account', 401);
   const headers = new Headers({ Accept: speech ? 'audio/wav, application/json' : 'application/json' });
   if (token && !anonymous) headers.set('Authorization', `Bearer ${token}`);
+  if (!write && request.headers.get('x-opspilot-refresh') === '1') headers.set('X-OpsPilot-Refresh', '1');
   let body: ArrayBuffer | undefined;
   if (write) {
     if (Number(request.headers.get('content-length') ?? 0) > MAX_REQUEST_BYTES) return jsonError('Request exceeds the upload limit', 413);

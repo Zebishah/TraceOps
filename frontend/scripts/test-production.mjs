@@ -8,7 +8,7 @@ const requests=[];const token='fixture.'+Buffer.from(JSON.stringify({exp:Math.fl
 const wave=Buffer.from('RIFF0000WAVEfixture');
 let malformed=false;let requireVerification=false;
 const upstream=createServer(async(request,response)=>{
- let body='';for await(const chunk of request)body+=chunk;requests.push({url:request.url,method:request.method,authorization:request.headers.authorization,contentType:request.headers['content-type'],body});
+ let body='';for await(const chunk of request)body+=chunk;requests.push({url:request.url,method:request.method,authorization:request.headers.authorization,contentType:request.headers['content-type'],dashboardRefresh:request.headers['x-opspilot-refresh'],body});
  response.setHeader('content-type','application/json');response.setHeader('x-request-id','fixture-request');
  if(request.url==='/api/v1/auth/login'){
   if(JSON.parse(body).email==='unverified@example.com'){response.statusCode=403;return response.end(JSON.stringify({detail:{code:'email_verification_required',message:'Verify your email before signing in.',email:'unverified@example.com'}}));}
@@ -67,6 +67,7 @@ try{
  const blocked=await fetch(base+'/api/backend/auth/login',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({email:'unverified@example.com',password:'fixture-password'})});
  assert.equal(blocked.status,403);assert.equal((await blocked.json()).detail.code,'email_verification_required');assert.match(blocked.headers.get('set-cookie'),/opspilot_backend_session=;/i);
  const records=await fetch(base+`/api/backend/organizations/${organization}/dashboard/resources/incidents?limit=20&offset=0&q=duplicate`,{headers});assert.equal(records.status,200);assert.equal(records.headers.get('x-request-id'),'fixture-request');assert.equal(records.headers.get('cache-control'),'no-store');assert.equal(requests.at(-1).authorization,`Bearer ${token}`);assert.ok(requests.at(-1).url.endsWith('q=duplicate'));
+ const freshRecords=await fetch(base+`/api/backend/organizations/${organization}/dashboard/resources/incidents?limit=20`,{headers:{...headers,'X-OpsPilot-Refresh':'1'}});assert.equal(freshRecords.status,200);assert.equal(requests.at(-1).dashboardRefresh,'1');
  const providerError=await fetch(base+`/api/backend/organizations/${organization}/dashboard/resources/incidents?q=provider-error`,{headers});assert.equal(providerError.status,429);assert.equal(providerError.headers.get('retry-after'),'10');
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/dashboard/resources/incidents?q=redirect`,{headers})).status,502);
  const audio=new FormData();audio.set('file',new Blob([wave],{type:'audio/wav'}),'synthetic.wav');audio.set('language','en');
@@ -78,7 +79,18 @@ try{
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/voice/transcriptions`,{method:'POST',headers,body:Buffer.alloc(11*1024*1024+1)})).status,413);
  const signedInPage=await fetch(base+'/app/incidents/new',{headers});assert.equal(signedInPage.status,200);assert.match(await signedInPage.text(),/opspilot/i);
  requireVerification=true;const unverifiedSession=await fetch(base+'/api/backend/auth/me',{headers});assert.equal(unverifiedSession.status,403);assert.match(unverifiedSession.headers.get('set-cookie'),/opspilot_backend_session=;/i);
- console.log('Production smoke passed: email verification, pages, auth, tenant forwarding, search, voice, CSRF, redirects, errors, and upload cap.');
+ const rejectedLogout=await fetch(base+'/api/session',{method:'DELETE',headers:{...headers,origin:'https://attacker.example'}});
+ assert.equal(rejectedLogout.status,403);assert.equal(rejectedLogout.headers.get('set-cookie'),null);assert.equal(rejectedLogout.headers.get('cache-control'),'no-store');
+ const logoutBefore=requests.length;
+ const logout=await fetch(base+'/api/session',{method:'DELETE',headers});
+ assert.equal(logout.status,200);assert.deepEqual(await logout.json(),{signed_out:true});assert.equal(logout.headers.get('cache-control'),'no-store');
+ const expiredCookie=logout.headers.get('set-cookie');
+ for(const pattern of [/opspilot_backend_session=;/i,/Path=\//i,/Max-Age=0/i,/Expires=Thu, 01 Jan 1970/i,/HttpOnly/i,/Secure/i,/SameSite=strict/i])assert.match(expiredCookie,pattern);
+ assert.equal(requests.length,logoutBefore);
+ const repeatLogout=await fetch(base+'/api/session',{method:'DELETE',headers:{origin:base}});assert.equal(repeatLogout.status,200);assert.deepEqual(await repeatLogout.json(),{signed_out:true});
+ assert.equal((await fetch(base+'/api/backend/auth/me')).status,401);
+ const loggedOutPage=await fetch(base+'/app/incidents',{redirect:'manual'});assert.equal(loggedOutPage.status,307);assert.ok(loggedOutPage.headers.get('location')?.includes('/login'));
+ console.log('Production smoke passed: email verification, pages, auth, logout, tenant forwarding, search, voice, CSRF, redirects, errors, and upload cap.');
 }finally{
  child.kill('SIGTERM');await Promise.race([once(child,'exit'),new Promise(resolve=>setTimeout(resolve,5000))]);if(child.exitCode===null)child.kill('SIGKILL');await new Promise(resolve=>upstream.close(resolve));
 }

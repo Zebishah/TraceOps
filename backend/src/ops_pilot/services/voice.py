@@ -20,6 +20,7 @@ MAX_SPEECH_BYTES = 4 * 1024 * 1024
 MAX_TRANSCRIPT_BYTES = 256 * 1024
 GROQ_AUDIO_URL = "https://api.groq.com/openai/v1/audio"
 TTS_MODEL = "canopylabs/orpheus-v1-english"
+AUTO_TRANSCRIPTION_MODEL = "whisper-large-v3"
 _LIMIT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then redis.call('EXPIRE', KEYS[1], 60) end
@@ -27,9 +28,17 @@ return {count, redis.call('TTL', KEYS[1])}
 """
 
 
+class _Segment(BaseModel):
+    avg_logprob: float | None = Field(default=None, allow_inf_nan=False)
+    no_speech_prob: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+
+
 class _Transcript(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=50000)
+    language: str | None = Field(default=None, min_length=1, max_length=80)
+    duration: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    segments: list[_Segment] = Field(default_factory=list, max_length=1000)
 
 
 def require_voice_enabled(*, speech: bool = False) -> None:
@@ -119,9 +128,13 @@ async def transcribe_audio(*, file: UploadFile, language: str | None) -> VoiceTr
         if not data:
             raise HTTPException(status_code=422, detail="Audio recording is empty")
         extension, mime_type = detect_audio(data)
-        fields = {"model": settings.voice_transcription_model, "response_format": "json"}
+        automatic = language is None
+        model = AUTO_TRANSCRIPTION_MODEL if automatic else settings.voice_transcription_model
+        fields = {"model": model, "response_format": "verbose_json" if automatic else "json"}
         if language is not None:
             fields["language"] = language
+        else:
+            fields["temperature"] = "0"
         async with _voice_slot(), asyncio.timeout(settings.voice_timeout_seconds):
             async with httpx.AsyncClient(
                 timeout=settings.voice_timeout_seconds, follow_redirects=False
@@ -139,8 +152,25 @@ async def transcribe_audio(*, file: UploadFile, language: str | None) -> VoiceTr
             transcript = _Transcript.model_validate_json(raw)
         except ValidationError as exc:
             raise HTTPException(status_code=502, detail="Invalid transcription response") from exc
+        warning = None
+        if automatic and (
+            transcript.language is None
+            or (transcript.duration is not None and transcript.duration < 5)
+            or any(
+                (segment.avg_logprob is not None and segment.avg_logprob < -1)
+                or (segment.no_speech_prob is not None and segment.no_speech_prob > 0.6)
+                for segment in transcript.segments
+            )
+        ):
+            warning = (
+                "Automatic language detection may be unreliable for this recording. "
+                "If the result is wrong, select the language you spoke and transcribe again."
+            )
         return VoiceTranscriptionResponse(
-            text=transcript.text, model=settings.voice_transcription_model
+            text=transcript.text,
+            model=model,
+            detected_language=transcript.language if automatic else None,
+            warning=warning,
         )
     except (httpx.RequestError, TimeoutError) as exc:
         raise HTTPException(status_code=503, detail="Voice provider request failed") from exc

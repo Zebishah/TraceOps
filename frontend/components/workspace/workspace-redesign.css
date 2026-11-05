@@ -325,6 +325,7 @@
 .analyst-text>section+section{margin-top:23px;padding-top:20px;border-top:1px solid #f2efe9}
 .analyst-text h3{font-size:12px;color:#8e8775;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px}
 .analyst-text p{margin:0;color:#7a7364;font-size:13px;line-height:2.05}
+.dashboard .investigation-result-grid .analyst-text+.btn{margin-top:16px}
 .dashboard .citation{display:inline-flex;font-size:10px;border:1px solid #ebe7dd;background:#f7f5f1;color:#948d7d;padding:2px 5px;border-radius:4px;margin:0 3px;vertical-align:middle;line-height:1.7;cursor:pointer}
 .dashboard .finding-facts{border-color:#efebe2;font-size:12px;color:#a09a8b;padding:20px 0 10px}
 .dashboard .finding-facts>strong{color:#908877;font-size:22px;font-weight:500}
@@ -410,10 +411,6 @@
 .dashboard .tool-catalog>div{border:1px solid #efebe3;background:#fbfaf9;border-radius:8px;padding:17px}
 .dashboard .tool-catalog code{font-size:12px;color:#979080;overflow-wrap:anywhere}
 .dashboard .tool-catalog p{font-size:12px;line-height:1.85;color:#918a79}
-.dashboard .upload-zone{border:1px dashed #cec9bc;background:radial-gradient(ellipse at 50% 0,#f6f4ef,transparent 65%),#fbfaf9;border-radius:10px;padding:30px}
-.dashboard .upload-zone>label{color:#a6a093}
-.dashboard .upload-zone strong{font-size:16px;color:#8c8472}
-.dashboard .upload-zone small{font-size:12px;line-height:1.9;color:#918a79}
 .dashboard .analysis-text{font-size:13px;color:#8a8271;line-height:2}
 .dashboard .answer-citations>article{background:#fbfaf8;border-color:#eeeae1;color:#968f7f}
 .dashboard .answer-citations strong{font-size:12px}
@@ -709,8 +706,6 @@
 .command-search-dialog form>p{font-size:12px!important}
 .command-search-footer{padding:14px 17px;font-size:10px}
 .command-search-footer>span{max-width:100px}
-.dashboard .upload-zone{padding:25px 17px}
-.dashboard .upload-zone strong{font-size:15px}
 }
 
 @media(prefers-reduced-motion:reduce){.dashboard *, .dashboard *:before,.dashboard *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
@@ -844,3 +839,74 @@ to{opacity:1;transform:translateY(0)}
 @keyframes workspace-signal{0%{opacity:.7;transform:scale(.95)}100%{opacity:0;transform:scale(1.25)}}
 @keyframes workspace-context-pulse{50%{opacity:.5;transform:translateY(-2px)}}
 @media(prefers-reduced-motion:reduce){.dashboard .map-motion *,.dashboard .map-motion *:before,.dashboard .map-motion *:after{animation:none!important}}
+
+/* Knowledge uploads keep the selected file and its actions together. */
+.dashboard .knowledge-upload{position:relative;align-items:center;justify-content:center;gap:20px;min-height:290px;padding:34px 24px;border:1px dashed #d3c9b5;border-radius:12px;background:radial-gradient(ellipse at 50% 0,#f2eddf66,transparent 65%),#fdfbf7;text-align:center;transition:background .15s,border-color .15s}
+.dashboard .knowledge-upload.is-dragging{border-color:#987d48;background:#f3eddf;box-shadow:inset 0 0 0 1px #bda471}
+.dashboard .knowledge-upload.is-uploaded{border-style:solid;border-color:#d4ddc9;background:#f8faf4}
+.knowledge-upload-icon{display:grid;place-items:center;width:56px;height:56px;border:1px solid #e1d6bf;border-radius:16px;background:#f3ecdd;color:#9e824c}
+.knowledge-upload-heading{max-width:510px}
+.dashboard .knowledge-upload-heading h3{margin:0;font-size:17px;line-height:1.5;font-weight:550;letter-spacing:-.3px;color:#35402e}
+.dashboard .knowledge-upload-heading p{margin:7px 0 0;font-size:12px;line-height:1.8;color:#827d6c}
+.knowledge-file-card{display:flex;align-items:center;gap:14px;width:100%;max-width:490px;padding:17px 18px;border:1px solid #e2daca;border-radius:11px;background:#fffdf9;text-align:left;box-shadow:0 3px 10px #342d1903}
+.knowledge-file-icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:46px;border:1px solid #e7dcc5;border-radius:9px;background:#f5efdf;color:#9a7e48}
+.knowledge-file-icon.is-complete{border-color:#d6dfc9;background:#edf3e6;color:#63794e}
+.knowledge-file-details{flex:1;min-width:0}
+.dashboard .knowledge-file-details strong{display:block;font-size:12px;font-weight:550;line-height:1.7;color:#414b36;overflow-wrap:anywhere}
+.knowledge-file-details>span{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;font-size:10px;line-height:1.7;color:#8b8473}
+.knowledge-file-details i{font-style:normal;color:#b3a98f}
+.knowledge-file-remove{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#968e7d;cursor:pointer}
+.knowledge-file-remove:hover{background:#f0ebe0;color:#4b533e}
+.knowledge-upload-actions{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;width:100%}
+.dashboard .knowledge-upload .btn{min-height:42px;padding:10px 18px;gap:9px;border-radius:8px;font-size:12px!important}
+.dashboard .knowledge-upload .knowledge-upload-submit{background:#293621;border-color:#293621;color:#fcfaf5;box-shadow:0 3px 8px #2936210a}
+.dashboard .knowledge-upload .knowledge-upload-submit:hover:not(:disabled){background:#3c4b32;border-color:#3c4b32}
+.dashboard .knowledge-upload .knowledge-upload-submit:disabled{opacity:.65;cursor:not-allowed}.dashboard .knowledge-upload[aria-busy=true] .knowledge-upload-submit:disabled{cursor:wait}
+.dashboard .knowledge-upload .knowledge-upload-formats{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0;font-size:10px;line-height:1.8;color:#928977}
+.knowledge-upload-progress{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%;max-width:490px;font-size:11px;color:#827d6c}
+.knowledge-upload-progress progress{width:100%;height:4px;border:0;border-radius:4px;overflow:hidden;accent-color:#b29866}
+.knowledge-upload-progress progress::-webkit-progress-bar{border-radius:4px;background:#e9e2d3}
+.knowledge-upload-progress progress:indeterminate{background:#e9e2d3}
+.knowledge-upload-spinner{animation:workspace-spin 1s linear infinite}
+.dashboard .knowledge-upload .knowledge-upload-success{display:flex;align-items:center;justify-content:center;gap:7px;margin:0;font-size:11px;color:#647b50}
+.dashboard .knowledge-upload .knowledge-upload-error{width:100%;max-width:490px;margin:0;text-align:left}
+@media(max-width:620px){.dashboard .knowledge-upload{padding:27px 15px;min-height:270px;gap:18px}.dashboard .knowledge-upload-heading h3{font-size:16px}.dashboard .knowledge-upload-heading p{font-size:11px}.knowledge-file-card{padding:14px 12px;gap:10px}.knowledge-file-icon{flex-basis:36px;width:36px;height:42px}.dashboard .knowledge-upload .btn{min-height:42px;font-size:11px!important;padding:10px 15px}.knowledge-upload-actions{gap:9px}.knowledge-upload-actions>.btn{flex:1}.dashboard .knowledge-upload .knowledge-upload-formats{font-size:9px}}
+@media(max-width:400px){.knowledge-file-card{position:relative;flex-direction:column;text-align:center;padding:18px 20px;gap:12px}.knowledge-file-details{width:100%}.knowledge-file-details>span{justify-content:center}.knowledge-file-remove{position:absolute;top:7px;right:7px}.dashboard .knowledge-file-details strong{font-size:11px}}
+
+/* Render answer formatting without preserving raw Markdown whitespace. */
+.dashboard .markdown-answer{white-space:normal;line-height:1.9;overflow-wrap:anywhere}
+.markdown-answer>p{margin:0 0 16px}
+.dashboard .markdown-answer strong{font-weight:650;color:#3d4633}
+.markdown-answer>p:has(>strong:only-child){margin-top:24px;margin-bottom:10px}
+.dashboard .markdown-answer :is(h1,h2,h3,h4,h5,h6){margin:24px 0 10px;font-size:15px;line-height:1.6;font-weight:650;letter-spacing:-.2px;color:#3d4633}
+.markdown-answer :is(ul,ol){margin:0 0 18px;padding-left:23px}
+.markdown-answer li{padding-left:3px;margin:6px 0}
+.markdown-answer li>p{margin:6px 0}
+.markdown-answer li :is(ul,ol){margin:8px 0}
+.markdown-answer li::marker{color:#a08a58}
+.markdown-answer blockquote{margin:18px 0;padding:2px 0 2px 16px;border-left:3px solid #d8c7a3;color:#827d6c}
+.markdown-answer blockquote p{margin:6px 0}
+.markdown-answer code{padding:2px 5px;border-radius:4px;background:#f0ebdf;font-size:.92em;color:#5f634c}
+.markdown-answer pre{margin:18px 0;padding:15px;border:1px solid #e0d7c5;border-radius:8px;background:#f5f0e5;overflow:auto;max-width:100%;white-space:pre}
+.markdown-answer pre code{padding:0;background:none}
+.markdown-answer a{color:#827044;text-decoration:underline;text-underline-offset:3px}
+.markdown-answer hr{margin:22px 0;border:0;border-top:1px solid #e7e1d4}
+.dashboard .markdown-answer>:first-child{margin-top:0}
+.dashboard .markdown-answer>:last-child{margin-bottom:0}
+
+.voice-recording-preview{display:grid;gap:10px;padding:14px;border:1px solid #e2d9c7;border-radius:9px;background:#fcfaf5;min-width:0}.voice-recording-preview>span{font-size:11px;color:#81785f;overflow-wrap:anywhere}.voice-recording-preview audio{width:100%;max-width:100%;height:40px}.voice-controls .voice-detected-language{font-size:11px;line-height:1.7;color:#82785f}.voice-detected-language strong{text-transform:capitalize;color:#4c573d;font-weight:600}.voice-controls .voice-detection-notice{margin:0;padding:12px 14px;font-size:11px;line-height:1.8}
+
+/* Session confirmation stays in the browser's modal layer, including on mobile. */
+.dashboard .logout-dialog{width:min(440px,calc(100vw - 32px));height:fit-content;max-height:calc(100dvh - 40px);padding:0;border-color:#ddd4c1;border-radius:16px;background:#fcfaf5;color:#303927;overflow:auto;box-shadow:0 26px 90px #141b1640}
+.dashboard .logout-dialog::backdrop{background:#151c1759;backdrop-filter:blur(5px)}
+.logout-dialog-content{display:flex;flex-direction:column;align-items:center;padding:32px;text-align:center}
+.logout-dialog-icon{display:grid;place-items:center;width:58px;height:58px;margin-bottom:22px;border:1px solid #e0d0ac;border-radius:17px;background:#f1e8d4;color:#947944}
+.logout-dialog .app-eyebrow{font-size:8px;letter-spacing:1.4px;color:#99855d;margin-bottom:12px}
+.dashboard .logout-dialog h2{margin:0;color:#303927;font-size:24px;line-height:1.35;letter-spacing:-.6px;font-weight:550}
+.dashboard .logout-dialog p{margin:12px 0 0;font-size:12px;line-height:1.8;color:#827b69}
+.dashboard .logout-dialog .form-error{width:100%;margin-top:18px;text-align:left}
+.logout-dialog-actions{display:flex;gap:10px;justify-content:center;width:100%;margin-top:26px}
+.dashboard .logout-dialog-actions .btn{flex:1;min-height:43px;border-radius:8px;gap:8px;font-size:12px!important}
+.dashboard .logout-dialog-actions .btn>span{margin:0;font-size:12px}
+.dashboard .logout-dialog .form-error:focus{outline:2px solid #b6915b;outline-offset:3px}
+@media(max-width:400px){.logout-dialog-content{padding:27px 22px}.dashboard .logout-dialog h2{font-size:22px}}

@@ -70,7 +70,9 @@ def test_transcription_returns_confirmation_without_creating_incident(client, mo
         return httpx.Response(200, json={"text": "Customer reports two charges."})
 
     provider(monkeypatch, handler)
-    response = client.post(f"{PATH}/transcriptions", files={"file": ("unsafe-name.exe", WAV)})
+    response = client.post(
+        f"{PATH}/transcriptions", files={"file": ("unsafe-name.exe", WAV)}, data={"language": "en"}
+    )
     assert response.status_code == 200
     assert response.json() == {
         "text": "Customer reports two charges.",
@@ -273,3 +275,88 @@ async def test_chunked_upload_limit():
     )
     assert send.await_args_list[0].args[0]["status"] == 413
     downstream.assert_not_awaited()
+
+
+@pytest.mark.parametrize("language", ["en", "ur"])
+def test_explicit_languages_keep_configured_transcription_path(client, monkeypatch, language):
+    async def handler(request):
+        body = await request.aread()
+        assert b"whisper-large-v3-turbo" in body
+        assert b"verbose_json" not in body
+        assert b'name="language"' in body and language.encode() in body
+        return httpx.Response(200, json={"text": "Explicit language transcript."})
+
+    provider(monkeypatch, handler)
+    response = client.post(
+        f"{PATH}/transcriptions", files={"file": ("test.wav", WAV)}, data={"language": language}
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "text": "Explicit language transcript.",
+        "model": "whisper-large-v3-turbo",
+        "requires_confirmation": True,
+    }
+
+
+def test_auto_uses_accurate_model_and_reports_short_clip_uncertainty(client, monkeypatch):
+    async def handler(request):
+        body = await request.aread()
+        assert b"whisper-large-v3" in body and b"whisper-large-v3-turbo" not in body
+        assert b"verbose_json" in body
+        assert b'name="language"' not in body
+        assert b'name="temperature"' in body
+        return httpx.Response(
+            200, json={"text": "Hello, hello.", "language": "english", "duration": 2.1}
+        )
+
+    provider(monkeypatch, handler)
+    response = client.post(f"{PATH}/transcriptions", files={"file": ("test.wav", WAV)})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["text"] == "Hello, hello."
+    assert result["model"] == "whisper-large-v3"
+    assert result["detected_language"] == "english"
+    assert "select the language" in result["warning"]
+    assert result["requires_confirmation"] is True
+
+
+def test_auto_preserves_non_english_detection_without_forcing_english(client, monkeypatch):
+    text = "یہ اردو ریکارڈنگ ہے۔"
+    provider(
+        monkeypatch,
+        lambda request: httpx.Response(
+            200,
+            json={
+                "text": text,
+                "language": "urdu",
+                "duration": 10,
+                "segments": [{"avg_logprob": -0.1, "no_speech_prob": 0.01}],
+            },
+        ),
+    )
+    response = client.post(f"{PATH}/transcriptions", files={"file": ("test.wav", WAV)})
+    assert response.status_code == 200
+    assert response.json()["text"] == text
+    assert response.json()["detected_language"] == "urdu"
+    assert "warning" not in response.json()
+
+
+@pytest.mark.parametrize("segment", [{"avg_logprob": -1.5}, {"no_speech_prob": 0.9}])
+def test_auto_flags_uncertain_results_without_rewriting_words(client, monkeypatch, segment):
+    provider(
+        monkeypatch,
+        lambda request: httpx.Response(
+            200,
+            json={
+                "text": "Provider text",
+                "language": "danish",
+                "duration": 10,
+                "segments": [segment],
+            },
+        ),
+    )
+    response = client.post(f"{PATH}/transcriptions", files={"file": ("test.wav", WAV)})
+    assert response.status_code == 200
+    assert response.json()["text"] == "Provider text"
+    assert response.json()["detected_language"] == "danish"
+    assert response.json()["warning"]

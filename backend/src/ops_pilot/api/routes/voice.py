@@ -54,7 +54,7 @@ async def transcribe(
     await enforce_voice_limit(organization_id=organization_id, user_id=current_user.id)
     result = await transcribe_audio(file=file, language=language)
     return Response(
-        content=result.model_dump_json(),
+        content=result.model_dump_json(exclude_none=True),
         media_type="application/json",
         headers={
             "Cache-Control": "no-store",

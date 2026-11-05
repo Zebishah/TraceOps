@@ -15,6 +15,8 @@ export const voiceTranscriptionSchema = z.object({
   text: z.string().trim().min(1),
   model: z.string().min(1),
   requires_confirmation: z.literal(true),
+  detected_language: z.string().trim().min(1).max(80).nullable().optional(),
+  warning: z.string().trim().min(1).nullable().optional(),
 });
 
 export type VoiceCapabilities = z.infer<typeof voiceCapabilitiesSchema>;

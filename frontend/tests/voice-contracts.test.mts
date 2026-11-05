@@ -17,3 +17,9 @@ test('frontend requires real text and explicit human confirmation', () => {
   assert.equal(voiceTranscriptionSchema.safeParse({...response, text: '   '}).success, false);
   assert.equal(voiceTranscriptionSchema.safeParse({...response, requires_confirmation: false}).success, false);
 });
+
+test('auto detection reports language and uncertainty while legacy responses remain accepted', () => {
+  const result = voiceTranscriptionSchema.parse({ text: 'Hello, hello.', model: 'whisper-large-v3', requires_confirmation: true, detected_language: 'english', warning: 'Check the detected language for this short clip.' });
+  assert.equal(result.detected_language, 'english');
+  assert.match(result.warning ?? '', /short clip/);
+});

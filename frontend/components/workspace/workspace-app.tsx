@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, BrainCircuit, ArrowUpRight, Shield, Plus, BookOpen, Boxes, CheckCheck, ChevronDown, ClipboardList, Command, FileCheck, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Workflow, Wrench, X } from 'lucide-react';
+import { Activity, BrainCircuit, ArrowUpRight, Shield, Plus, BookOpen, Boxes, CheckCheck, ChevronDown, ClipboardList, Command, FileCheck, LayoutDashboard, Menu, Search, Settings, ShieldCheck, Workflow, Wrench, X } from 'lucide-react';
 import { api } from '@/lib/product/client';
 import { can, meSchema, workspaceSchema } from '@/lib/product/contracts';
 import { useResource } from '@/hooks/use-resource';
@@ -14,6 +14,7 @@ import { OverviewPage, ResourcePage, OperationsPage, JobsPage, SystemPage, Quali
 import { IncidentPage, CreateIncidentPage } from './incidents';
 import { KnowledgePage, DocumentPage } from './knowledge';
 import { ApprovalPage } from './approvals';
+import { LogoutButton } from './logout-button';
 
 const navigation = [
   { group: 'Workspace', items: [['Command center', '', LayoutDashboard], ['Incidents', 'incidents', ClipboardList], ['Approvals', 'approvals', CheckCheck], ['Knowledge', 'knowledge', BookOpen], ['Operations', 'operations', Boxes], ['Incident Memory', 'memory', Activity]] },
@@ -35,6 +36,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
   const [searchOpen,setSearchOpen]=useState(false);
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       const target = event.target;
       const editing = target instanceof HTMLElement && (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable);
       if (!editing && (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'))) { event.preventDefault(); setSearchOpen(true);searchDialog.current?.showModal(); }
@@ -101,7 +103,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
       <label className="workspace-selector"><span>WORKSPACE</span><select value={selectedOrganization} disabled={!membership} onChange={event => selectOrganization(event.target.value)} aria-label="Selected organization">{!auth.data?.memberships.length && <option value="">{auth.loading ? 'Connecting…' : 'Select a workspace'}</option>}{auth.data?.memberships.map(m => <option key={m.organization_id} value={m.organization_id}>{m.organization_id === selectedOrganization && workspace.data ? workspace.data.name : `Organization ${m.organization_id.slice(0, 8)}`}</option>)}</select><small>{membership ? `${membership.role} access` : 'Checking workspace access'} <ChevronDown size={12} /></small></label>
       {can(membership?.role,'create')&&<a className="sidebar-create" href="/app/incidents/new"><Plus size={15}/> New investigation <ArrowUpRight size={14}/></a>}
       {navigation.map(group => <div className="navigation-group" key={group.group}><span>{group.group}</span>{group.items.map(([label, path, Icon]) => <button key={path} className={section === path ? 'current' : ''} onClick={() => navigate(path)} aria-current={section === path ? 'page' : undefined}><Icon size={16} /><span>{label}</span>{section === path && <i />}</button>)}</div>)}
-      <div className="sidebar-account"><div className="avatar">{auth.data ? auth.data.user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : '◈'}</div><div><strong>{auth.data?.user.full_name ?? (auth.loading ? 'Loading account…' : 'Account unavailable')}</strong><small>{auth.data?.user.email ?? 'Your secure workspace'}</small></div><button aria-label="Sign out" onClick={async () => { await fetch('/api/session', { method: 'DELETE' }); window.location.assign('/login'); }}><LogOut size={16} /></button></div>
+      <div className="sidebar-account"><div className="avatar">{auth.data ? auth.data.user.full_name.split(' ').map(n => n[0]).slice(0, 2).join('') : '◈'}</div><div><strong>{auth.data?.user.full_name ?? (auth.loading ? 'Loading account…' : 'Account unavailable')}</strong><small>{auth.data?.user.email ?? 'Your secure workspace'}</small></div><LogoutButton /></div>
     </aside>
     {mobile && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
     <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span className="topbar-workspace-label"><Shield size={12}/> Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => {setSearchOpen(true);searchDialog.current?.showModal();}}><Search size={14} /><span>Search incidents</span><kbd>⌘ K</kbd></button><a href="/">Product website <ArrowUpRight size={12}/></a></div></header>

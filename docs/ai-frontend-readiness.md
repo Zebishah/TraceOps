@@ -1,6 +1,6 @@
 # Voice and fine-tuned classification: frontend handoff
 
-This branch adds no recorder UI and does not deploy or activate a model. It supplies the missing proxy connection, typed voice response contracts, capability discovery, and repeatable live smoke checks. Training code is implemented; production model approval is still a separate evidence requirement.
+The voice flow uses the recorder UI, same-origin proxy, typed response contracts, capability discovery, and repeatable live smoke checks. Model training and deployment do not run automatically; production classifier approval remains a separate evidence requirement.
 
 ## 1. Enable voice on the backend
 
@@ -56,7 +56,11 @@ Do not manually set multipart Content-Type; the browser adds the boundary. The e
 
 The backend endpoint is `POST /api/v1/organizations/{organization_id}/voice/transcriptions`. Multipart fields are `file` and optional `language` (two lowercase letters, such as `en` or `ur`; omit for provider detection). The audio file must be nonempty and no larger than 10 MiB. Browser recording should have its own duration/size cutoff.
 
-Expected JSON:
+Automatic detection now uses `whisper-large-v3` with deterministic decoding and verbose language/quality metadata. Explicit `en`/`ur` selections retain the configured `VOICE_TRANSCRIPTION_MODEL`. Auto mode can have different provider pricing from Turbo; see [Groq's model comparison](https://console.groq.com/docs/speech-to-text). It sends no forced language and does not translate or rewrite provider output.
+
+Auto responses add `detected_language` when available. Short clips under five seconds, missing language metadata, or weak segment diagnostics also include a `warning` asking the user to check the language and retry with an explicit selection if needed. These diagnostics are review hints, not calibrated language confidence scores. The recorder previews the local audio, shows the detected language, and clears the old transcript/confirmation when the language changes. Audio and transcripts remain transient and are not cached in Redis.
+
+Expected JSON for an explicit language:
 
 ```json
 {"text":"The customer reports two charges.","model":"whisper-large-v3-turbo","requires_confirmation":true}

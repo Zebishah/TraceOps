@@ -2,11 +2,12 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ops_pilot.db.cache_session import DashboardSession
 from ops_pilot.db.engine import engine
 
 async_session_factory = async_sessionmaker(
     bind=engine,
-    class_=AsyncSession,
+    class_=DashboardSession,
     expire_on_commit=False,
 )
 

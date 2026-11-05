@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from ops_pilot.cache.redis import close_redis_client
+from ops_pilot.db.cache_session import DashboardSession
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.order import OperationalOrder, OrderStatus
 from ops_pilot.models.organization import Organization
@@ -39,7 +41,7 @@ async def main():
         return
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
+    Session = async_sessionmaker(engine, class_=DashboardSession, expire_on_commit=False)
 
     try:
         async with Session() as session:
@@ -150,7 +152,10 @@ async def main():
         print("SEED SUCCESSFUL")
 
     finally:
-        await engine.dispose()
+        try:
+            await engine.dispose()
+        finally:
+            await close_redis_client()
 
 
 if __name__ == "__main__":

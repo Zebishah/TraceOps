@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { verificationRequiredSchema } from './auth-contracts.ts';
 import { rememberVerification } from './verification-flow.ts';
+import { dashboardCache, dashboardCacheKey, organizationScope, connectDashboardCache } from './dashboard-cache.ts';
 
 export class ApiError extends Error {
   verification: z.infer<typeof verificationRequiredSchema> | null = null;
@@ -10,7 +11,7 @@ export class ApiError extends Error {
     this.code = code; this.retryAfter = retryAfter;
   }
 }
-export async function api<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   const response = await fetch(`/api/backend/${path}`, { ...init, headers, credentials: 'same-origin', cache: 'no-store' });
@@ -34,12 +35,38 @@ export async function api<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, un
       else if (Array.isArray(data.detail)) message = 'Please check the submitted fields.';
     }
     const retry = response.headers.get('retry-after'); const seconds = retry === null ? NaN : Number(retry);
+    if (typeof window !== 'undefined' && (response.status === 401 || response.status === 403)) dashboardCache.invalidate('*', false, false);
+    if (typeof window !== 'undefined' && response.status >= 400 && response.status < 500 && response.status !== 429) {
+      const readKey = dashboardCacheKey(path); if (readKey) dashboardCache.refresh(readKey);
+    }
     const error = new ApiError(message, response.status, response.headers.get('x-request-id'), code, Number.isFinite(seconds) && seconds > 0 ? Math.min(86400, Math.ceil(seconds)) : null);
     error.verification = verificationDetails;
     throw error;
   }
   const parsed = schema.safeParse(data);
   if (!parsed.success) throw new ApiError('The backend response does not match this screen’s contract. Please refresh or check the deployment version.', 502);
+  if (typeof window !== 'undefined' && path === 'auth/me') {
+    const identity = z.object({ user: z.object({ id: z.string() }), memberships: z.array(z.object({ organization_id: z.string(), role: z.string() })) }).safeParse(parsed.data);
+    if (identity.success) dashboardCache.setPrincipal(JSON.stringify([identity.data.user.id, identity.data.memberships.map(m => `${m.organization_id}:${m.role}`).sort()]));
+  }
   return parsed.data;
+}
+export async function api<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
+  const browser = typeof window !== 'undefined';
+  const method = (init.method ?? 'GET').toUpperCase();
+  const key = browser && method === 'GET' ? dashboardCacheKey(path) : null;
+  if (browser) connectDashboardCache();
+  if (key) return dashboardCache.load(key, (signal, force) => {
+    const headers = new Headers(init.headers);
+    if (force) headers.set('X-OpsPilot-Refresh', '1');
+    return request(path, schema, { ...init, headers, signal });
+  }, init.signal);
+  // These POST endpoints only search existing data. Do not invalidate on every keystroke.
+  const readOperation = /\/(?:answers|retrieval\/search|dashboard\/project-knowledge|voice\/(?:transcriptions|speech))$/.test(path);
+  const scope = organizationScope(path);
+  const mutation = browser && method !== 'GET' && method !== 'HEAD' && scope !== null && !readOperation;
+  if (mutation) dashboardCache.invalidate(scope);
+  try { return await request(path, schema, init); }
+  finally { if (mutation) dashboardCache.invalidate(scope); }
 }
 export const post = <T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, payload: unknown = {}) => api(path, schema, { method: 'POST', body: JSON.stringify(payload) });
