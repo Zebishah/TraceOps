@@ -71,17 +71,18 @@ Modal prints the deployed HTTPS app URL. Use that URL as `WORKER_ROOT` below. Ap
 
 ## 4. Test Modal directly
 
-Set the token in your local shell without committing it:
+Open a Bash shell (type `bash` if your terminal is Fish), then set the worker URL and enter the token without displaying it:
 
 ```bash
-read -s WORKER_TOKEN
+WORKER_ROOT='https://YOUR-MODAL-APP-URL'
+read -rsp 'Worker token: ' WORKER_TOKEN; echo
 export WORKER_TOKEN
 ```
 
-Paste the same token and press Enter. Then test:
+Paste the same token you saved in the Modal Secret and press Enter. Then test:
 
 ```bash
-curl -i "WORKER_ROOT/health/ready"
+curl -i "$WORKER_ROOT/health/ready"
 curl -i "WORKER_ROOT/classify" \
   -H "Authorization: Bearer $WORKER_TOKEN" \
   -H "Content-Type: application/json" \
