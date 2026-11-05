@@ -51,6 +51,14 @@ class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
 
 
+class VerifyEmailCodeRequest(VerificationEmailRequest):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+
+
+class EmailCodeVerifiedResponse(TokenResponse):
+    verified: bool = True
+
+
 class VerificationMessage(BaseModel):
     message: str
 

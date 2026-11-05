@@ -3,7 +3,7 @@ export const MAX_REQUEST_BYTES = 11 * 1024 * 1024;
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const paths = [
   new RegExp(`^organizations/${UUID}/voice/(?:capabilities|transcriptions|speech)$`),
-  /^auth\/(login|register|me|mcp-token|verification\/(?:request|confirm))$/,
+  /^auth\/(login|register|me|mcp-token|verification\/(?:request|confirm|code))$/,
   /^health(?:\/ready)?$/,
   new RegExp(`^organizations/${UUID}/(?:incidents(?:/${UUID}(?:/(?:classify|retrieve-evidence|investigate-background|acknowledge|resolve-no-action|approvals/${UUID}(?:/(?:decision|resume-status))?|investigations/${UUID}/(?:result|retry)))?)?|documents(?:/${UUID}/(?:process|chunks|index))?|jobs/${UUID}|retrieval/search|answers)$`),
   new RegExp(`^organizations/${UUID}/dashboard/(?:overview|workspace|resources/(?:incidents|documents|approvals|jobs|customers|orders|payments|memories|automations|recovery)(?:/${UUID})?|incidents/${UUID}/latest|project-knowledge|evaluations)$`),

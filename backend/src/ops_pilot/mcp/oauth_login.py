@@ -23,14 +23,20 @@ from ops_pilot.mcp.oauth_form import (
     valid_form_token,
 )
 from ops_pilot.mcp.oauth_login_ui import render_login
-from ops_pilot.schemas.auth import LoginRequest
-from ops_pilot.services.auth import authenticate_user
+from ops_pilot.schemas.auth import LoginRequest, VerificationEmailRequest
+from ops_pilot.services.auth import authenticate_user, get_user_by_email
 from ops_pilot.services.auth_rate_limit import (
     AuthRateLimitExceeded,
     AuthRateLimitUnavailable,
     enforce_login_rate_limit,
+    enforce_verification_claim_limit,
+    enforce_verification_request_limit,
 )
-from ops_pilot.services.email_verification import requires_email_verification, verification_page_url
+from ops_pilot.services.email_verification import (
+    issue_verification_code,
+    requires_email_verification,
+    verify_email_code,
+)
 from ops_pilot.services.oauth import (
     create_authorization_code,
     get_oauth_client,
@@ -123,7 +129,8 @@ def _form_response(
     email: str = "",
     status_code: int = 200,
     retry_after: int | None = None,
-    verification_url: str = "",
+    verification: bool = False,
+    notice: str = "",
 ) -> HTMLResponse:
     response = render_login(
         values=context.values,
@@ -134,7 +141,8 @@ def _form_response(
         error=error,
         status_code=status_code,
         retry_after=retry_after,
-        verification_url=verification_url,
+        verification=verification,
+        notice=notice,
     )
     response.set_cookie(
         _cookie_name(),
@@ -177,7 +185,8 @@ async def oauth_login_submit(request: Request) -> Response:
         return _invalid_request()
     values = _values(form)
     if values is None or any(
-        len(form.getlist(key)) > 1 for key in ("csrf_token", "decision", "email", "password")
+        len(form.getlist(key)) > 1
+        for key in ("csrf_token", "decision", "email", "password", "verification_step", "code")
     ):
         return _invalid_request()
     proof = form.get("csrf_token", "")
@@ -195,7 +204,7 @@ async def oauth_login_submit(request: Request) -> Response:
     if origin is not None and origin != f"{issuer.scheme}://{issuer.netloc}":
         return _invalid_request(expired=True)
     decision = form.get("decision", "allow")
-    if not isinstance(decision, str) or decision not in {"allow", "deny"}:
+    if not isinstance(decision, str) or decision not in {"allow", "deny", "resend"}:
         return _invalid_request()
     async with async_session_factory() as session:
         context = await _context(session, values)
@@ -211,11 +220,12 @@ async def oauth_login_submit(request: Request) -> Response:
         else:
             email = form.get("email", "")
             password = form.get("password", "")
+            verification = form.get("verification_step") == "code"
             if (
                 not isinstance(email, str)
                 or not isinstance(password, str)
-                or not 1 <= len(password) <= 128
                 or len(email) > 320
+                or (not verification and not 1 <= len(password) <= 128)
             ):
                 return _form_response(
                     context,
@@ -223,8 +233,14 @@ async def oauth_login_submit(request: Request) -> Response:
                     error="Enter your email address and password.",
                     status_code=422,
                 )
+            if decision == "resend" and not verification:
+                return _invalid_request()
             try:
-                credentials = LoginRequest(email=email.strip(), password=password)
+                credentials = (
+                    VerificationEmailRequest(email=email.strip())
+                    if verification
+                    else LoginRequest(email=email.strip(), password=password)
+                )
             except ValidationError:
                 return _form_response(
                     context,
@@ -234,39 +250,74 @@ async def oauth_login_submit(request: Request) -> Response:
                     status_code=422,
                 )
             try:
-                await enforce_login_rate_limit(request=request, email=credentials.email)
+                if verification and decision == "resend":
+                    await enforce_verification_request_limit(
+                        request=request, email=credentials.email
+                    )
+                    user = await get_user_by_email(session, credentials.email)
+                    if user is not None:
+                        await issue_verification_code(session, user)
+                    return _form_response(
+                        context,
+                        str(request.cookies.get(_cookie_name())),
+                        email=credentials.email,
+                        verification=True,
+                        notice="If this account awaits verification, a new code has been sent.",
+                    )
+                if verification:
+                    await enforce_verification_claim_limit(request=request, email=credentials.email)
+                    value = form.get("code", "")
+                    user = (
+                        await verify_email_code(session, credentials.email, value)
+                        if isinstance(value, str)
+                        else None
+                    )
+                    if user is None:
+                        return _form_response(
+                            context,
+                            str(request.cookies.get(_cookie_name())),
+                            email=credentials.email,
+                            verification=True,
+                            error="This code is incorrect or expired. Try again or resend it.",
+                            status_code=400,
+                        )
+                else:
+                    await enforce_login_rate_limit(request=request, email=credentials.email)
+                    user = await authenticate_user(session, credentials.email, password)
+                    if user is None:
+                        return _form_response(
+                            context,
+                            str(request.cookies.get(_cookie_name())),
+                            email=credentials.email,
+                            error="Invalid email or password.",
+                            status_code=401,
+                        )
+                    if requires_email_verification(user):
+                        await enforce_verification_request_limit(
+                            request=request, email=credentials.email
+                        )
+                        sent = await issue_verification_code(session, user)
+                        return _form_response(
+                            context,
+                            str(request.cookies.get(_cookie_name())),
+                            email=credentials.email,
+                            verification=True,
+                            notice="We sent a six-digit code. Enter it below to verify and connect."
+                            if sent
+                            else "We couldn’t send your code. Use Resend code to try again.",
+                        )
             except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
                 limited = isinstance(exc, AuthRateLimitExceeded)
                 return _form_response(
                     context,
                     str(request.cookies.get(_cookie_name())),
                     email=credentials.email,
+                    verification=verification,
                     error="Too many attempts. Please try again later."
                     if limited
                     else "Sign-in is temporarily unavailable. Please try again shortly.",
                     status_code=429 if limited else 503,
-                    retry_after=exc.retry_after_seconds
-                    if isinstance(exc, AuthRateLimitExceeded)
-                    else None,
-                )
-            user = await authenticate_user(session, credentials.email, credentials.password)
-            if user is None:
-                return _form_response(
-                    context,
-                    str(request.cookies.get(_cookie_name())),
-                    email=credentials.email,
-                    error="Invalid email or password.",
-                    status_code=401,
-                )
-            if requires_email_verification(user):
-                return _form_response(
-                    context,
-                    str(request.cookies.get(_cookie_name())),
-                    email=credentials.email,
-                    error="Verify your email before connecting. Open email verification, "
-                    "then return here to sign in again.",
-                    status_code=403,
-                    verification_url=verification_page_url(),
+                    retry_after=exc.retry_after_seconds if limited else None,
                 )
             code = await create_authorization_code(
                 session=session,

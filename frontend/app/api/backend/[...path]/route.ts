@@ -53,18 +53,19 @@ async function proxy(request: Request, context: Context): Promise<Response> {
     if (upstream.status >= 300 && upstream.status < 400) return jsonError('The backend redirected this request. Check its configured URL.', 502);
     const responseHeaders = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     for (const key of ['retry-after', 'x-request-id']) { const value = upstream.headers.get(key); if (value) responseHeaders.set(key, value); }
-    if (path === 'auth/login' && upstream.ok) {
-      const parsed = z.object({ access_token: z.string().min(1) }).safeParse(await upstream.json());
+    if (path.startsWith('auth/')) responseHeaders.set('Referrer-Policy', 'no-referrer');
+    if ((path === 'auth/login' || path === 'auth/verification/code') && upstream.ok) {
+      const sessionSchema = z.object({ access_token: z.string().min(1) });
+      const parsed = (path === 'auth/verification/code' ? sessionSchema.extend({ verified: z.literal(true) }) : sessionSchema).safeParse(await upstream.json());
       if (!parsed.success) return jsonError('The backend returned an invalid session', 502);
       cookieStore.set(SESSION_COOKIE, parsed.data.access_token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' || new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: cookieLifetime(parsed.data.access_token) });
-      return Response.json({ authenticated: true }, { headers: responseHeaders });
+      return Response.json({ authenticated: true, ...(path === 'auth/verification/code' ? { verified: true } : {}) }, { headers: responseHeaders });
     }
     if (upstream.status === 401) cookieStore.delete(SESSION_COOKIE);
     if (upstream.status === 403 && (upstream.headers.get('content-type') ?? '').includes('application/json')) {
       const denied: unknown = await upstream.clone().json().catch(() => null);
       if (typeof denied === 'object' && denied !== null && 'detail' in denied && verificationRequiredSchema.safeParse(denied.detail).success) cookieStore.delete(SESSION_COOKIE);
     }
-    if (path.startsWith('auth/')) responseHeaders.set('Referrer-Policy', 'no-referrer');
     if (speech && upstream.ok) return await proxyVoiceSpeechResponse(upstream);
     if (!(upstream.headers.get('content-type') ?? '').includes('application/json')) {
       if (upstream.status === 404) return jsonError('Not Found', 404);

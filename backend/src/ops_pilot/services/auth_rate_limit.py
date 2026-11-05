@@ -141,13 +141,20 @@ async def enforce_verification_request_limit(*, request: Request, email: str) ->
     )
 
 
-async def enforce_verification_claim_limit(*, request: Request) -> None:
+async def enforce_verification_claim_limit(*, request: Request, email: str | None = None) -> None:
     await _enforce_limit(
         category="verification-claim-ip",
         identifier=_client_ip(request),
         attempts=20,
         window_seconds=60,
     )
+    if email is not None:
+        await _enforce_limit(
+            category="verification-code-account",
+            identifier=email.strip().casefold(),
+            attempts=5,
+            window_seconds=600,
+        )
 
 
 async def enforce_verification_delivery_limit() -> None:

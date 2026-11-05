@@ -401,10 +401,26 @@ def test_unverified_user_cannot_create_mcp_consent_code(flow, monkeypatch):
         ),
     )
     flow.auth.return_value.email_verified_at = None
+    monkeypatch.setattr(oauth_login, "enforce_verification_request_limit", AsyncMock())
+    delivery = AsyncMock(return_value=True)
+    monkeypatch.setattr(oauth_login, "issue_verification_code", delivery)
     _, fields = open_form(flow)
     response = submit(flow, fields)
-    assert response.status_code == 403
-    assert "Verify your email before connecting" in response.text
-    assert 'href="https://workspace.example/verify-email"' in response.text
+    assert response.status_code == 200
+    assert 'name="code"' in response.text
+    assert 'name="password"' not in response.text
+    assert 'Verify &amp; connect' in response.text
     assert HiddenFields(response.text).values["state"] == PARAMS["state"]
     flow.code.assert_not_awaited()
+    delivery.assert_awaited_once()
+    claim = AsyncMock(return_value=flow.auth.return_value)
+    limit = AsyncMock()
+    monkeypatch.setattr(oauth_login, "verify_email_code", claim)
+    monkeypatch.setattr(oauth_login, "enforce_verification_claim_limit", limit)
+    completed = submit(flow, HiddenFields(response.text).values, code="012345")
+    assert completed.status_code == 302
+    assert urlsplit(completed.headers["location"]).netloc == "client.example"
+    assert parse_qs(urlsplit(completed.headers["location"]).query)["state"] == [PARAMS["state"]]
+    flow.code.assert_awaited_once()
+    limit.assert_awaited_once()
+    claim.assert_awaited_once()

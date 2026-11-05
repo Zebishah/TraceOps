@@ -5,8 +5,8 @@ import { allowedBackendPath } from '../lib/product/proxy-policy.ts';
 import { ApiError, post } from '../lib/product/client.ts';
 import { z } from 'zod';
 
-test('verification has only two public proxy operations with strict bodies', () => {
-  for (const path of ['auth/verification/request', 'auth/verification/confirm']) {
+test('verification proxy only exposes code, request and legacy confirmation with strict bodies', () => {
+  for (const path of ['auth/verification/request', 'auth/verification/confirm', 'auth/verification/code']) {
     assert.equal(allowedBackendPath(path), true);
     assert.equal(anonymousAuthPath(path), true);
   }
@@ -31,8 +31,17 @@ test('old backend registration stays compatible while verification-enabled signu
 
 test('structured verification errors and Retry-After reach the auth UI', async () => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({ detail: { code: 'email_verification_required', message: 'Verify your email', email: 'person@example.com' } }), { status: 403, headers: { 'retry-after': '42' } });
+  globalThis.fetch = async () => new Response(JSON.stringify({ detail: { code: 'email_verification_required', message: 'Verify your email', email: 'person@example.com', verification_email_sent: true } }), { status: 403, headers: { 'retry-after': '42' } });
   try {
-    await assert.rejects(post('auth/login', z.object({ authenticated: z.boolean() }), {}), (error: unknown) => error instanceof ApiError && error.code === 'email_verification_required' && error.message === 'Verify your email' && error.retryAfter === 42);
+    await assert.rejects(post('auth/login', z.object({ authenticated: z.boolean() }), {}), (error: unknown) => error instanceof ApiError && error.code === 'email_verification_required' && error.message === 'Verify your email' && error.retryAfter === 42 && error.verification?.verification_email_sent === true);
   } finally { globalThis.fetch = original; }
+});
+
+test('verification codes require a valid address and exactly six ASCII digits', () => {
+  const schema = authInputSchema('auth/verification/code');
+  assert.equal(schema?.safeParse({ email: 'person@example.com', code: '012345' }).success, true);
+  for (const code of ['12345', '1234567', '12a456', '１２３４５６', '123 45', '']) {
+    assert.equal(schema?.safeParse({ email: 'person@example.com', code }).success, false);
+  }
+  assert.equal(schema?.safeParse({ email: 'invalid', code: '123456' }).success, false);
 });

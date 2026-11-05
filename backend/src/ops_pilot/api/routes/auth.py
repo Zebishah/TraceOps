@@ -9,6 +9,7 @@ from ops_pilot.core.security import (
 )
 from ops_pilot.models.membership import Membership
 from ops_pilot.schemas.auth import (
+    EmailCodeVerifiedResponse,
     EmailVerifiedResponse,
     LoginRequest,
     MembershipResponse,
@@ -18,6 +19,7 @@ from ops_pilot.schemas.auth import (
     UserResponse,
     VerificationEmailRequest,
     VerificationMessage,
+    VerifyEmailCodeRequest,
     VerifyEmailRequest,
 )
 from ops_pilot.services.auth import (
@@ -34,8 +36,9 @@ from ops_pilot.services.auth_rate_limit import (
     enforce_verification_request_limit,
 )
 from ops_pilot.services.email_verification import (
-    issue_verification_email,
+    issue_verification_code,
     requires_email_verification,
+    verify_email_code,
     verify_email_token,
 )
 
@@ -89,7 +92,7 @@ async def register(
     )
 
     required = requires_email_verification(user)
-    sent = await issue_verification_email(session, user) if required else False
+    sent = await issue_verification_code(session, user) if required else False
 
     return UserResponse(
         email_verified=user.email_verified_at is not None,
@@ -132,7 +135,14 @@ async def login(
         )
 
     if requires_email_verification(user):
-        raise verification_required_error(user.email)
+        try:
+            await enforce_verification_request_limit(request=request, email=user.email)
+        except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+            _raise_rate_limit_error(exc)
+        sent = await issue_verification_code(session, user)
+        error = verification_required_error(user.email)
+        error.detail["verification_email_sent"] = sent
+        raise error
 
     token = create_access_token(
         subject=str(user.id),
@@ -208,11 +218,11 @@ async def request_email_verification(
         _raise_rate_limit_error(exc)
     user = await get_user_by_email(session, payload.email)
     if user is not None:
-        await issue_verification_email(session, user)
+        await issue_verification_code(session, user)
     # Same response for unknown, verified, disabled and delivery-failed accounts.
     return VerificationMessage(
         message="If this address belongs to an account awaiting verification, "
-        "a link will be sent. Check your inbox and spam folder.",
+        "a six-digit code will be sent. Check your inbox and spam folder.",
     )
 
 
@@ -232,6 +242,27 @@ async def confirm_email_verification(
         raise HTTPException(
             status_code=400,
             detail="This verification link is invalid, expired, or already used. "
-            "Try signing in if you already verified, or request a new link.",
+            "Try signing in if you already verified, or sign in to receive a new code.",
         )
     return EmailVerifiedResponse()
+
+
+@router.post("/verification/code", response_model=EmailCodeVerifiedResponse)
+async def confirm_email_code(
+    payload: VerifyEmailCodeRequest,
+    session: DbSession,
+    request: Request,
+) -> EmailCodeVerifiedResponse:
+    if not get_settings().email_verification_enabled:
+        raise HTTPException(status_code=503, detail="Email verification is not enabled")
+    try:
+        await enforce_verification_claim_limit(request=request, email=payload.email)
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+    user = await verify_email_code(session, payload.email, payload.code)
+    if user is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This code is incorrect or expired. Check the code in your email or resend it.",
+        )
+    return EmailCodeVerifiedResponse(access_token=create_access_token(subject=str(user.id)))

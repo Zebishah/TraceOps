@@ -8,15 +8,17 @@ export const registrationSchema = credentialsSchema.extend({
 });
 export const verificationRequestSchema = z.object({ email: z.string().email().max(320) });
 export const verificationConfirmSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
+export const verificationCodeSchema = verificationRequestSchema.extend({ code: z.string().regex(/^[0-9]{6}$/) });
 export const registrationResponseSchema = z.object({
   id: z.string(), verification_required: z.boolean().optional().default(false),
   verification_email_sent: z.boolean().optional().default(false),
 });
 export const verificationRequiredSchema = z.object({
   code: z.literal('email_verification_required'), message: z.string(), email: z.string().email(),
+  verification_email_sent: z.boolean().optional(),
 });
 export function anonymousAuthPath(path: string): boolean {
-  return ['auth/login', 'auth/register', 'auth/verification/request', 'auth/verification/confirm'].includes(path);
+  return ['auth/login', 'auth/register', 'auth/verification/request', 'auth/verification/confirm', 'auth/verification/code'].includes(path);
 }
 export function authInputSchema(path: string) {
   switch (path) {
@@ -24,6 +26,7 @@ export function authInputSchema(path: string) {
     case 'auth/register': return registrationSchema;
     case 'auth/verification/request': return verificationRequestSchema;
     case 'auth/verification/confirm': return verificationConfirmSchema;
+    case 'auth/verification/code': return verificationCodeSchema;
     default: return null;
   }
 }

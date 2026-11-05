@@ -14,7 +14,8 @@ const upstream=createServer(async(request,response)=>{
   if(JSON.parse(body).email==='unverified@example.com'){response.statusCode=403;return response.end(JSON.stringify({detail:{code:'email_verification_required',message:'Verify your email before signing in.',email:'unverified@example.com'}}));}
   return response.end(JSON.stringify({access_token:token}));
  }
- if(request.url==='/api/v1/auth/verification/request')return response.end(JSON.stringify({message:'If this account awaits verification, a link will be sent.'}));
+ if(request.url==='/api/v1/auth/verification/code')return response.end(JSON.stringify({verified:true,access_token:token}));
+ if(request.url==='/api/v1/auth/verification/request')return response.end(JSON.stringify({message:'If this account awaits verification, a six-digit code will be sent.'}));
  if(request.url==='/api/v1/auth/verification/confirm')return response.end(JSON.stringify({verified:true,message:'Email verified. You can now sign in.'}));
  if(request.url==='/api/v1/health')return response.end(JSON.stringify({status:'ok'}));
  if(request.url?.endsWith('/voice/transcriptions'))return response.end(JSON.stringify({text:'Synthetic incident brief',model:'fixture',requires_confirmation:true}));
@@ -51,12 +52,18 @@ try{
  const verifyRequest=await fetch(base+'/api/backend/auth/verification/request?token=must-not-forward',{method:'POST',headers:publicHeaders,body:JSON.stringify({email:'fixture@example.com'})});
  assert.equal(verifyRequest.status,200);assert.equal(requests.at(-1).url,'/api/v1/auth/verification/request');assert.equal(requests.at(-1).authorization,undefined);
  assert.equal(verifyRequest.headers.get('cache-control'),'no-store');
- for(const suffix of ['request','confirm'])assert.equal((await fetch(base+'/api/backend/auth/verification/'+suffix)).status,405);
+ for(const suffix of ['request','confirm','code'])assert.equal((await fetch(base+'/api/backend/auth/verification/'+suffix)).status,405);
  const invalidBefore=requests.length;
  assert.equal((await fetch(base+'/api/backend/auth/verification/confirm',{method:'POST',headers:publicHeaders,body:JSON.stringify({token:'short'})})).status,422);assert.equal(requests.length,invalidBefore);
  assert.equal((await fetch(base+'/api/backend/auth/verification/request',{method:'POST',headers:{...publicHeaders,origin:'https://attacker.example'},body:JSON.stringify({email:'fixture@example.com'})})).status,403);
  const confirmed=await fetch(base+'/api/backend/auth/verification/confirm',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({token:'a'.repeat(43)})});
  assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).verified,true);assert.equal(requests.at(-1).authorization,undefined);assert.equal(confirmed.headers.get('set-cookie'),null);
+ const otpBefore=requests.length;
+ for(const body of [{email:'fixture@example.com',code:'12345'},{email:'invalid',code:'012345'}])assert.equal((await fetch(base+'/api/backend/auth/verification/code',{method:'POST',headers:publicHeaders,body:JSON.stringify(body)})).status,422);
+ assert.equal(requests.length,otpBefore);
+ assert.equal((await fetch(base+'/api/backend/auth/verification/code',{method:'POST',headers:{...publicHeaders,origin:'https://attacker.example'},body:JSON.stringify({email:'fixture@example.com',code:'012345'})})).status,403);
+ const otp=await fetch(base+'/api/backend/auth/verification/code',{method:'POST',headers:publicHeaders,body:JSON.stringify({email:'fixture@example.com',code:'012345'})});
+ assert.equal(otp.status,200);assert.deepEqual(await otp.json(),{authenticated:true,verified:true});assert.match(otp.headers.get('set-cookie'),/HttpOnly/i);assert.match(otp.headers.get('set-cookie'),/Secure/i);assert.equal(requests.at(-1).authorization,undefined);
  const blocked=await fetch(base+'/api/backend/auth/login',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({email:'unverified@example.com',password:'fixture-password'})});
  assert.equal(blocked.status,403);assert.equal((await blocked.json()).detail.code,'email_verification_required');assert.match(blocked.headers.get('set-cookie'),/opspilot_backend_session=;/i);
  const records=await fetch(base+`/api/backend/organizations/${organization}/dashboard/resources/incidents?limit=20&offset=0&q=duplicate`,{headers});assert.equal(records.status,200);assert.equal(records.headers.get('x-request-id'),'fixture-request');assert.equal(records.headers.get('cache-control'),'no-store');assert.equal(requests.at(-1).authorization,`Bearer ${token}`);assert.ok(requests.at(-1).url.endsWith('q=duplicate'));

@@ -242,7 +242,7 @@ def api(settings, monkeypatch):
     claim_limit = AsyncMock()
     monkeypatch.setattr(routes, "register_user", AsyncMock(return_value=user))
     monkeypatch.setattr(routes, "authenticate_user", auth)
-    monkeypatch.setattr(routes, "issue_verification_email", issue)
+    monkeypatch.setattr(routes, "issue_verification_code", issue)
     monkeypatch.setattr(routes, "get_user_by_email", lookup)
     monkeypatch.setattr(routes, "verify_email_token", claim)
     monkeypatch.setattr(routes, "enforce_registration_rate_limit", AsyncMock())
@@ -289,7 +289,8 @@ def test_unverified_login_never_issues_a_session(api):
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "email_verification_required"
     assert "access_token" not in response.json()
-    api.issue.assert_not_awaited()
+    assert response.json()["detail"]["verification_email_sent"] is True
+    api.issue.assert_awaited_once()
 
 
 def test_wrong_login_does_not_disclose_verification_state(api):
