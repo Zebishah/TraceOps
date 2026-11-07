@@ -1,6 +1,6 @@
 # MCP Purpose
 
-IncidentIQ implements a Model Context Protocol server so compatible AI clients can discover and invoke approved IncidentIQ capabilities.
+TraceOps implements a Model Context Protocol server so compatible AI clients can discover and invoke approved TraceOps capabilities.
 
 MCP does not replace the FastAPI API or LangGraph.
 
@@ -10,7 +10,7 @@ It provides an AI-oriented integration layer.
 
 The first MCP capability is project knowledge search.
 
-An external AI can ask questions about IncidentIQ such as:
+An external AI can ask questions about TraceOps such as:
 
 - how the architecture works
 - why LangGraph is used
@@ -25,7 +25,7 @@ The MCP tool searches a dedicated Qdrant project-knowledge collection.
 
 The external MCP client is already an AI model.
 
-IncidentIQ therefore returns structured project evidence rather than always using another LLM to produce a second final answer.
+TraceOps therefore returns structured project evidence rather than always using another LLM to produce a second final answer.
 
 The flow is:
 
@@ -37,7 +37,7 @@ AI client
 
 # Operational MCP
 
-IncidentIQ will also expose carefully selected operational read-only tools.
+TraceOps will also expose carefully selected operational read-only tools.
 
 Planned examples include:
 
@@ -61,12 +61,12 @@ Sensitive actions must not bypass existing authorization, approval, idempotency,
 
 # Remote Deployment
 
-The production MCP server will use HTTP transport and be exposed through the deployed IncidentIQ backend.
+The production MCP server will use HTTP transport and be exposed through the deployed TraceOps backend.
 
 The intended architecture is:
 
 MCP client
 → HTTPS
-→ IncidentIQ backend
+→ TraceOps backend
 → MCP server
-→ existing IncidentIQ services
+→ existing TraceOps services

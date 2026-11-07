@@ -1,6 +1,6 @@
 # Human in the Loop
 
-IncidentIQ uses human-in-the-loop approval for sensitive actions such as financial refunds.
+TraceOps uses human-in-the-loop approval for sensitive actions such as financial refunds.
 
 The AI is allowed to investigate and recommend an action, but sensitive execution can require explicit approval.
 

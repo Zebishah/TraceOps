@@ -1,6 +1,6 @@
-# IncidentIQ Backend
+# TraceOps Backend
 
-Python/FastAPI API for IncidentIQ's multi-tenant investigations, knowledge retrieval, approvals, background jobs, and MCP tools.
+Python/FastAPI API for TraceOps's multi-tenant investigations, knowledge retrieval, approvals, background jobs, and MCP tools.
 
 ## Development
 

@@ -1,6 +1,6 @@
-# IncidentIQ Architecture
+# TraceOps Architecture
 
-IncidentIQ is a multi-tenant AI platform for investigating and resolving
+TraceOps is a multi-tenant AI platform for investigating and resolving
 operational incidents using company knowledge, AI reasoning, tools,
 human approval, and auditable workflows.
 
