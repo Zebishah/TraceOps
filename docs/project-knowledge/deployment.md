@@ -1,6 +1,6 @@
 # Deployment Architecture
 
-IncidentIQ is designed around managed cloud services.
+TraceOps is designed around managed cloud services.
 
 # Frontend
 
@@ -24,7 +24,7 @@ Qdrant Cloud stores:
 
 - organization document vectors
 - incident memory vectors
-- IncidentIQ project knowledge vectors
+- TraceOps project knowledge vectors
 
 These use separate collections.
 
@@ -50,4 +50,4 @@ Production deployment requires a network-accessible n8n instance or endpoint.
 
 During local development, MCP can be tested using MCP Inspector.
 
-For production, compatible clients connect over HTTPS to the MCP endpoint mounted in the IncidentIQ backend.
+For production, compatible clients connect over HTTPS to the MCP endpoint mounted in the TraceOps backend.

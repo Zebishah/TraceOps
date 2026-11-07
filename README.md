@@ -1,10 +1,10 @@
-# IncidentIQ
+# TraceOps
 
 **AI-assisted incident investigation, with evidence before action.**
 
-IncidentIQ investigates operational incidents using organization knowledge, live business records, AI agents, and human oversight. It brings the investigation, evidence, proposed next steps, approvals, and execution history into one multi-tenant workspace.
+TraceOps investigates operational incidents using organization knowledge, live business records, AI agents, and human oversight. It brings the investigation, evidence, proposed next steps, approvals, and execution history into one multi-tenant workspace.
 
-Previously branded OpsPilot, this repository now uses IncidentIQ as its product identity.
+Previously branded OpsPilot and IncidentIQ, this repository now uses TraceOps as its product identity.
 
 ## What it does
 
@@ -59,16 +59,16 @@ PostgreSQL is the source of truth. Qdrant stores retrieval vectors; Redis suppor
 Requirements: Python 3.12+, uv, Node.js 22, the frontend's pinned pnpm version, and a PostgreSQL database. Retrieval and integration features require the corresponding provider configuration in the backend example.
 
 ```bash
-git clone https://github.com/Zebishah/ops-pilot.git
-cd ops-pilot/backend
+git clone https://github.com/Zebishah/TraceOps.git
+cd TraceOps/backend
 cp .env.example .env
 uv sync
 ```
 
-Configure `DATABASE_URL`, a strong `JWT_SECRET_KEY`, and the provider settings for the features you will run. Set `APP_NAME="IncidentIQ API"`. PostgreSQL, Qdrant, Redis, S3, embedding, reranking, Groq, Inngest, and n8n settings are documented in [the environment template](backend/.env.example). Never use example secrets in a shared deployment.
+Configure `DATABASE_URL`, a strong `JWT_SECRET_KEY`, and the provider settings for the features you will run. Set `APP_NAME="TraceOps API"`. PostgreSQL, Qdrant, Redis, S3, embedding, reranking, Groq, Inngest, and n8n settings are documented in [the environment template](backend/.env.example). Never use example secrets in a shared deployment.
 
 ```bash
-# From ops-pilot/backend/
+# From TraceOps/backend/
 uv run alembic upgrade head
 uv run uvicorn ops_pilot.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -89,12 +89,12 @@ Background jobs require configured Inngest execution; importing n8n definitions 
 ## Verification
 
 ```bash
-# From ops-pilot/backend/
+# From TraceOps/backend/
 uv run ruff check .
 uv run mypy
 uv run pytest
 
-# From ops-pilot/frontend/
+# From TraceOps/frontend/
 pnpm run typecheck
 pnpm test
 pnpm run build
@@ -108,4 +108,4 @@ The public walkthrough uses synthetic records. The current refund demonstration 
 
 ## Branding compatibility
 
-IncidentIQ is the product name across the UI, API metadata, email, MCP connection screens, and documentation. The GitHub repository URL, Python `ops_pilot` imports, database/vector identifiers, OAuth scopes, cookies, webhook headers, workflow filenames, and existing environment variable names retain their established values for deployment compatibility.
+TraceOps is the product name across the UI, API metadata, email, MCP connection screens, and documentation. The GitHub repository URL, Python `ops_pilot` imports, database/vector identifiers, OAuth scopes, cookies, webhook headers, workflow filenames, and existing environment variable names retain their established values for deployment compatibility.

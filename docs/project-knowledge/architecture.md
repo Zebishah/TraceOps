@@ -1,6 +1,6 @@
-# IncidentIQ Overview
+# TraceOps Overview
 
-IncidentIQ is a multi-tenant agentic incident investigation and resolution platform.
+TraceOps is a multi-tenant agentic incident investigation and resolution platform.
 
 It combines company knowledge, live operational data, AI reasoning, deterministic safety rules, human approval, background processing, incident memory, and external business automation.
 
@@ -30,7 +30,7 @@ Inngest handles durable background processing.
 
 n8n handles external business automation and third-party integrations.
 
-MCP exposes selected IncidentIQ capabilities to compatible AI clients.
+MCP exposes selected TraceOps capabilities to compatible AI clients.
 
 # Separation of Responsibilities
 
@@ -40,7 +40,7 @@ Inngest controls durable background jobs and retryable work.
 
 n8n handles external business integrations such as Gmail, Discord, and Google Sheets.
 
-MCP allows external AI clients to discover and invoke approved IncidentIQ capabilities.
+MCP allows external AI clients to discover and invoke approved TraceOps capabilities.
 
 PostgreSQL remains the source of truth for transactional application state.
 
