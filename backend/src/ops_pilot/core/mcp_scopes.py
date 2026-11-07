@@ -1,4 +1,4 @@
-"""Supported IncidentIQ MCP OAuth scopes."""
+"""Supported TraceOps MCP OAuth scopes."""
 
 READ_SCOPE = "ops-pilot:read"
 WRITE_SCOPE = "ops-pilot:write"

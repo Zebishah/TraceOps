@@ -1,6 +1,6 @@
 # Multi-Tenancy
 
-IncidentIQ is designed as a multi-tenant system.
+TraceOps is designed as a multi-tenant system.
 
 Organization-owned data must always be scoped by organization identity.
 
@@ -30,7 +30,7 @@ Qdrant company-document searches include organization filtering.
 
 Incident-memory searches also include organization filtering.
 
-Project knowledge is stored separately because it represents IncidentIQ documentation rather than tenant-owned company data.
+Project knowledge is stored separately because it represents TraceOps documentation rather than tenant-owned company data.
 
 # Sensitive Actions
 

@@ -1,6 +1,6 @@
 # Duplicate Payment Detection
 
-IncidentIQ includes deterministic duplicate-payment detection for payment incidents.
+TraceOps includes deterministic duplicate-payment detection for payment incidents.
 
 This logic was introduced because a language model should not guess which financial transaction should be refunded.
 
@@ -20,7 +20,7 @@ The later matching charge is treated as the duplicate candidate.
 
 # Ambiguity Safety
 
-IncidentIQ does not force a conclusion when multiple possible duplicate candidates exist.
+TraceOps does not force a conclusion when multiple possible duplicate candidates exist.
 
 If the available transaction history is ambiguous, the detector returns no deterministic candidate.
 

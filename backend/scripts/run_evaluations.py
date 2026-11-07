@@ -35,13 +35,13 @@ from ops_pilot.evaluation.tool_selection import (
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Run scoped IncidentIQ quality evaluations.")
+    parser = argparse.ArgumentParser(description="Run scoped TraceOps quality evaluations.")
     parser.add_argument("--backend-url", default=os.getenv("OPSPILOT_BACKEND_URL"))
     args = parser.parse_args()
     configured_url = args.backend_url or input("Backend root URL: ").strip()
     url = evaluation_backend_url(configured_url)
-    email = input("IncidentIQ email: ").strip()
-    password = getpass.getpass("IncidentIQ password (hidden): ")
+    email = input("TraceOps email: ").strip()
+    password = getpass.getpass("TraceOps password (hidden): ")
     async with httpx.AsyncClient(base_url=url, timeout=30, follow_redirects=False) as client:
         organizations = await discover_evaluation_organizations(
             client, email=email, password=password

@@ -1,6 +1,6 @@
 # Operational Tools
 
-IncidentIQ does not rely only on document retrieval.
+TraceOps does not rely only on document retrieval.
 
 Incidents can require live business data from operational systems.
 

@@ -1,6 +1,6 @@
 # Background Processing
 
-IncidentIQ uses Inngest for durable background workflows.
+TraceOps uses Inngest for durable background workflows.
 
 Long-running or retryable operations should not depend on an HTTP request remaining open.
 
@@ -29,7 +29,7 @@ If document processing succeeds but indexing continues to fail until retries are
 
 - the background job is marked failed
 - failure information is preserved
-- IncidentIQ can dispatch an indexing-failure automation to n8n
+- TraceOps can dispatch an indexing-failure automation to n8n
 - operations staff can receive Discord and email alerts
 - the failure can be recorded in an operational log
 

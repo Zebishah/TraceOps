@@ -1,6 +1,6 @@
 # Incident Memory
 
-TraceOps stores useful information from resolved incidents as searchable incident memory.
+IncidentIQ stores useful information from resolved incidents as searchable incident memory.
 
 The purpose is to help future investigations benefit from previous successful cases.
 
@@ -32,7 +32,7 @@ Keeping separate collections makes their purpose and filtering clearer.
 
 A new incident reports that a customer was charged twice.
 
-TraceOps may retrieve:
+IncidentIQ may retrieve:
 
 - payment policy documents
 - current payment transactions

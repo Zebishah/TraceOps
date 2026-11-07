@@ -1,6 +1,6 @@
 # Authentication and Resend email verification
 
-IncidentIQ now supports automatic six-digit email verification with Resend. Password hashing, login rate limits, workspace roles, human approval checks, and scoped MCP OAuth remain in place. Verification is an explicit rollout setting; the default is off so deploying the schema and UI does not immediately block existing accounts.
+TraceOps now supports automatic six-digit email verification with Resend. Password hashing, login rate limits, workspace roles, human approval checks, and scoped MCP OAuth remain in place. Verification is an explicit rollout setting; the default is off so deploying the schema and UI does not immediately block existing accounts.
 
 ## Backend environment
 
@@ -10,7 +10,7 @@ Set these on the **Python backend in Render**, or in `backend/.env` for local de
 | --- | --- |
 | `EMAIL_VERIFICATION_ENABLED` | `true` after the migration, sender, and frontend are ready; default `false` |
 | `RESEND_API_KEY` | A Resend sending-access key restricted to `nagumo-spot.isroot.in` |
-| `EMAIL_FROM` | `IncidentIQ <opspilot@nagumo-spot.isroot.in>` |
+| `EMAIL_FROM` | `TraceOps <opspilot@nagumo-spot.isroot.in>` |
 | `FRONTEND_BASE_URL` | The frontend's actual public HTTPS origin, such as your Vercel production URL; no `/app`, query string, credentials, or fragment |
 
 Optional settings:
@@ -21,7 +21,7 @@ Optional settings:
 | `EMAIL_VERIFICATION_DAILY_LIMIT` | `80` | Maximum application verification-send attempts per rolling 24-hour Redis window; leaves some of a 100/day free allowance for other uses |
 | `EMAIL_DELIVERY_TIMEOUT_SECONDS` | `10` | Resend request timeout |
 
-All projects in the same Resend account share the provider's sending allowance. Raising IncidentIQ's limit does not raise the provider's quota. The application budget is not a delivery or billing guarantee.
+All projects in the same Resend account share the provider's sending allowance. Raising TraceOps's limit does not raise the provider's quota. The application budget is not a delivery or billing guarantee.
 
 No new frontend environment variable is required. Keep its existing `OPSPILOT_BACKEND_URL` pointing to the public backend. Locally, use `http://localhost:5173` for `FRONTEND_BASE_URL` if that is your frontend port. Production requires HTTPS.
 

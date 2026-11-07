@@ -10,7 +10,7 @@ From `ops-pilot/backend`, with the backend dependencies and AI/retrieval configu
 uv run python scripts/run_evaluations.py --backend-url https://ops-pilot-bjmb.onrender.com
 ```
 
-The script prompts for your TraceOps account email and password. Password input is hidden. It signs in and calls `/auth/me`, keeping the access token only in memory. A single owner/admin workspace is selected automatically. If several are available, choose a listed workspace number; no UUID needs to be entered or placed in an environment file.
+The script prompts for your IncidentIQ account email and password. Password input is hidden. It signs in and calls `/auth/me`, keeping the access token only in memory. A single owner/admin workspace is selected automatically. If several are available, choose a listed workspace number; no UUID needs to be entered or placed in an environment file.
 
 The six existing suites still run normally, including model and retrieval calls using the existing evaluation configuration. The authenticated organization's UUID supplies the retrieval scope. Results are written atomically to:
 
