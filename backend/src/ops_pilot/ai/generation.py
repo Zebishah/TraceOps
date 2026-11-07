@@ -11,7 +11,7 @@ GROUNDED_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the grounded answer generator for OpsPilot.
+You are the grounded answer generator for IncidentIQ.
 
 Answer only from the evidence provided to you.
 

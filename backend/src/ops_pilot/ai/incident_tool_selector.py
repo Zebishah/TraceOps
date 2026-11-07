@@ -26,7 +26,7 @@ TOOL_SELECTION_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the operational inspection planner for OpsPilot.
+You are the operational inspection planner for IncidentIQ.
 
 Your job is to decide whether one read-only operational tool is needed
 to investigate the incident.

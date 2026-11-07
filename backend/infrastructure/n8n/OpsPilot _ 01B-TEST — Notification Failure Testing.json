@@ -1,5 +1,5 @@
 {
-  "name": "OpsPilot | 01B-TEST — Notification Failure Testing",
+  "name": "IncidentIQ | 01B-TEST — Notification Failure Testing",
   "nodes": [
     {
       "parameters": {
@@ -69,7 +69,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const incident = $json;\n\nconst severity =\n  incident.priority === 'critical'\n    ? '🚨 CRITICAL'\n    : '⚠️ HIGH';\n\nconst message = [\n  `${severity} | OPSPILOT INCIDENT`,\n  '',\n  `Title: ${incident.title}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Status: ${incident.incident_status}`,\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  '',\n  'Action required: Assign an incident responder.'\n].join('\\n');\n\nreturn {\n  json: {\n    ...incident,\n    discord_message: message.slice(0, 1900)\n  }\n};"
+        "jsCode": "const incident = $json;\n\nconst severity =\n  incident.priority === 'critical'\n    ? '🚨 CRITICAL'\n    : '⚠️ HIGH';\n\nconst message = [\n  `${severity} | INCIDENTIQ INCIDENT`,\n  '',\n  `Title: ${incident.title}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Status: ${incident.incident_status}`,\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  '',\n  'Action required: Assign an incident responder.'\n].join('\\n');\n\nreturn {\n  json: {\n    ...incident,\n    discord_message: message.slice(0, 1900)\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -236,7 +236,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "\nconst incident = $json;\n\nconst priority = String(incident.priority || \"\").toLowerCase();\n\nconst label =\n  priority === \"critical\" ? \"CRITICAL\" : \"HIGH\";\n\nconst safeTitle = String(incident.title || \"\")\n  .replace(/[\\r\\n]+/g, \" \")\n  .trim()\n  .slice(0, 180);\n\nconst subject = `[OpsPilot] ${label} Incident — ${safeTitle}`;\n\nconst body = [\n  \"OPSPILOT — INCIDENT RESPONSE NOTIFICATION\",\n  \"\",\n  `Priority: ${label}`,\n  `Incident: ${safeTitle}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Current status: ${incident.incident_status}`,\n  \"\",\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  \"\",\n  \"Required action:\",\n  \"Review the incident and assign an authorized responder.\",\n  \"\",\n  \"This is an automated operational notification.\",\n  \"Do not reply with passwords, credentials or payment information.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    email_subject: subject,\n    email_body: body\n  }\n};\n"
+        "jsCode": "\nconst incident = $json;\n\nconst priority = String(incident.priority || \"\").toLowerCase();\n\nconst label =\n  priority === \"critical\" ? \"CRITICAL\" : \"HIGH\";\n\nconst safeTitle = String(incident.title || \"\")\n  .replace(/[\\r\\n]+/g, \" \")\n  .trim()\n  .slice(0, 180);\n\nconst subject = `[IncidentIQ] ${label} Incident — ${safeTitle}`;\n\nconst body = [\n  \"OPSPILOT — INCIDENT RESPONSE NOTIFICATION\",\n  \"\",\n  `Priority: ${label}`,\n  `Incident: ${safeTitle}`,\n  `Incident ID: ${incident.incident_id}`,\n  `Organization ID: ${incident.organization_id}`,\n  `Current status: ${incident.incident_status}`,\n  \"\",\n  `Acknowledgment deadline: ${incident.acknowledgment_due_at}`,\n  `Escalation deadline: ${incident.escalation_due_at}`,\n  \"\",\n  \"Required action:\",\n  \"Review the incident and assign an authorized responder.\",\n  \"\",\n  \"This is an automated operational notification.\",\n  \"Do not reply with passwords, credentials or payment information.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...incident,\n    email_subject: subject,\n    email_body: body\n  }\n};\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

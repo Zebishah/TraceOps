@@ -78,7 +78,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
   if (auth.loading) {
     content = <><div className="page-heading"><div><span className="app-eyebrow">YOUR OPERATIONS WORKSPACE</span><h1>{name}</h1><p>Connecting to your organization…</p></div></div><State loading /></>;
   } else if (auth.error || !auth.data) {
-    content = <section className="surface workspace-session-state"><h1>Your session needs attention.</h1><p>{auth.error?.message ?? 'Please sign in again.'}</p><div className="page-actions"><button className="btn secondary" onClick={auth.refresh}>Retry connection</button><a className="btn primary-action" href="/login">Sign in to OpsPilot ↗</a></div></section>;
+    content = <section className="surface workspace-session-state"><h1>Your session needs attention.</h1><p>{auth.error?.message ?? 'Please sign in again.'}</p><div className="page-actions"><button className="btn secondary" onClick={auth.refresh}>Retry connection</button><a className="btn primary-action" href="/login">Sign in to IncidentIQ ↗</a></div></section>;
   } else if (!membership) {
     content = <section className="surface workspace-session-state"><h1>No workspace available.</h1><p>This account has no organization membership.</p><a href="/register" className="btn primary-action">Create a workspace ↗</a></section>;
   } else {
@@ -99,7 +99,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
 
   return <div className="dashboard">
     <aside className={`workspace-sidebar ${mobile ? 'visible' : ''}`}>
-      <div className="sidebar-brand"><a href="/"><span className="sidebar-logo"><BrainCircuit size={22}/></span><strong>opspilot<span>INTELLIGENCE WORKSPACE</span></strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
+      <div className="sidebar-brand"><a href="/"><span className="sidebar-logo"><BrainCircuit size={22}/></span><strong>IncidentIQ<span>INTELLIGENCE WORKSPACE</span></strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
       <label className="workspace-selector"><span>WORKSPACE</span><select value={selectedOrganization} disabled={!membership} onChange={event => selectOrganization(event.target.value)} aria-label="Selected organization">{!auth.data?.memberships.length && <option value="">{auth.loading ? 'Connecting…' : 'Select a workspace'}</option>}{auth.data?.memberships.map(m => <option key={m.organization_id} value={m.organization_id}>{m.organization_id === selectedOrganization && workspace.data ? workspace.data.name : `Organization ${m.organization_id.slice(0, 8)}`}</option>)}</select><small>{membership ? `${membership.role} access` : 'Checking workspace access'} <ChevronDown size={12} /></small></label>
       {can(membership?.role,'create')&&<a className="sidebar-create" href="/app/incidents/new"><Plus size={15}/> New investigation <ArrowUpRight size={14}/></a>}
       {navigation.map(group => <div className="navigation-group" key={group.group}><span>{group.group}</span>{group.items.map(([label, path, Icon]) => <button key={path} className={section === path ? 'current' : ''} onClick={() => navigate(path)} aria-current={section === path ? 'page' : undefined}><Icon size={16} /><span>{label}</span>{section === path && <i />}</button>)}</div>)}
@@ -108,7 +108,7 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
     {mobile && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
     <div className="workspace-main"><header className="workspace-topbar"><div><button className="mobile-only" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={20} /></button><span className="topbar-workspace-label"><Shield size={12}/> Workspace</span><span className="breadcrumb-slash">/</span><strong>{name}</strong></div><div className="topbar-actions"><button className="global-search" onClick={() => {setSearchOpen(true);searchDialog.current?.showModal();}}><Search size={14} /><span>Search incidents</span><kbd>⌘ K</kbd></button><a href="/">Product website <ArrowUpRight size={12}/></a></div></header>
       <main className="workspace-content" key={selectedOrganization + pathname}>{content}{children}</main>
-      <footer className="workspace-footer"><span>OpsPilot / Evidence · Oversight · Follow-through</span><span>{workspace.data?.environment ?? 'Backend workspace'} · Internal-ledger refund simulation</span></footer>
+      <footer className="workspace-footer"><span>IncidentIQ / Evidence · Oversight · Follow-through</span><span>{workspace.data?.environment ?? 'Backend workspace'} · Internal-ledger refund simulation</span></footer>
     </div>
     <dialog ref={searchDialog} className="workspace-dialog command-search-dialog" aria-label="Search incidents" onClose={()=>setSearchOpen(false)}><IncidentSearch key={selectedOrganization} active={searchOpen} organizationId={selectedOrganization} onClose={()=>searchDialog.current?.close()} onNavigate={path=>{searchDialog.current?.close();router.push(path);}}/></dialog>
     {message && <div className="toast" role="status">{message}<button aria-label="Dismiss notification" onClick={() => setMessage('')}>×</button></div>}

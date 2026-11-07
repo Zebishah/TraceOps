@@ -1,6 +1,6 @@
 # Duplicate Payment Detection
 
-OpsPilot includes deterministic duplicate-payment detection for payment incidents.
+IncidentIQ includes deterministic duplicate-payment detection for payment incidents.
 
 This logic was introduced because a language model should not guess which financial transaction should be refunded.
 
@@ -20,7 +20,7 @@ The later matching charge is treated as the duplicate candidate.
 
 # Ambiguity Safety
 
-OpsPilot does not force a conclusion when multiple possible duplicate candidates exist.
+IncidentIQ does not force a conclusion when multiple possible duplicate candidates exist.
 
 If the available transaction history is ambiguous, the detector returns no deterministic candidate.
 

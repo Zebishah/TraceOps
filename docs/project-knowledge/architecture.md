@@ -1,6 +1,6 @@
-# OpsPilot Overview
+# IncidentIQ Overview
 
-OpsPilot is a multi-tenant agentic incident investigation and resolution platform.
+IncidentIQ is a multi-tenant agentic incident investigation and resolution platform.
 
 It combines company knowledge, live operational data, AI reasoning, deterministic safety rules, human approval, background processing, incident memory, and external business automation.
 
@@ -30,7 +30,7 @@ Inngest handles durable background processing.
 
 n8n handles external business automation and third-party integrations.
 
-MCP exposes selected OpsPilot capabilities to compatible AI clients.
+MCP exposes selected IncidentIQ capabilities to compatible AI clients.
 
 # Separation of Responsibilities
 
@@ -40,7 +40,7 @@ Inngest controls durable background jobs and retryable work.
 
 n8n handles external business integrations such as Gmail, Discord, and Google Sheets.
 
-MCP allows external AI clients to discover and invoke approved OpsPilot capabilities.
+MCP allows external AI clients to discover and invoke approved IncidentIQ capabilities.
 
 PostgreSQL remains the source of truth for transactional application state.
 

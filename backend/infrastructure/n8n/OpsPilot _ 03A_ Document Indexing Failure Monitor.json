@@ -1,5 +1,5 @@
 {
-  "name": "OpsPilot | 03A: Document Indexing Failure Monitor",
+  "name": "IncidentIQ | 03A: Document Indexing Failure Monitor",
   "nodes": [
     {
       "parameters": {

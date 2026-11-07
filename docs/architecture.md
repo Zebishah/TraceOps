@@ -1,6 +1,6 @@
-# OpsPilot Architecture
+# IncidentIQ Architecture
 
-OpsPilot is a multi-tenant AI platform for investigating and resolving
+IncidentIQ is a multi-tenant AI platform for investigating and resolving
 operational incidents using company knowledge, AI reasoning, tools,
 human approval, and auditable workflows.
 

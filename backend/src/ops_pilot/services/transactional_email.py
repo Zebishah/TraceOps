@@ -16,41 +16,41 @@ class EmailDeliveryError(Exception):
 
 def verification_message(url: str, minutes: int) -> tuple[str, str]:
     text = (
-        "Verify your OpsPilot email\n\n"
+        "Verify your IncidentIQ email\n\n"
         "Confirm this email address to access your workspace and connect AI applications.\n\n"
         f"{url}\n\nThis link expires in {minutes} minutes and can be used once.\n"
         "If you did not request this, ignore this email."
     )
     html = f'''<!doctype html><html lang="en"><body style="margin:0;padding:32px 16px;background:#eeeae0;font-family:Arial,sans-serif;color:#283021">
 <table role="presentation" style="max-width:560px;width:100%;margin:auto;border-collapse:collapse;background:#fcfaf5;border:1px solid #ded5c1">
-<tr><td style="padding:28px 32px;background:#151a14;color:#d4b47e;font-size:24px;font-weight:bold">◈ opspilot</td></tr>
+<tr><td style="padding:28px 32px;background:#151a14;color:#d4b47e;font-size:24px;font-weight:bold">◈ IncidentIQ</td></tr>
 <tr><td style="padding:32px"><p style="font-size:11px;letter-spacing:2px;color:#8a7045">YOUR WORKSPACE. YOUR IDENTITY.</p>
 <h1 style="font-size:28px;font-weight:500">One step to a clearer connection.</h1>
-<p style="line-height:1.8;color:#666b58">Confirm this email address to access your OpsPilot workspace and connect your AI applications.</p>
+<p style="line-height:1.8;color:#666b58">Confirm this email address to access your IncidentIQ workspace and connect your AI applications.</p>
 <p style="margin:30px 0"><a href="{escape(url, quote=True)}" style="display:inline-block;background:#25301e;color:#fcfaf5;padding:16px 24px;border-radius:7px;text-decoration:none">Verify email address ↗</a></p>
 <p style="font-size:13px;line-height:1.8;color:#827d6d">This link expires in {minutes} minutes and can be used once. If you did not request this, ignore this email.</p>
 <p style="font-size:11px;line-height:1.8;word-break:break-all;color:#827d6d">Button not working? Copy this address into your browser:<br>{escape(url)}</p></td></tr>
-<tr><td style="padding:20px 32px;border-top:1px solid #ded5c1;font-size:11px;color:#827d6d">OpsPilot · Evidence before action.</td></tr></table></body></html>'''
+<tr><td style="padding:20px 32px;border-top:1px solid #ded5c1;font-size:11px;color:#827d6d">IncidentIQ · Evidence before action.</td></tr></table></body></html>'''
     return text, html
 
 
 def verification_code_message(code: str, minutes: int) -> tuple[str, str]:
     text = (
-        f"Your OpsPilot verification code is {code}.\n\n"
+        f"Your IncidentIQ verification code is {code}.\n\n"
         "Enter this code on the verification screen to finish signup.\n"
         f"It expires in {minutes} minutes and can be used once.\n"
         "Do not share this code. If you did not request it, ignore this email."
     )
     html = f"""<!doctype html><html lang="en"><body style="margin:0;padding:32px 16px;background:#eeeae0;font-family:Arial,sans-serif;color:#283021">
 <table role="presentation" style="max-width:560px;width:100%;margin:auto;border-collapse:collapse;background:#fcfaf5;border:1px solid #ded5c1;border-radius:16px">
-<tr><td style="padding:28px 32px;background:#151a14;color:#d4b47e;font-size:24px;font-weight:bold">◈ opspilot</td></tr>
+<tr><td style="padding:28px 32px;background:#151a14;color:#d4b47e;font-size:24px;font-weight:bold">◈ IncidentIQ</td></tr>
 <tr><td style="padding:32px"><p style="font-size:11px;letter-spacing:2px;color:#8a7045">COMPLETE YOUR SIGNUP</p>
 <h1 style="font-size:28px;font-weight:500">Your verification code.</h1>
-<p style="line-height:1.8;color:#666b58">Enter this code on the OpsPilot verification screen to confirm your email and access your workspace.</p>
+<p style="line-height:1.8;color:#666b58">Enter this code on the IncidentIQ verification screen to confirm your email and access your workspace.</p>
 <p style="margin:28px 0;padding:22px;background:#f1ecdf;border:1px solid #ded5c1;border-radius:10px;text-align:center;font-size:36px;font-weight:bold;letter-spacing:10px;color:#25301e">{escape(code)}</p>
 <p style="font-size:13px;line-height:1.8;color:#827d6d">This code expires in {minutes} minutes and can be used once. Never share it with anyone.</p>
 <p style="font-size:12px;line-height:1.8;color:#827d6d">If you did not request this code, you can ignore this email.</p></td></tr>
-<tr><td style="padding:20px 32px;border-top:1px solid #ded5c1;font-size:11px;color:#827d6d">OpsPilot · Evidence before action.</td></tr></table></body></html>"""
+<tr><td style="padding:20px 32px;border-top:1px solid #ded5c1;font-size:11px;color:#827d6d">IncidentIQ · Evidence before action.</td></tr></table></body></html>"""
     return text, html
 
 
@@ -87,7 +87,7 @@ async def _send_verification_message(
                 json={
                     "from": settings.email_from,
                     "to": [recipient],
-                    "subject": "Verify your OpsPilot email",
+                    "subject": "Verify your IncidentIQ email",
                     "html": html,
                     "text": text,
                 },

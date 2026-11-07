@@ -26,7 +26,7 @@ CHUNK_OVERLAP = 150
 
 
 # Stable, application-specific PostgreSQL advisory-lock key.
-# All OpsPilot knowledge rebuild workers must use this key.
+# All IncidentIQ knowledge rebuild workers must use this key.
 PROJECT_KNOWLEDGE_REBUILD_LOCK_KEY = 684271950137
 
 

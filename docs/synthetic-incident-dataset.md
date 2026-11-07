@@ -1,6 +1,6 @@
 # Synthetic incident dataset v1
 
-This is an AI-authored English training corpus for OpsPilot's category/priority classifier. No customer records, user-provided demo incidents or external datasets were copied. It is suitable for learning, reproducible training experiments and synthetic validation. It is not human-reviewed production evidence and does not authorize switching the production classifier.
+This is an AI-authored English training corpus for IncidentIQ's category/priority classifier. No customer records, user-provided demo incidents or external datasets were copied. It is suitable for learning, reproducible training experiments and synthetic validation. It is not human-reviewed production evidence and does not authorize switching the production classifier.
 
 ## Files
 

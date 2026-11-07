@@ -21,7 +21,7 @@ ACTION_PROPOSAL_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the action proposal planner for OpsPilot.
+You are the action proposal planner for IncidentIQ.
 
 Your job is NOT to execute anything.
 

@@ -1,6 +1,6 @@
 # n8n Purpose
 
-OpsPilot uses n8n for external business automation and integrations.
+IncidentIQ uses n8n for external business automation and integrations.
 
 n8n is intentionally separate from LangGraph.
 
@@ -21,7 +21,7 @@ The AI investigation continues after the notification.
 
 # Incident Resolved Automation
 
-When an incident is resolved, OpsPilot can dispatch a resolved event.
+When an incident is resolved, IncidentIQ can dispatch a resolved event.
 
 The workflow can:
 
@@ -30,7 +30,7 @@ The workflow can:
 
 # Document Indexing Failure Automation
 
-After durable indexing retries are exhausted, OpsPilot can emit a document indexing failure event.
+After durable indexing retries are exhausted, IncidentIQ can emit a document indexing failure event.
 
 n8n can:
 
@@ -55,7 +55,7 @@ It can:
 
 # Webhook Security
 
-OpsPilot signs access to its n8n webhook workflows with a shared secret header.
+IncidentIQ signs access to its n8n webhook workflows with a shared secret header.
 
 The backend sends:
 

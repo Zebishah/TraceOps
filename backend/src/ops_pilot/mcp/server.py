@@ -114,15 +114,15 @@ def require_mcp_write_scope(
 settings = get_settings()
 
 mcp = MCPServer(
-    "OpsPilot",
+    "IncidentIQ",
     instructions=(
-        "OpsPilot provides secure incident investigation, project knowledge, "
+        "IncidentIQ provides secure incident investigation, project knowledge, "
         "and operational support tools. For tenant-scoped operations, omit "
         "organization_id unless the user explicitly selected an organization. "
         "The server automatically resolves a single authorized organization. "
         "If multiple organizations are available, call list_my_organizations "
         "before asking the user to choose one. Never invent organization IDs. "
-        "Sensitive incident actions remain subject to OpsPilot authorization "
+        "Sensitive incident actions remain subject to IncidentIQ authorization "
         "and human approval."
     ),
     token_verifier=OpsPilotMCPTokenVerifier(),
@@ -139,7 +139,7 @@ mcp = MCPServer(
 
 @mcp.tool()
 async def ops_pilot_health() -> OpsPilotHealthResult:
-    """Check whether the OpsPilot MCP server is available."""
+    """Check whether the IncidentIQ MCP server is available."""
 
     return OpsPilotHealthResult(
         status="ok",
@@ -149,7 +149,7 @@ async def ops_pilot_health() -> OpsPilotHealthResult:
 
 @mcp.tool()
 async def list_my_organizations() -> MCPOrganizationsResponse:
-    """List organizations available to the authenticated OpsPilot user."""
+    """List organizations available to the authenticated IncidentIQ user."""
 
     access_token = get_mcp_bearer_token()
     require_mcp_write_scope(access_token)

@@ -91,7 +91,7 @@ async def upload_document(
     organization_id: str,
 ) -> str:
     content = (
-        "OpsPilot background processing smoke test.\n\n"
+        "IncidentIQ background processing smoke test.\n\n"
         "A customer reported a duplicate payment.\n"
         "Duplicate payments must be investigated "
         "before a refund is issued.\n"

@@ -71,7 +71,7 @@ async def _get_authenticated_mcp_user(
         raise MCPAuthenticationError("Authenticated user is not available")
 
     if requires_email_verification(user):
-        raise MCPAuthenticationError("Verify your email address in OpsPilot before connecting")
+        raise MCPAuthenticationError("Verify your email address in IncidentIQ before connecting")
 
     return user
 

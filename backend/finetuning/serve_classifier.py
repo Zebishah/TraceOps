@@ -142,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     app = FastAPI(
-        title="OpsPilot classifier worker",
+        title="IncidentIQ classifier worker",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,

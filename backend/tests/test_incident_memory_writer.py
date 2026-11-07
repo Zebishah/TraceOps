@@ -87,7 +87,7 @@ def test_generate_incident_memory_returns_structured_memory(
     )
     assert result.summary == (
         "A human-approved simulated refund was recorded "
-        "and verified in OpsPilot's internal ledger. "
+        "and verified in IncidentIQ's internal ledger. "
         "Source transaction: TXN-B. "
         "Amount: 12000.00 PKR."
     )
@@ -95,7 +95,7 @@ def test_generate_incident_memory_returns_structured_memory(
     assert result.resolution == (
         "Simulated refund refund-123 "
         "for 12000.00 PKR "
-        "was recorded in OpsPilot's internal ledger against "
+        "was recorded in IncidentIQ's internal ledger against "
         "transaction TXN-B. "
         "No external payment provider was contacted and "
         "no real money was moved."

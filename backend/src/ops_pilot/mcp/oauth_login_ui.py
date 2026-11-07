@@ -65,7 +65,7 @@ def render_login(
         panel = f'''
           <div class="mode-marker"><span></span> CONNECT YOUR AI WORKSPACE</div>
           <h1 id="page-title">A smarter connection.<br><em>Your control.</em></h1>
-          <p class="introduction">Sign in to OpsPilot to connect the application below to your workspace.</p>
+          <p class="introduction">Sign in to IncidentIQ to connect the application below to your workspace.</p>
           <div class="client-card"><span class="client-icon">↗</span><div><span class="small-label">CONNECTING APPLICATION</span><strong>{esc(client_name)}</strong></div><span class="connection-dot" aria-hidden="true"></span></div>
           <div class="permissions" aria-label="Requested access"><article class="permission"><span class="permission-icon">▤</span><div><strong>Read workspace context</strong><p>Read incidents, search knowledge, and inspect records allowed by your role.</p></div><span class="permission-tag">READ</span></article>{write_permission}</div>
           <details class="connection-details"><summary>Review connection details <span aria-hidden="true">＋</span></summary><dl><dt>Return address</dt><dd><code>{esc(destination)}</code></dd><dt>Requested scopes</dt><dd><code>{esc(" ".join(scopes))}</code></dd></dl><p>Application names are supplied by the connecting app. Check that the return address belongs to the app you intended to connect.</p></details>
@@ -78,7 +78,7 @@ def render_login(
             <button class="cancel-button" type="submit" name="decision" value="deny" formnovalidate>Cancel connection</button>
             <span class="sr-only" id="connection-status" role="status" aria-live="polite"></span>
           </form>
-          <div class="trust-note">{_SHIELD}<p>Your password stays with OpsPilot.<br>The app receives scoped access, never your password.</p></div>
+          <div class="trust-note">{_SHIELD}<p>Your password stays with IncidentIQ.<br>The app receives scoped access, never your password.</p></div>
         '''
         if verification:
             panel = f'''
@@ -105,16 +105,16 @@ def render_login(
           <div class="mode-marker"><span></span> CONNECTION NEEDS ATTENTION</div>
           <h1 id="page-title">Let’s reconnect.<br><em>With clarity.</em></h1>
           <p class="introduction">We couldn’t continue this connection securely.</p>{error_box}
-          <div class="restart-note">{_SHIELD}<div><strong>Start a fresh connection</strong><p>Return to your AI application and connect OpsPilot again. You can close this window.</p></div></div>
+          <div class="restart-note">{_SHIELD}<div><strong>Start a fresh connection</strong><p>Return to your AI application and connect IncidentIQ again. You can close this window.</p></div></div>
         """
     script = """const toggle=document.getElementById('password-toggle');const password=document.getElementById('password');if(toggle&&password){toggle.hidden=false;toggle.addEventListener('click',()=>{const reveal=password.type==='password';password.type=reveal?'text':'password';toggle.textContent=reveal?'Hide':'Show';toggle.setAttribute('aria-pressed',String(reveal));});}const form=document.getElementById('authorization-form');if(form){form.addEventListener('submit',event=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';form.setAttribute('aria-busy','true');const denied=event.submitter&&event.submitter.value==='deny';document.getElementById('connection-status').textContent=denied?'Returning to your application…':'Signing in and connecting…';if(!denied)document.getElementById('authorize-label').textContent='Connecting…';});}const error=document.querySelector('[role="alert"]');if(error)error.focus();"""
-    body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Connect your AI workspace · OpsPilot</title><style nonce="{nonce}">{_stylesheet()}</style></head><body>
-      <main class="auth-stage"><aside class="visual-panel" aria-label="OpsPilot connection overview">
-        <div class="visual-top"><div class="brand"><span class="brand-icon">{_BRAND}</span><span>opspilot<small>INTELLIGENCE WORKSPACE</small></span></div><span class="edition">CONTEXT, CONNECTED.</span></div>
+    body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Connect your AI workspace · IncidentIQ</title><style nonce="{nonce}">{_stylesheet()}</style></head><body>
+      <main class="auth-stage"><aside class="visual-panel" aria-label="IncidentIQ connection overview">
+        <div class="visual-top"><div class="brand"><span class="brand-icon">{_BRAND}</span><span>IncidentIQ<small>INTELLIGENCE WORKSPACE</small></span></div><span class="edition">CONTEXT, CONNECTED.</span></div>
         <div class="visual-copy"><span class="overline">INTELLIGENCE. WITH BOUNDARIES.</span><h2>Your AI.<br>The right context.<br><em>You, in control.</em></h2><p>Connect the tools you work with.<br>Keep your workspace permissions intact.</p></div>
-        <div class="connection-scene" aria-hidden="true"><div class="scene-grid"></div><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="scene-route route-one"><i></i></div><div class="scene-route route-two"><i></i></div><div class="scene-node client-node"><span>↗</span><strong>YOUR AI APP</strong><small>Scoped connection</small></div><div class="scene-core">{_BRAND}<span>OPSPILOT</span></div><div class="scene-node context-node"><span>▤</span><strong>YOUR WORKSPACE</strong><small>Evidence &amp; context</small></div><div class="scene-seal">{_SHIELD}<span>Access follows your role</span></div></div>
+        <div class="connection-scene" aria-hidden="true"><div class="scene-grid"></div><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="scene-route route-one"><i></i></div><div class="scene-route route-two"><i></i></div><div class="scene-node client-node"><span>↗</span><strong>YOUR AI APP</strong><small>Scoped connection</small></div><div class="scene-core">{_BRAND}<span>INCIDENTIQ</span></div><div class="scene-node context-node"><span>▤</span><strong>YOUR WORKSPACE</strong><small>Evidence &amp; context</small></div><div class="scene-seal">{_SHIELD}<span>Access follows your role</span></div></div>
         <div class="visual-bottom"><span>EVIDENCE BEFORE ACTION.</span><span>HUMAN REVIEW, BUILT IN.</span></div>
-      </aside><section class="form-panel" aria-labelledby="page-title"><header class="form-header"><span class="mobile-brand">◈ opspilot</span><span class="connection-label">{_SHIELD} PRIVATE SIGN-IN</span></header><div class="form-content">{panel}</div><footer><span>OPSPILOT / MCP CONNECTION</span><span>Context. Clarity. Control.</span></footer></section></main><script nonce="{nonce}">{script}</script></body></html>'''
+      </aside><section class="form-panel" aria-labelledby="page-title"><header class="form-header"><span class="mobile-brand">◈ IncidentIQ</span><span class="connection-label">{_SHIELD} PRIVATE SIGN-IN</span></header><div class="form-content">{panel}</div><footer><span>INCIDENTIQ / MCP CONNECTION</span><span>Context. Clarity. Control.</span></footer></section></main><script nonce="{nonce}">{script}</script></body></html>'''
     headers = {
         "Cache-Control": "no-store",
         "Pragma": "no-cache",

@@ -1,5 +1,5 @@
 {
-  "name": "OpsPilot | 04B — Approval Reminder Dispatcher",
+  "name": "IncidentIQ | 04B — Approval Reminder Dispatcher",
   "nodes": [
     {
       "parameters": {
@@ -69,7 +69,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const reminder = $json;\n\nif (!reminder.reminder_id || !reminder.lease_token) {\n  throw new Error(\"Missing approval reminder ownership\");\n}\n\nconst isEscalation = reminder.reminder_level === \"escalation\";\n\nconst subject = isEscalation\n  ? \"[ESCALATION] Refund approval awaiting review\"\n  : \"Refund approval requires review\";\n\nconst message = [\n  \"OpsPilot Approval Notification\",\n  \"\",\n  isEscalation\n    ? \"An approval has exceeded its escalation threshold.\"\n    : \"A refund approval is awaiting review.\",\n  \"\",\n  `Approval ID: ${reminder.approval_id}`,\n  `Incident ID: ${reminder.incident_id}`,\n  `Organization ID: ${reminder.organization_id}`,\n  \"\",\n  \"Open OpsPilot to review and make an authorized decision.\",\n  \"Do not approve or reject refunds by replying to this email.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...reminder,\n    subject,\n    message\n  }\n};"
+        "jsCode": "const reminder = $json;\n\nif (!reminder.reminder_id || !reminder.lease_token) {\n  throw new Error(\"Missing approval reminder ownership\");\n}\n\nconst isEscalation = reminder.reminder_level === \"escalation\";\n\nconst subject = isEscalation\n  ? \"[ESCALATION] Refund approval awaiting review\"\n  : \"Refund approval requires review\";\n\nconst message = [\n  \"IncidentIQ Approval Notification\",\n  \"\",\n  isEscalation\n    ? \"An approval has exceeded its escalation threshold.\"\n    : \"A refund approval is awaiting review.\",\n  \"\",\n  `Approval ID: ${reminder.approval_id}`,\n  `Incident ID: ${reminder.incident_id}`,\n  `Organization ID: ${reminder.organization_id}`,\n  \"\",\n  \"Open IncidentIQ to review and make an authorized decision.\",\n  \"Do not approve or reject refunds by replying to this email.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...reminder,\n    subject,\n    message\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

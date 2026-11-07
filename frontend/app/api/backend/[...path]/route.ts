@@ -22,7 +22,7 @@ async function proxy(request: Request, context: Context): Promise<Response> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const anonymous = anonymousAuthPath(path) || path === 'health';
-  if (!anonymous && !token) return jsonError('Sign in to your OpsPilot account', 401);
+  if (!anonymous && !token) return jsonError('Sign in to your IncidentIQ account', 401);
   const headers = new Headers({ Accept: speech ? 'audio/wav, application/json' : 'application/json' });
   if (token && !anonymous) headers.set('Authorization', `Bearer ${token}`);
   if (!write && request.headers.get('x-opspilot-refresh') === '1') headers.set('X-OpsPilot-Refresh', '1');

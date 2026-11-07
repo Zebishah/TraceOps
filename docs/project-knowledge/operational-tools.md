@@ -1,6 +1,6 @@
 # Operational Tools
 
-OpsPilot does not rely only on document retrieval.
+IncidentIQ does not rely only on document retrieval.
 
 Incidents can require live business data from operational systems.
 

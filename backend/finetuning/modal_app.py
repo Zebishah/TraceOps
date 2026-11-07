@@ -1,4 +1,4 @@
-"""Modal GPU endpoint for the OpsPilot QLoRA classifier demo.
+"""Modal GPU endpoint for the IncidentIQ QLoRA classifier demo.
 
 Run from the backend directory after importing the adapter artifact locally:
     modal deploy --env main finetuning/modal_app.py

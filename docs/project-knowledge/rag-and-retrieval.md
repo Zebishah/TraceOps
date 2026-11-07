@@ -1,6 +1,6 @@
 # Retrieval Overview
 
-OpsPilot uses retrieval-augmented generation to ground AI reasoning in company knowledge.
+IncidentIQ uses retrieval-augmented generation to ground AI reasoning in company knowledge.
 
 The retrieval pipeline is implemented explicitly so tenant filtering, metadata, candidate selection, reranking, and evidence scores remain under application control.
 
@@ -62,6 +62,6 @@ This evidence is passed into grounded reasoning rather than asking the language 
 
 MCP project knowledge uses a separate Qdrant collection from customer or organization documents.
 
-The project knowledge collection contains curated OpsPilot architecture and implementation documentation.
+The project knowledge collection contains curated IncidentIQ architecture and implementation documentation.
 
 This separation prevents public or portfolio-oriented project documentation from being mixed with organization-owned operational knowledge.

@@ -1,4 +1,4 @@
-# OpsPilot frontend
+# IncidentIQ frontend
 
 A React 19 / TypeScript workspace and product landing page, built with Vinext and deployed as a Cloudflare Worker through Sites.
 
@@ -22,7 +22,7 @@ pnpm build
 
 ## Backend connection
 
-Set `OPSPILOT_BACKEND_URL` in `frontend/.env.local` to your backend root URL. `.env.example` contains the current Render example. Restart `pnpm dev` after changing it. The server-side allowlisted proxy, API documentation link, and MCP fallback all derive their origin from this setting. It is a server setting, not a `VITE_*` or `NEXT_PUBLIC_*` client variable. Sign in using an existing OpsPilot backend account. Access tokens stay in an HttpOnly, SameSite cookie; backend authorization remains authoritative. Credentials and records are never seeded into the frontend.
+Set `OPSPILOT_BACKEND_URL` in `frontend/.env.local` to your backend root URL. `.env.example` contains the current Render example. Restart `pnpm dev` after changing it. The server-side allowlisted proxy, API documentation link, and MCP fallback all derive their origin from this setting. It is a server setting, not a `VITE_*` or `NEXT_PUBLIC_*` client variable. Sign in using an existing IncidentIQ backend account. Access tokens stay in an HttpOnly, SameSite cookie; backend authorization remains authoritative. Credentials and records are never seeded into the frontend.
 
 The dashboard collection, overview, safe configuration, curated project knowledge, and evaluation APIs require the companion changes in backend/ at the repository root. Run the backend checks and deploy before using the connected collections. No database migration is required.
 

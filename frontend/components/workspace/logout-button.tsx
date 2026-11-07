@@ -69,7 +69,7 @@ export function LogoutButton() {
       <div className="logout-dialog-content">
         <span className="logout-dialog-icon" aria-hidden="true"><LogOut size={24} strokeWidth={1.6} /></span>
         <span className="app-eyebrow">YOUR WORKSPACE SESSION</span>
-        <h2 id="logout-title">{phase === 'redirecting' ? 'You’re signed out.' : 'Sign out of OpsPilot?'}</h2>
+        <h2 id="logout-title">{phase === 'redirecting' ? 'You’re signed out.' : 'Sign out of IncidentIQ?'}</h2>
         <p id="logout-description">{phase === 'redirecting' ? 'Taking you to the sign-in page…' : busy ? 'Closing your session. Please wait a moment.' : 'You’ll need to sign in again to return to your workspace.'}</p>
         {error && <p ref={errorMessage} tabIndex={-1} className="form-error" role="alert">{error}</p>}
         <div className="logout-dialog-actions">

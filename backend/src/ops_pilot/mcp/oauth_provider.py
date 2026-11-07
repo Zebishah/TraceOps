@@ -82,7 +82,7 @@ class OpsPilotOAuthProvider(
             raise RegistrationError(
                 error="invalid_client_metadata",
                 error_description=(
-                    "OpsPilot currently supports public OAuth clients "
+                    "IncidentIQ currently supports public OAuth clients "
                     "with token_endpoint_auth_method=none."
                 ),
             )

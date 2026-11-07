@@ -1,6 +1,6 @@
 # LangGraph Purpose
 
-LangGraph orchestrates OpsPilot's internal incident investigation workflow.
+LangGraph orchestrates IncidentIQ's internal incident investigation workflow.
 
 It manages state, branching, pause-and-resume behavior, tool execution, reviewer logic, human approval, verification, memory, and automation dispatch.
 

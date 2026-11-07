@@ -1,7 +1,7 @@
 [project]
 name = "ops-pilot-finetuning-runtime"
 version = "0.1.0"
-description = "Isolated CPU training and classifier worker environment for OpsPilot"
+description = "Isolated CPU training and classifier worker environment for IncidentIQ"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "ops-pilot",
