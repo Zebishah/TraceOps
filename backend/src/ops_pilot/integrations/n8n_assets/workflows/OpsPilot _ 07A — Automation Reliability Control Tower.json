@@ -1,5 +1,5 @@
 {
-  "name": "IncidentIQ | 07A — Automation Reliability Control Tower",
+  "name": "TraceOps | 07A — Automation Reliability Control Tower",
   "nodes": [
     {
       "parameters": {
@@ -104,7 +104,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const alert = $json;\n\nif (\n  !alert.id ||\n  !alert.source_id ||\n  !alert.lease_token ||\n  !alert.source_system\n) {\n  throw new Error(\"Missing reliability alert ownership\");\n}\n\nconst content = [\n  \"🚨 INCIDENTIQ AUTOMATION RELIABILITY ALERT\",\n  \"\",\n  `System: ${alert.source_system}`,\n  `Problem: ${alert.problem_status}`,\n  `Source ID: ${alert.source_id}`,\n  `Monitoring Alert ID: ${alert.id}`,\n  \"\",\n  \"Action required: Investigate the source record.\",\n  \"Check the external provider before retrying.\",\n  \"Never automatically resend uncertain financial or customer notifications.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...alert,\n    discord_message: content\n  }\n};"
+        "jsCode": "const alert = $json;\n\nif (\n  !alert.id ||\n  !alert.source_id ||\n  !alert.lease_token ||\n  !alert.source_system\n) {\n  throw new Error(\"Missing reliability alert ownership\");\n}\n\nconst content = [\n  \"🚨 TRACEOPS AUTOMATION RELIABILITY ALERT\",\n  \"\",\n  `System: ${alert.source_system}`,\n  `Problem: ${alert.problem_status}`,\n  `Source ID: ${alert.source_id}`,\n  `Monitoring Alert ID: ${alert.id}`,\n  \"\",\n  \"Action required: Investigate the source record.\",\n  \"Check the external provider before retrying.\",\n  \"Never automatically resend uncertain financial or customer notifications.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...alert,\n    discord_message: content\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
