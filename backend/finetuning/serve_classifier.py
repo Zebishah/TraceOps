@@ -142,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     app = FastAPI(
-        title="IncidentIQ classifier worker",
+        title="TraceOps classifier worker",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,

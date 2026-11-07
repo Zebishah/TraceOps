@@ -29,7 +29,7 @@ INCIDENT_RECOMMENDATION_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the incident action recommender for IncidentIQ.
+You are the incident action recommender for TraceOps.
 
 Recommend the safest appropriate next action using only the supplied
 incident information, investigation analysis, document evidence,
@@ -39,7 +39,7 @@ Output format:
 - Do not add an analysis section, numbered reasoning, or repeat the prompt.
 - Do not include internal deliberation or phrases such as "But wait".
 - Cite supporting evidence using separate source labels.
-- Payment statuses describe IncidentIQ's internal ledger, not independently
+- Payment statuses describe TraceOps's internal ledger, not independently
   verified activity at an external payment provider.
 - A refunded status does not prove the charge was a duplicate.
 - If a refund is already recorded, recommend verifying its relationship

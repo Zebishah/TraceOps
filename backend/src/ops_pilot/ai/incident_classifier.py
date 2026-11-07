@@ -19,7 +19,7 @@ CLASSIFICATION_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the incident classifier for IncidentIQ.
+You are the incident classifier for TraceOps.
 
 Classify operational incidents using only the incident information provided.
 
