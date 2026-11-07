@@ -1,5 +1,5 @@
 {
-  "name": "IncidentIQ | 03A: Document Indexing Failure Monitor",
+  "name": "TraceOps | 03A: Document Indexing Failure Monitor",
   "nodes": [
     {
       "parameters": {

@@ -1,5 +1,5 @@
 {
-  "name": "IncidentIQ | 03B — Document Failure Alert Dispatcher",
+  "name": "TraceOps | 03B — Document Failure Alert Dispatcher",
   "nodes": [
     {
       "parameters": {
@@ -69,7 +69,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const item = $json;\n\nif (!item.event_id || !item.lease_token || !item.job_id) {\n  throw new Error(\"Missing claimed failure event ownership\");\n}\n\nconst safe = (value, max = 180) =>\n  String(value ?? \"\")\n    .replace(/[`*_~<>@]/g, \"\")\n    .replace(/https?:\\/\\/\\S+/gi, \"[URL redacted]\")\n    .replace(/[\\r\\n\\t]/g, \" \")\n    .slice(0, max);\n\nconst message = [\n  \"🚨 DOCUMENT INDEXING FAILURE\",\n  \"\",\n  `Document: ${safe(item.filename, 120)}`,\n  `Job ID: ${item.job_id}`,\n  `Document ID: ${item.document_id}`,\n  `Organization ID: ${item.organization_id}`,\n  `Error: ${safe(item.error_message, 300)}`,\n  `Occurred at: ${item.occurred_at}`,\n  \"\",\n  \"Action required: Investigate the indexing job in IncidentIQ.\",\n  \"Do not automatically retry until the failure is reviewed.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    event_id: item.event_id,\n    lease_token: item.lease_token,\n    discord_message: message\n  }\n};"
+        "jsCode": "const item = $json;\n\nif (!item.event_id || !item.lease_token || !item.job_id) {\n  throw new Error(\"Missing claimed failure event ownership\");\n}\n\nconst safe = (value, max = 180) =>\n  String(value ?? \"\")\n    .replace(/[`*_~<>@]/g, \"\")\n    .replace(/https?:\\/\\/\\S+/gi, \"[URL redacted]\")\n    .replace(/[\\r\\n\\t]/g, \" \")\n    .slice(0, max);\n\nconst message = [\n  \"🚨 DOCUMENT INDEXING FAILURE\",\n  \"\",\n  `Document: ${safe(item.filename, 120)}`,\n  `Job ID: ${item.job_id}`,\n  `Document ID: ${item.document_id}`,\n  `Organization ID: ${item.organization_id}`,\n  `Error: ${safe(item.error_message, 300)}`,\n  `Occurred at: ${item.occurred_at}`,\n  \"\",\n  \"Action required: Investigate the indexing job in TraceOps.\",\n  \"Do not automatically retry until the failure is reviewed.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    event_id: item.event_id,\n    lease_token: item.lease_token,\n    discord_message: message\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

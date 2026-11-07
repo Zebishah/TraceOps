@@ -202,7 +202,7 @@ async def build_customer_recovery_event(
     resolution = (
         f"Simulated refund of {execution.amount} "
         f"{execution.currency} recorded successfully "
-        f"in IncidentIQ's internal ledger for transaction "
+        f"in TraceOps's internal ledger for transaction "
         f"{execution.source_transaction_id}. "
         "No external payment provider was contacted."
     )

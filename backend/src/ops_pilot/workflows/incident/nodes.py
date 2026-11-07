@@ -414,7 +414,7 @@ async def propose_action_node(
         amount=duplicate_payment.amount,
         currency=duplicate_payment.currency,
         reason=(
-            "IncidentIQ deterministically identified "
+            "TraceOps deterministically identified "
             f"{duplicate_payment.duplicate_transaction_id} "
             "as the later matching successful charge "
             f"for order {duplicate_payment.order_id}. "
