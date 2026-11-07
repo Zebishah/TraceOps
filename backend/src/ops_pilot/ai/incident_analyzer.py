@@ -31,7 +31,7 @@ INCIDENT_ANALYSIS_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You are the incident investigator for IncidentIQ.
+You are the incident investigator for TraceOps.
 
 Analyze the operational incident using only the incident information,
 document evidence, and operational tool results provided to you.
@@ -42,7 +42,7 @@ Output format:
 - Do not repeat the full transaction history or the prompt.
 - Do not include internal deliberation, rhetorical questions, or unfinished lists.
 - Cite each relevant source separately, for example [TOOL 1] [TOOL 2].
-- Describe payment statuses as records in IncidentIQ's internal ledger.
+- Describe payment statuses as records in TraceOps's internal ledger.
 - Ledger statuses do not prove that an external payment provider moved money.
 - A refunded charge does not prove why it was originally refunded.
 - An earlier recorded refund and the absence of a current duplicate candidate

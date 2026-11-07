@@ -24,7 +24,7 @@ INCIDENT_MEMORY_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-You create durable incident memories for IncidentIQ.
+You create durable incident memories for TraceOps.
 
 Your job is to summarize a completed and verified incident
 so future investigations can use it as historical context.
@@ -139,14 +139,14 @@ async def generate_incident_memory(
         return IncidentMemoryCreate(
             summary=(
                 "A human-approved simulated refund was recorded "
-                "and verified in IncidentIQ's internal ledger. "
+                "and verified in TraceOps's internal ledger. "
                 f"Source transaction: {execution.source_transaction_id}. "
                 f"Amount: {execution.amount} {execution.currency}."
             ),
             resolution=(
                 f"Simulated refund {execution.refund_transaction_id} "
                 f"for {execution.amount} {execution.currency} "
-                "was recorded in IncidentIQ's internal ledger against "
+                "was recorded in TraceOps's internal ledger against "
                 f"transaction {execution.source_transaction_id}. "
                 "No external payment provider was contacted and "
                 "no real money was moved."

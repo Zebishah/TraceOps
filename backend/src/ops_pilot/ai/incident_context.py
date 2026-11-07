@@ -134,7 +134,7 @@ def format_duplicate_payment_candidate(
 
     return (
         "A duplicate payment candidate was "
-        "deterministically identified by IncidentIQ.\n"
+        "deterministically identified by TraceOps.\n"
         f"Order ID: {candidate.order_id}\n"
         f"Original transaction: "
         f"{candidate.original_transaction_id}\n"
