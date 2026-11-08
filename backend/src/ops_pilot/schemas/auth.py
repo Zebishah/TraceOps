@@ -66,3 +66,13 @@ class VerificationMessage(BaseModel):
 class EmailVerifiedResponse(BaseModel):
     verified: bool = True
     message: str = "Email verified. You can now sign in."
+
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
+    password: str = Field(min_length=8, max_length=128)

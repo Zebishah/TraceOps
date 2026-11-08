@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,8 @@ class User(Base):
         default=True,
         server_default="true",
     )
+
+    auth_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default='0')
 
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

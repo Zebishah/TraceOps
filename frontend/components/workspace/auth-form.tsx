@@ -217,6 +217,7 @@ function AuthExperience({ register = false, verification = false }: AuthProps) {
         </form>
         <div className="auth-mode-switch">{isRegister ? 'Already part of the workspace?' : 'New to TraceOps?'} <a href={isRegister ? '/login' : '/register'} onClick={switchMode} aria-disabled={pending}>{isRegister ? 'Sign in' : 'Create a workspace'} <span aria-hidden="true">↗</span></a></div>
       </>}
+      {!isRegister && !isVerification && <a href="/forgot-password" className="auth-verification-back">Forgot password?</a>}
       <div className="auth-trust-note"><span aria-hidden="true">◇</span><p>{isVerification ? <>Your code is private.<br />Only enter it here. Never share it with anyone.</> : <>Your workspace, your team.<br />Access is checked against your organization and role.</>}</p></div>
     </AuthFrame>
   );

@@ -22,6 +22,7 @@ def create_access_token(
     *,
     subject: str,
     expires_delta: timedelta | None = None,
+    auth_version: int = 0,
 ) -> str:
     settings = get_settings()
 
@@ -33,6 +34,7 @@ def create_access_token(
 
     payload: dict[str, Any] = {
         "sub": subject,
+        "auth_ver": auth_version,
         "exp": expire,
     }
 

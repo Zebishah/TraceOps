@@ -21,6 +21,8 @@ from ops_pilot.schemas.auth import (
     VerificationMessage,
     VerifyEmailCodeRequest,
     VerifyEmailRequest,
+    PasswordResetRequest,
+    PasswordResetConfirm,
 )
 from ops_pilot.services.auth import (
     authenticate_user,
@@ -41,6 +43,7 @@ from ops_pilot.services.email_verification import (
     verify_email_code,
     verify_email_token,
 )
+from ops_pilot.services.password_recovery import request_password_reset, confirm_password_reset
 
 
 def _no_store(response: Response) -> None:
@@ -146,6 +149,7 @@ async def login(
 
     token = create_access_token(
         subject=str(user.id),
+        auth_version=user.auth_version,
     )
 
     return TokenResponse(
@@ -265,4 +269,39 @@ async def confirm_email_code(
             status_code=400,
             detail="This code is incorrect or expired. Check the code in your email or resend it.",
         )
-    return EmailCodeVerifiedResponse(access_token=create_access_token(subject=str(user.id)))
+    return EmailCodeVerifiedResponse(access_token=create_access_token(subject=str(user.id), auth_version=user.auth_version))
+
+
+
+@router.post("/password-reset/request", response_model=VerificationMessage)
+async def password_reset_request(
+    payload: PasswordResetRequest,
+    session: DbSession,
+    request: Request,
+) -> VerificationMessage:
+    try:
+        await enforce_verification_request_limit(request=request, email=str(payload.email))
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+    await request_password_reset(session, str(payload.email))
+    return VerificationMessage(
+        message="If an eligible account exists, you will receive a password reset link."
+    )
+
+
+@router.post("/password-reset/confirm", response_model=VerificationMessage)
+async def password_reset_confirm(
+    payload: PasswordResetConfirm,
+    session: DbSession,
+    request: Request,
+) -> VerificationMessage:
+    try:
+        await enforce_verification_claim_limit(request=request)
+    except (AuthRateLimitExceeded, AuthRateLimitUnavailable) as exc:
+        _raise_rate_limit_error(exc)
+    if not await confirm_password_reset(session, payload.token, payload.password):
+        raise HTTPException(
+            status_code=400,
+            detail="This reset link is invalid, expired, or has already been used.",
+        )
+    return VerificationMessage(message="Password updated. Sign in with your new password.")

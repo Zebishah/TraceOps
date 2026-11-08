@@ -16,6 +16,7 @@ from ops_pilot.models.background_job import (
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.document import Document, DocumentStatus
 from ops_pilot.models.email_verification_token import EmailVerificationToken
+from ops_pilot.models.password_reset_token import PasswordResetToken
 from ops_pilot.models.incident import (
     Incident,
     IncidentPriority,
@@ -45,6 +46,7 @@ __all__ = [
     "Organization",
     "User",
     "EmailVerificationToken",
+    "PasswordResetToken",
     "Incident",
     "IncidentPriority",
     "IncidentStatus",
