@@ -10,13 +10,12 @@ from functools import wraps
 from typing import cast, get_type_hints
 
 from fastapi.encoders import jsonable_encoder
-from starlette.requests import Request
-
-from ops_pilot.models.membership import Membership
 from pydantic import TypeAdapter, ValidationError
+from starlette.requests import Request
 
 from ops_pilot.cache.redis import get_redis_client
 from ops_pilot.core.config import get_settings
+from ops_pilot.models.membership import Membership
 
 logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 30
