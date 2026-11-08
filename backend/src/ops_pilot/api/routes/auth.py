@@ -149,7 +149,7 @@ async def login(
 
     token = create_access_token(
         subject=str(user.id),
-        auth_version=user.auth_version,
+        auth_version=getattr(user, 'auth_version', 0),
     )
 
     return TokenResponse(
@@ -269,7 +269,7 @@ async def confirm_email_code(
             status_code=400,
             detail="This code is incorrect or expired. Check the code in your email or resend it.",
         )
-    return EmailCodeVerifiedResponse(access_token=create_access_token(subject=str(user.id), auth_version=user.auth_version))
+    return EmailCodeVerifiedResponse(access_token=create_access_token(subject=str(user.id), auth_version=getattr(user, 'auth_version', 0)))
 
 
 

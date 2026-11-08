@@ -27,7 +27,7 @@ export default function ForgotPasswordPage() {
     } finally { setLoading(false); }
   }
   return <AuthFrame><section className="auth-verification">
-    <h1>{sent ? 'Check your inbox.' : 'Reset your password.'}</h1>
+    <h1 id="auth-title">{sent ? 'Check your inbox.' : 'Reset your password.'}</h1>
     <p>{sent ? 'If your account is eligible, a one-time reset link will arrive. Check spam too. It expires in 30 minutes.' : 'Enter the email you use for your TraceOps workspace.'}</p>
     {error && <p role="alert" className="form-error">{error}</p>}
     <form onSubmit={(event) => void submit(event)} className="auth-fields">

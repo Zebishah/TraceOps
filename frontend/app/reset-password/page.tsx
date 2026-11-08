@@ -31,7 +31,7 @@ export default function ResetPasswordPage() {
     } finally { setLoading(false); }
   }
   return <AuthFrame><section className="auth-verification">
-    <h1>{complete ? 'Password updated.' : 'Choose a new password.'}</h1>
+    <h1 id="auth-title">{complete ? 'Password updated.' : 'Choose a new password.'}</h1>
     {complete ? <><p>Previous web access tokens have been revoked. Sign in again.</p><Link href="/login" className="auth-submit">Continue to sign in</Link></> : <>
       <p>Use a new password with at least eight characters. This link expires after 30 minutes.</p>
       {error && <p role="alert" className="form-error">{error}</p>}
