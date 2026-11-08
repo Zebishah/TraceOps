@@ -276,7 +276,6 @@ async def confirm_email_code(
     )
 
 
-
 @router.post("/password-reset/request", response_model=VerificationMessage)
 async def password_reset_request(
     payload: PasswordResetRequest,
