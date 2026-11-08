@@ -44,7 +44,11 @@ async def get_current_user(
 
     user = await session.get(User, user_id)
 
-    if user is None or not user.is_active or payload.get('auth_ver', 0) != getattr(user, 'auth_version', 0):
+    if (
+        user is None
+        or not user.is_active
+        or payload.get("auth_ver", 0) != getattr(user, "auth_version", 0)
+    ):
         raise credentials_error
 
     if requires_email_verification(user):

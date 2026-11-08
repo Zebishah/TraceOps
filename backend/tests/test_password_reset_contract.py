@@ -1,4 +1,5 @@
 """Contract tests for recovery token secrecy and web session invalidation."""
+
 import hashlib
 import re
 import secrets

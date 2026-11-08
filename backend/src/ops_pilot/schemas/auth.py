@@ -68,7 +68,6 @@ class EmailVerifiedResponse(BaseModel):
     message: str = "Email verified. You can now sign in."
 
 
-
 class PasswordResetRequest(BaseModel):
     email: EmailStr = Field(max_length=320)
 

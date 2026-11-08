@@ -31,17 +31,20 @@ async def request_password_reset(session: AsyncSession, email: str) -> None:
         await session.rollback()
         return
     recent = await session.execute(
-        select(PasswordResetToken.id).where(
+        select(PasswordResetToken.id)
+        .where(
             PasswordResetToken.user_id == user.id,
             PasswordResetToken.created_at > datetime.now(UTC) - timedelta(seconds=60),
-        ).limit(1)
+        )
+        .limit(1)
     )
     if recent.first():
         await session.rollback()
         return
     token = secrets.token_urlsafe(32)
     record = PasswordResetToken(
-        id=uuid.uuid4(), user_id=user.id,
+        id=uuid.uuid4(),
+        user_id=user.id,
         token_hash=hashlib.sha256(token.encode()).hexdigest(),
         expires_at=datetime.now(UTC) + timedelta(minutes=30),
     )
@@ -49,9 +52,7 @@ async def request_password_reset(session: AsyncSession, email: str) -> None:
     await session.commit()
     url = f"{str(settings.frontend_base_url).rstrip('/')}/reset-password#token={token}"
     try:
-        await send_password_reset_email(
-            recipient=user.email, url=url, delivery_id=str(record.id)
-        )
+        await send_password_reset_email(recipient=user.email, url=url, delivery_id=str(record.id))
     except EmailDeliveryError:
         # Never reveal account state or provider failures to the requester.
         logger.warning("Password reset email delivery failed")
@@ -68,9 +69,7 @@ async def confirm_password_reset(session: AsyncSession, token: str, password: st
         return False
     digest = hashlib.sha256(token.encode()).hexdigest()
     candidate = await session.execute(
-        select(PasswordResetToken.user_id).where(
-            PasswordResetToken.token_hash == digest
-        )
+        select(PasswordResetToken.user_id).where(PasswordResetToken.token_hash == digest)
     )
     user_id = candidate.scalar_one_or_none()
     if user_id is None:
@@ -81,12 +80,15 @@ async def confirm_password_reset(session: AsyncSession, token: str, password: st
         await session.rollback()
         return False
     claimed = await session.execute(
-        update(PasswordResetToken).where(
+        update(PasswordResetToken)
+        .where(
             PasswordResetToken.token_hash == digest,
             PasswordResetToken.user_id == user.id,
             PasswordResetToken.consumed_at.is_(None),
             PasswordResetToken.expires_at > datetime.now(UTC),
-        ).values(consumed_at=func.now()).returning(PasswordResetToken.id)
+        )
+        .values(consumed_at=func.now())
+        .returning(PasswordResetToken.id)
     )
     if claimed.scalar_one_or_none() is None:
         await session.rollback()
@@ -94,10 +96,12 @@ async def confirm_password_reset(session: AsyncSession, token: str, password: st
     user.password_hash = hash_password(password)
     user.auth_version += 1
     await session.execute(
-        update(PasswordResetToken).where(
+        update(PasswordResetToken)
+        .where(
             PasswordResetToken.user_id == user.id,
             PasswordResetToken.consumed_at.is_(None),
-        ).values(consumed_at=func.now())
+        )
+        .values(consumed_at=func.now())
     )
     await session.commit()
     return True

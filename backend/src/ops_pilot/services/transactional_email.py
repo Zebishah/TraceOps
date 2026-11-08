@@ -71,8 +71,12 @@ async def send_verification_email(*, recipient: str, url: str, delivery_id: str)
 
 
 async def _send_verification_message(
-    *, recipient: str, text: str, html: str, delivery_id: str,
-    subject: str = 'Verify your TraceOps email',
+    *,
+    recipient: str,
+    text: str,
+    html: str,
+    delivery_id: str,
+    subject: str = "Verify your TraceOps email",
 ) -> None:
     settings = get_settings()
     if not settings.resend_api_key or not settings.email_from:
@@ -106,10 +110,7 @@ async def _send_verification_message(
         raise EmailDeliveryError("Email delivery is temporarily unavailable") from None
 
 
-
-async def send_password_reset_email(
-    *, recipient: str, url: str, delivery_id: str
-) -> None:
+async def send_password_reset_email(*, recipient: str, url: str, delivery_id: str) -> None:
     text = (
         "Reset your TraceOps password\n\n"
         f"Open this one-time link to choose a new password:\n{url}\n\n"
@@ -118,13 +119,16 @@ async def send_password_reset_email(
     html = (
         '<html lang="en"><body style="font-family:Arial,sans-serif;background:#eeeae0;padding:32px">'
         '<div style="max-width:560px;margin:auto;background:#fcfaf5;padding:32px">'
-        '<h1>TraceOps · Password recovery</h1>'
-        '<p>Use the secure link below to choose a new password.</p>'
+        "<h1>TraceOps · Password recovery</h1>"
+        "<p>Use the secure link below to choose a new password.</p>"
         f'<p><a href="{escape(url, quote=True)}">Reset your password</a></p>'
-        '<p>This link expires in 30 minutes and works only once. If you did not request '
-        'this change, you can ignore this message.</p></div></body></html>'
+        "<p>This link expires in 30 minutes and works only once. If you did not request "
+        "this change, you can ignore this message.</p></div></body></html>"
     )
     await _send_verification_message(
-        recipient=recipient, text=text, html=html, delivery_id=f"reset-{delivery_id}",
+        recipient=recipient,
+        text=text,
+        html=html,
+        delivery_id=f"reset-{delivery_id}",
         subject="Reset your TraceOps password",
     )
