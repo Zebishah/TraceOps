@@ -77,7 +77,7 @@ try{
  const spoken=await speech();assert.equal(spoken.status,200);assert.match(spoken.headers.get('content-type'),/audio\/wav/);assert.deepEqual(Buffer.from(await spoken.arrayBuffer()),wave);malformed=true;assert.equal((await speech()).status,502);
  const before=requests.length;assert.equal((await fetch(base+'/api/backend/admin/delete-all',{headers})).status,404);assert.equal(requests.length,before);
  assert.equal((await fetch(base+`/api/backend/organizations/${organization}/voice/transcriptions`,{method:'POST',headers,body:Buffer.alloc(11*1024*1024+1)})).status,413);
- const signedInPage=await fetch(base+'/app/incidents/new',{headers});assert.equal(signedInPage.status,200);assert.match(await signedInPage.text(),/opspilot/i);
+ const signedInPage=await fetch(base+'/app/incidents/new',{headers});assert.equal(signedInPage.status,200);assert.match(await signedInPage.text(),/traceops/i);
  requireVerification=true;const unverifiedSession=await fetch(base+'/api/backend/auth/me',{headers});assert.equal(unverifiedSession.status,403);assert.match(unverifiedSession.headers.get('set-cookie'),/opspilot_backend_session=;/i);
  const rejectedLogout=await fetch(base+'/api/session',{method:'DELETE',headers:{...headers,origin:'https://attacker.example'}});
  assert.equal(rejectedLogout.status,403);assert.equal(rejectedLogout.headers.get('set-cookie'),null);assert.equal(rejectedLogout.headers.get('cache-control'),'no-store');

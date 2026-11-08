@@ -409,7 +409,7 @@ def test_unverified_user_cannot_create_mcp_consent_code(flow, monkeypatch):
     assert response.status_code == 200
     assert 'name="code"' in response.text
     assert 'name="password"' not in response.text
-    assert 'Verify &amp; connect' in response.text
+    assert "Verify &amp; connect" in response.text
     assert HiddenFields(response.text).values["state"] == PARAMS["state"]
     flow.code.assert_not_awaited()
     delivery.assert_awaited_once()
