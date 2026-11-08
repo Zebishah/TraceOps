@@ -7,9 +7,12 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import get_type_hints
+from typing import cast, get_type_hints
 
 from fastapi.encoders import jsonable_encoder
+from starlette.requests import Request
+
+from ops_pilot.models.membership import Membership
 from pydantic import TypeAdapter, ValidationError
 
 from ops_pilot.cache.redis import get_redis_client
@@ -58,9 +61,9 @@ def dashboard_cached[**P, T](function: Callable[P, Awaitable[T]]) -> Callable[P,
 
     @wraps(function)
     async def wrapped(*args: P.args, **kwargs: P.kwargs) -> T:
-        membership = kwargs["membership"]
+        membership = cast(Membership, kwargs["membership"])
         organization_id = str(kwargs["organization_id"])
-        request = kwargs["request"]
+        request = cast(Request, kwargs["request"])
         parameters = {
             key: value
             for key, value in kwargs.items()
@@ -96,7 +99,7 @@ def dashboard_cached[**P, T](function: Callable[P, Awaitable[T]]) -> Callable[P,
                     cached = await redis.get(key)
                     if cached is not None:
                         try:
-                            return adapter.validate_json(cached)
+                            return cast(T, adapter.validate_json(cached))
                         except (ValidationError, ValueError, TypeError):
                             await redis.delete(key)
         except Exception:
