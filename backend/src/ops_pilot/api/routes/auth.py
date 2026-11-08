@@ -14,6 +14,8 @@ from ops_pilot.schemas.auth import (
     LoginRequest,
     MembershipResponse,
     MeResponse,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
@@ -21,8 +23,6 @@ from ops_pilot.schemas.auth import (
     VerificationMessage,
     VerifyEmailCodeRequest,
     VerifyEmailRequest,
-    PasswordResetRequest,
-    PasswordResetConfirm,
 )
 from ops_pilot.services.auth import (
     authenticate_user,
@@ -43,7 +43,7 @@ from ops_pilot.services.email_verification import (
     verify_email_code,
     verify_email_token,
 )
-from ops_pilot.services.password_recovery import request_password_reset, confirm_password_reset
+from ops_pilot.services.password_recovery import confirm_password_reset, request_password_reset
 
 
 def _no_store(response: Response) -> None:

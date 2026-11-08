@@ -16,7 +16,6 @@ from ops_pilot.models.background_job import (
 from ops_pilot.models.customer import Customer
 from ops_pilot.models.document import Document, DocumentStatus
 from ops_pilot.models.email_verification_token import EmailVerificationToken
-from ops_pilot.models.password_reset_token import PasswordResetToken
 from ops_pilot.models.incident import (
     Incident,
     IncidentPriority,
@@ -31,6 +30,7 @@ from ops_pilot.models.oauth_client import OAuthClient
 from ops_pilot.models.oauth_refresh_token import OAuthRefreshToken
 from ops_pilot.models.order import OperationalOrder, OrderStatus
 from ops_pilot.models.organization import Organization
+from ops_pilot.models.password_reset_token import PasswordResetToken
 from ops_pilot.models.payment_transaction import (
     PaymentTransaction,
     PaymentTransactionStatus,
