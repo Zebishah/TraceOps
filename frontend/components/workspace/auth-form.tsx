@@ -86,14 +86,10 @@ function AuthExperience({ register = false, verification = false }: AuthProps) {
   }, [cooldown, claimCooldown]);
 
   function openVerification(address: string, sent: boolean) {
-    formRef.current?.reset(); setEmail(address); setVerificationEmail(address);
-    setIsRegister(false); setIsVerification(true); setCode('');
-    setError(''); setVerified(false); setCooldown(sent ? 60 : 0);
-    pendingVerificationToken = null; setToken(null);
-    setNotice(sent ? 'We sent a six-digit code to your email. Enter it below to continue.' : 'We couldn’t send your verification code. Use Resend code to try again.');
-    rememberVerification(address, Date.now() + (sent ? 60000 : 0));
-    window.history.pushState(null, '', '/verify-email');
-    titleRef.current?.focus({ preventScroll: true });
+    // Persist only the email and resend cooldown; never store a password or OTP.
+    // The verification form is rendered by the dedicated /verify-email route.
+    rememberVerification(address, Date.now() + (sent ? 60_000 : 0));
+    window.location.assign('/verify-email');
   }
   function switchMode(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -132,8 +128,7 @@ function AuthExperience({ register = false, verification = false }: AuthProps) {
     } catch (cause) {
       if (cause instanceof ApiError && cause.verification) {
         openVerification(cause.verification.email, cause.verification.verification_email_sent === true);
-        // Older backends did not send a code during sign-in; request it automatically.
-        if (cause.verification.verification_email_sent === undefined) await sendCode(cause.verification.email);
+        // The dedicated verification route requests a code if none was sent.
       } else reportFailure(cause);
     } finally { setPending(false); }
   }
