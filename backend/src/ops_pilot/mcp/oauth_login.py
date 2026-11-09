@@ -317,7 +317,9 @@ async def oauth_login_submit(request: Request) -> Response:
                     if limited
                     else "Sign-in is temporarily unavailable. Please try again shortly.",
                     status_code=429 if limited else 503,
-                    retry_after=exc.retry_after_seconds if isinstance(exc, AuthRateLimitExceeded) else None,
+                    retry_after=exc.retry_after_seconds
+                    if isinstance(exc, AuthRateLimitExceeded)
+                    else None,
                 )
             code = await create_authorization_code(
                 session=session,
