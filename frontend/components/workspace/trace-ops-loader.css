@@ -1,0 +1,10 @@
+
+.trace-action-spinner{width:20px;height:20px;display:inline-flex;position:relative;align-items:center;justify-content:center;vertical-align:middle;margin-right:8px;flex-shrink:0}
+.trace-action-spinner__ring{position:absolute;inset:0;border:2px solid currentColor;border-left-color:transparent;border-radius:50%;animation:trace-button-spin .85s linear infinite}
+.trace-action-spinner__mark{font-size:12px;line-height:1}
+@keyframes trace-button-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.trace-action-spinner__ring{animation-duration:2.5s}}
+.trace-loading-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#f4f0e6;color:#1e352f;text-align:center;padding:24px}
+.trace-loading-page__symbol{position:relative;width:78px;height:78px;display:grid;place-items:center;border:2px solid #b3c3b6;border-radius:50%;font-size:38px}
+.trace-loading-page__symbol:before{content:"";position:absolute;inset:-7px;border-radius:50%;border:3px solid transparent;border-top-color:#55756a;animation:trace-button-spin 1.2s linear infinite}
+.trace-loading-page strong{font-size:1.3rem}.trace-loading-page p{margin:0;opacity:.7}

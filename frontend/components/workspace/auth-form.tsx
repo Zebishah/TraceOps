@@ -1,3 +1,4 @@
+import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';

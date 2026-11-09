@@ -1,3 +1,4 @@
+import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 'use client';
 
 import { useState, type FormEvent } from 'react';
@@ -32,7 +33,7 @@ export default function ForgotPasswordPage() {
     {error && <p role="alert" className="form-error">{error}</p>}
     <form onSubmit={(event) => void submit(event)} className="auth-fields">
       <label>Email address<input type="email" required maxLength={320} autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
-      <button className="auth-submit" type="submit" disabled={loading || cooldown}>{loading ? 'Sending…' : cooldown ? 'Try again in one minute' : sent ? 'Resend reset link' : 'Send reset link'}</button>
+      <button className="auth-submit" type="submit" disabled={loading || cooldown}>{loading ? <><TraceOpsActionSpinner label="Sending recovery link" /> Sending…</> : cooldown ? 'Try again in one minute' : sent ? 'Resend reset link' : 'Send reset link'}</button>
     </form>
     <Link href="/login" className="auth-verification-back">Return to sign in</Link>
   </section></AuthFrame>;

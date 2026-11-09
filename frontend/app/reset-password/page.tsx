@@ -1,3 +1,4 @@
+import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
@@ -38,7 +39,7 @@ export default function ResetPasswordPage() {
       {!/^[A-Za-z0-9_-]{43}$/.test(token) ? <p role="status">This link is invalid or missing. Request another one.</p> : <form onSubmit={(e) => void submit(e)} className="auth-fields">
         <label>New password<input required type="password" minLength={8} maxLength={128} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
         <label>Confirm new password<input required type="password" minLength={8} maxLength={128} autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} /></label>
-        <button className="auth-submit" disabled={loading} type="submit">{loading ? 'Saving…' : 'Update password'}</button>
+        <button className="auth-submit" disabled={loading} type="submit">{loading ? <><TraceOpsActionSpinner label="Saving new password" /> Saving…</> : 'Update password'}</button>
       </form>}
       <Link href="/forgot-password" className="auth-verification-back">Request another reset link</Link>
     </>}
