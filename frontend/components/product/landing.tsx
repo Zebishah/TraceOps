@@ -57,8 +57,8 @@ export function Landing() {
           </header>
           <section className="hero cinematic">
             <div className="hero-kicker">
-              <span className="tiny-signal"></span> INCIDENT INTELLIGENCE /
-              HUMAN OVERSIGHT
+              <span className="tiny-signal"></span> AI INCIDENT INVESTIGATION /
+              HUMAN APPROVAL
             </div>
             <h1>
               SEE THE SIGNAL.
@@ -186,9 +186,8 @@ export function Landing() {
             <div className="hero-lower">
               <div>
                 <p>
-                  Investigate customer issues. Review the evidence.
-                  <br />
-                  Coordinate the follow-through from one workspace.
+                  TraceOps helps operations teams investigate customer incidents with AI.
+                  Review evidence from company documents and records, then approve sensitive actions before execution.
                 </p>
                 <a className="primary" href="/app">
                   Explore the product <span>↗</span>

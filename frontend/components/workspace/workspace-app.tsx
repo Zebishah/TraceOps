@@ -92,14 +92,14 @@ export function WorkspaceApp({ children, backendOrigin = null, uploadLimitBytes 
       : section === 'developer' ? <DeveloperPage /> : section === 'settings' ? <SettingsPage />
       : <div className="state-panel"><h1>Page not found</h1><a href="/app">Return to overview</a></div>;
     content = <Session.Provider value={{ me: auth.data, organizationId: selectedOrganization, role: membership.role, workspace: workspace.data, backendOrigin, uploadLimitBytes, notify: setMessage }}>
-      {workspace.error && <div className="workspace-connection-banner" role="status"><div><strong>Workspace metadata is unavailable</strong><p>{workspace.error.message}</p></div><button className="btn secondary" onClick={workspace.refresh}>Retry</button></div>}
+      {workspace.error && <div className="workspace-connection-banner" role="status"><div><strong>Workspace details are temporarily unavailable</strong><p>{workspace.error.message}</p></div><button className="btn secondary" onClick={workspace.refresh}>Retry</button></div>}
       {page}
     </Session.Provider>;
   }
 
   return <div className="dashboard">
     <aside className={`workspace-sidebar ${mobile ? 'visible' : ''}`}>
-      <div className="sidebar-brand"><a href="/"><span className="sidebar-logo"><BrainCircuit size={22}/></span><strong>TraceOps<span>INTELLIGENCE WORKSPACE</span></strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
+      <div className="sidebar-brand"><a href="/"><span className="sidebar-logo"><BrainCircuit size={22}/></span><strong>TraceOps<span>INCIDENT WORKSPACE</span></strong></a><button aria-label="Close navigation" className="mobile-only" onClick={() => setMobile(false)}><X size={18} /></button></div>
       <label className="workspace-selector"><span>WORKSPACE</span><select value={selectedOrganization} disabled={!membership} onChange={event => selectOrganization(event.target.value)} aria-label="Selected organization">{!auth.data?.memberships.length && <option value="">{auth.loading ? 'Connecting…' : 'Select a workspace'}</option>}{auth.data?.memberships.map(m => <option key={m.organization_id} value={m.organization_id}>{m.organization_id === selectedOrganization && workspace.data ? workspace.data.name : `Organization ${m.organization_id.slice(0, 8)}`}</option>)}</select><small>{membership ? `${membership.role} access` : 'Checking workspace access'} <ChevronDown size={12} /></small></label>
       {can(membership?.role,'create')&&<a className="sidebar-create" href="/app/incidents/new"><Plus size={15}/> New investigation <ArrowUpRight size={14}/></a>}
       {navigation.map(group => <div className="navigation-group" key={group.group}><span>{group.group}</span>{group.items.map(([label, path, Icon]) => <button key={path} className={section === path ? 'current' : ''} onClick={() => navigate(path)} aria-current={section === path ? 'page' : undefined}><Icon size={16} /><span>{label}</span>{section === path && <i />}</button>)}</div>)}
