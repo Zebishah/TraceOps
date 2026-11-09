@@ -14,13 +14,24 @@ export class ApiError extends Error {
 async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  const response = await fetch(`/api/backend/${path}`, { ...init, headers, credentials: 'same-origin', cache: 'no-store' });
-  let data: unknown;
-  try { data = await response.json(); } catch { throw new ApiError('The server returned an unexpected response', response.status); }
+  let response: Response;
+  try {
+    response = await fetch(`/api/backend/${path}`, { ...init, headers, credentials: 'same-origin', cache: 'no-store' });
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
+    throw new ApiError('We couldn’t connect to TraceOps. Check your connection and try again.', 0);
+  }
+  const requestId = response.headers.get('x-request-id');
+  const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    let message = `Request failed (${response.status})`; let code: string | null = null;
+    let message = response.status >= 500
+      ? 'TraceOps couldn’t complete the request. Please try again shortly.'
+      : response.status === 429
+        ? 'Too many requests. Wait a moment and try again.'
+        : 'The request could not be completed. Please try again.';
+    let code: string | null = null;
     let verificationDetails: z.infer<typeof verificationRequiredSchema> | null = null;
-    if (typeof data === 'object' && data !== null && 'detail' in data) {
+    if (response.status < 500 && typeof data === 'object' && data !== null && 'detail' in data) {
       const verification = verificationRequiredSchema.safeParse(data.detail);
       if (verification.success) {
         message = verification.data.message; code = verification.data.code;
@@ -31,7 +42,7 @@ async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unkno
           // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.assign('/verify-email');
         }
-      } else if (typeof data.detail === 'string') message = data.detail;
+      } else if (typeof data.detail === 'string' && data.detail.trim()) message = data.detail.trim();
       else if (Array.isArray(data.detail)) message = 'Please check the submitted fields.';
     }
     const retry = response.headers.get('retry-after'); const seconds = retry === null ? NaN : Number(retry);
@@ -39,12 +50,12 @@ async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unkno
     if (typeof window !== 'undefined' && response.status >= 400 && response.status < 500 && response.status !== 429) {
       const readKey = dashboardCacheKey(path); if (readKey) dashboardCache.refresh(readKey);
     }
-    const error = new ApiError(message, response.status, response.headers.get('x-request-id'), code, Number.isFinite(seconds) && seconds > 0 ? Math.min(86400, Math.ceil(seconds)) : null);
+    const error = new ApiError(message, response.status, requestId, code, Number.isFinite(seconds) && seconds > 0 ? Math.min(86400, Math.ceil(seconds)) : null);
     error.verification = verificationDetails;
     throw error;
   }
   const parsed = schema.safeParse(data);
-  if (!parsed.success) throw new ApiError('The backend response does not match this screen’s contract. Please refresh or check the deployment version.', 502);
+  if (!parsed.success) throw new ApiError('TraceOps returned an unexpected response. Refresh the page and try again.', 502, requestId);
   if (typeof window !== 'undefined' && path === 'auth/me') {
     const identity = z.object({ user: z.object({ id: z.string() }), memberships: z.array(z.object({ organization_id: z.string(), role: z.string() })) }).safeParse(parsed.data);
     if (identity.success) dashboardCache.setPrincipal(JSON.stringify([identity.data.user.id, identity.data.memberships.map(m => `${m.organization_id}:${m.role}`).sort()]));

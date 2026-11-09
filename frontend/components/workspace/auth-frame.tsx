@@ -8,7 +8,7 @@ export function AuthFrame({ register = false, children }: { register?: boolean; 
       <div className="auth-stage">
         <aside className="auth-visual" aria-label="TraceOps incident intelligence">
           <div className="auth-visual-top"><Link href="/" className="auth-scene-brand"><span>◈</span> TraceOps</Link><span className="auth-edition">OPERATIONS, IN FOCUS.</span></div>
-          <div className="auth-visual-copy"><span className="auth-overline">CONTEXT. CLARITY. CONTROL.</span><h2>Every signal.<br />A clearer <em>next step.</em></h2><p>Bring the evidence together.<br />Keep the decision in human hands.</p></div>
+          <div className="auth-visual-copy"><span className="auth-overline">AI INCIDENT INVESTIGATION</span><h2>Every signal.<br />A clearer <em>next step.</em></h2><p>Investigate customer incidents, review the evidence, and approve sensitive actions in TraceOps.</p></div>
           <div className="auth-illustration" aria-hidden="true">
             <div className="auth-orbit auth-orbit-one" /><div className="auth-orbit auth-orbit-two" />
             <div className="auth-mini-card auth-mini-policy"><span>01 / KNOWLEDGE</span><strong>Evidence,<br />within reach.</strong><i>POLICY · SOURCE ATTACHED ↗</i></div>

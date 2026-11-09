@@ -26,7 +26,7 @@ export function ApprovalPage({incidentId,approvalId}:{incidentId:string;approval
   }:null,[organizationId,approvalId,result.data?.status],poll?10000:0);
   async function recordDecision(approved:boolean,comment:string) {
     await post(`${prefix}/decision`,approvalSchema,{approved,comment});
-    notify(approved?'Decision recorded. Execution is tracked separately.':'Approval rejected.');
+    notify(approved?'Approval recorded. Check this record for execution status.':'Rejection recorded. The proposed action was declined.');
     result.refresh();
     resume.refresh();
   }
