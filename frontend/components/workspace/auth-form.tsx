@@ -1,5 +1,6 @@
-import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 'use client';
+
+import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { ArrowLeft, CircleCheck, Mail, MailCheck } from 'lucide-react';

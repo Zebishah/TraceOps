@@ -1,5 +1,6 @@
-import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 'use client';
+
+import { TraceOpsActionSpinner } from '@/components/workspace/trace-ops-loader';
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
