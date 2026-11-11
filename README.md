@@ -18,7 +18,7 @@ Previously branded OpsPilot and IncidentIQ, this repository now uses TraceOps as
 - Runs background investigations, indexing, retries, and recovery with Inngest.
 - Records automation delivery attempts and hands events to configured n8n workflows.
 - Exposes scoped incident and knowledge tools to authorized MCP clients, including OAuth connection screens.
-- Provides voice input and an optional incident-classifier fine-tuning workspace with evaluation tooling.
+- Provides voice input and an optional Qwen incident-classifier fine-tuning workspace with LoRA/QLoRA training and evaluation tooling.
 - Presents incident, knowledge, approval, automation, readiness, and evaluation screens in a React workspace.
 
 ## Technology
@@ -30,7 +30,7 @@ Previously branded OpsPilot and IncidentIQ, this repository now uses TraceOps as
 | Retrieval | Qdrant, Mistral embeddings, Voyage reranking, document and incident-memory retrieval |
 | Durable state | PostgreSQL, LangGraph PostgreSQL checkpoints |
 | Infrastructure | Redis, AWS S3, Inngest, n8n |
-| AI integrations | Model Context Protocol, OAuth, voice/STT endpoints, optional Qwen fine-tuning tooling |
+| AI integrations | Model Context Protocol, OAuth, voice/STT endpoints, optional Qwen LoRA/QLoRA fine-tuning tooling |
 | Frontend | React 19, TypeScript, Next.js App Router conventions, Vinext/Vite, Tailwind CSS, shadcn/Radix, Recharts |
 | Quality | pytest, Ruff, mypy, frontend Node.js tests, TypeScript, ESLint |
 
