@@ -4,6 +4,8 @@
 
 TraceOps investigates operational incidents using organization knowledge, live business records, AI agents, and human oversight. It brings the investigation, evidence, proposed next steps, approvals, and execution history into one multi-tenant workspace.
 
+**[Explore live demo](https://trace-ops-pearl.vercel.app/)** · [Architecture](docs/architecture.md) · [Frontend guide](frontend/README.md)
+
 Previously branded OpsPilot and IncidentIQ, this repository now uses TraceOps as its product identity.
 
 ## What it does
